@@ -94,15 +94,14 @@ compile:
 	rm -rf .build/*
 	${VENV}/bin/ape compile
 
-console-local console-zethereum console-zapechain console-sepolia console-curtis console-ethereum console-apechain
+console-local console-zethereum console-zapechain console-sepolia console-curtis console-ethereum console-apechain:
 	${VENV}/bin/ape console --network ${NETWORK} # --verbosity DEBUG
 
-deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-ethereum deploy-apechain
+deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-ethereum deploy-apechain:
 	${VENV}/bin/ape run -I deployment --network ${NETWORK}
 
-publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-ethereum publish-apechain
+publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-ethereum publish-apechain:
 	${VENV}/bin/ape run publish
 
-get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-ethereum get-metadata-apechain
-	${VENV}/bin/ape run get_collections
+get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-ethereum get-metadata-apechain:
 	${VENV}/bin/ape run get_tokens
