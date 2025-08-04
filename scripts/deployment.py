@@ -1,0 +1,41 @@
+import logging
+import os
+import warnings
+
+import click
+from ape import convert
+from ape.cli import ConnectedProviderCommand
+from rich import print
+
+from ._helpers.deployment import DeploymentManager, Environment
+
+ENV = Environment[os.environ.get("ENV", "local")]
+CHAIN = os.environ.get("CHAIN", "nochain")
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
+warnings.filterwarnings("ignore")
+
+
+def gas_cost(context):  # noqa: ARG001
+    return {}
+    return {"gas_price": convert("10 gwei", int)}
+
+
+@click.command(cls=ConnectedProviderCommand)
+def cli(network):
+    print(f"Connected to {network}")
+
+    dm = DeploymentManager(ENV, CHAIN)
+    dm.context.gas_func = gas_cost
+
+    changes = set()
+    # changes |= {
+    #     "configs.trait_roots",
+    #     "p2p.eth_nfts",
+    # }
+
+    dm.deploy(changes, dryrun=False)
+
+    print("Done")
