@@ -5,7 +5,6 @@
 @author [Zharta](https://zharta.io/)
 @notice This contract facilitates peer-to-peer lending using ERC20s as collateral.
 
-TODO: KYC validation for borrower and lender
 """
 
 # Interfaces
@@ -25,13 +24,22 @@ interface AggregatorV3Interface:
     def decimals() -> uint8: view
     def latestRoundData() -> AggregatorV3LatestRoundData: view
 
+interface KYCValidator:
+    def check_validation(validation: SignedWalletValidation) -> bool: view
+    def check_validations_pair(validation1: SignedWalletValidation, validation2: SignedWalletValidation) -> bool: view
+
 # Structs
 
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
+struct WalletValidation:
+    wallet: address
+    validation_time: uint256
 
-
+struct SignedWalletValidation:
+    validation: WalletValidation
+    signature: Signature
 
 struct Offer:
     principal: uint256 # optional
@@ -200,6 +208,7 @@ proposed_owner: public(address)
 payment_token: public(immutable(address))
 collateral_token: public(immutable(address))
 oracle_addr: public(immutable(address))
+kyc_validator_addr: public(immutable(address))
 
 loans: public(HashMap[bytes32, bytes32])
 
@@ -241,6 +250,7 @@ def __init__(
     _payment_token: address,
     _collateral_token: address,
     _oracle_addr: address,
+    _kyc_validator_addr: address,
     _protocol_upfront_fee: uint256,
     _protocol_settlement_fee: uint256,
     _protocol_wallet: address,
@@ -275,6 +285,7 @@ def __init__(
     payment_token = _payment_token
     collateral_token = _collateral_token
     oracle_addr = _oracle_addr
+    kyc_validator_addr = _kyc_validator_addr
     max_protocol_upfront_fee = _max_protocol_upfront_fee
     max_protocol_settlement_fee = _max_protocol_settlement_fee
     self.protocol_upfront_fee = _protocol_upfront_fee
@@ -407,13 +418,21 @@ def claim_ownership():
 # Core functions
 
 @external
-def create_loan(offer: SignedOffer, principal: uint256, collateral_amount: uint256) -> bytes32:
+def create_loan(
+    offer: SignedOffer,
+    principal: uint256,
+    collateral_amount: uint256,
+    borrower_kyc: SignedWalletValidation,
+    lender_kyc: SignedWalletValidation
+) -> bytes32:
 
     """
     @notice Create a loan.
     @param offer The signed offer.
     @param principal The principal amount of the loan.
     @param collateral_amount The amount of collateral tokens to be used for the loan.
+    @param borrower_kyc The signed KYC validation for the borrower.
+    @param lender_kyc The signed KYC validation for the lender.
     @return The ID of the created loan.
     """
 
@@ -423,6 +442,7 @@ def create_loan(offer: SignedOffer, principal: uint256, collateral_amount: uint2
 
     borrower: address = msg.sender if not self.authorized_proxies[msg.sender] else tx.origin
 
+    assert staticcall KYCValidator(kyc_validator_addr).check_validations_pair(borrower_kyc, lender_kyc), "KYC validation fail"
     assert offer.offer.borrower == empty(address) or offer.offer.borrower == borrower, "borrower not allowed"
     assert offer.offer.principal == 0 or offer.offer.principal == principal, "offer principal mismatch"
     assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
@@ -435,7 +455,9 @@ def create_loan(offer: SignedOffer, principal: uint256, collateral_amount: uint2
         assert initial_ltv * offer.offer.principal <= offer.offer.min_collateral_amount * BPS, "initial ltv gt min collateral"
 
     if offer.offer.soft_liquidation_ltv > 0:
-        assert offer.offer.soft_liquidation_ltv > initial_ltv, "soft liquidation ltv must be higher than initial ltv"
+        assert offer.offer.soft_liquidation_ltv > initial_ltv, "liquidation ltv gt initial ltv"
+        # required for soft liquidation: (1 + f) * iltv < 1
+        assert (BPS + self.soft_liquidation_fee) * initial_ltv < BPS * BPS, "initial ltv too high"
 
     offer_id: bytes32 = self._compute_signed_offer_id(offer)
     loan: Loan = Loan(
@@ -503,16 +525,18 @@ def create_loan(offer: SignedOffer, principal: uint256, collateral_amount: uint2
 
 
 @external
-def settle_loan(loan: Loan):
+def settle_loan(loan: Loan, borrower_kyc: SignedWalletValidation):
 
     """
     @notice Settle a loan.
     @param loan The loan to be settled.
+    @param borrower_kyc The signed KYC validation for the borrower.
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
     assert block.timestamp <= loan.maturity, "loan defaulted"
     assert self._check_user(loan.borrower), "not borrower"
+    assert staticcall KYCValidator(kyc_validator_addr).check_validation(borrower_kyc), "KYC validation fail"
 
     interest: uint256 = self._compute_settlement_interest(loan)
     protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
@@ -542,16 +566,19 @@ def settle_loan(loan: Loan):
 
 
 @external
-def claim_defaulted_loan_collateral(loan: Loan):
+def claim_defaulted_loan_collateral(loan: Loan, lender_kyc: SignedWalletValidation):
 
     """
     @notice Claim defaulted loan collateral.
     @param loan The loan whose collateral is to be claimed. The loan maturity must have been passed.
+    @param lender_kyc The signed KYC validation for the lender.
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
     assert self._is_loan_defaulted(loan), "loan not defaulted"
     assert self._check_user(loan.lender), "not lender"
+
+    assert staticcall KYCValidator(kyc_validator_addr).check_validation(lender_kyc), "KYC validation fail"
 
     self.loans[loan.id] = empty(bytes32)
 
@@ -884,9 +911,6 @@ def _check_offer_validity(offer: SignedOffer):
     assert offer.offer.call_window != 0 or offer.offer.call_eligibility == 0, "call window is 0"
     assert offer.offer.min_collateral_amount > 0 or offer.offer.max_iltv > 0, "set min collateral or max iltv"
 
-    # not needed, verified in loan creation against the initial ltv
-    # if offer.offer.max_iltv > 0 and offer.offer.soft_liquidation_ltv > 0:
-    #     assert offer.offer.soft_liquidation_ltv > offer.offer.max_iltv, "maxiltv gte softliquidation ltv"
 
 
 @internal
