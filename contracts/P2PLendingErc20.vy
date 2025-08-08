@@ -143,6 +143,15 @@ event LoanCollateralClaimed:
     collateral_amount: uint256
  
 
+event LoanCollateralAdded:
+    id: bytes32
+    borrower: address
+    lender: address
+    collateral_token: address
+    old_collateral_amount: uint256
+    new_collateral_amount: uint256
+
+
 event LoanSoftLiquidated:
     id: bytes32
     borrower: address
@@ -236,7 +245,7 @@ ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
 
 DOMAIN_TYPE_HASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
-OFFER_TYPE_DEF: constant(String[370]) = "Offer(uint256 principal,uint256 apr,address payment_token,uint256 collateral_token,uint256 duration," \
+OFFER_TYPE_DEF: constant(String[370]) = "Offer(uint256 principal,uint256 apr,address payment_token,address collateral_token,uint256 duration," \
                                         "uint256 origination_fee_amount,uint256 min_collateral_amount,uint256 max_iltv,uint256 available_liquidity," \
                                         "uint256 call_eligibility,uint256 call_window,uint256 soft_liquidation_ltv,address oracle_addr," \
                                         "uint256 expiration,address lender,address borrower,bytes32 tracing_id)"
@@ -437,8 +446,8 @@ def create_loan(
     """
 
 
-    self._check_offer_validity(offer)
     assert self._is_offer_signed_by_lender(offer, offer.offer.lender), "offer not signed by lender"
+    self._check_offer_validity(offer)
 
     borrower: address = msg.sender if not self.authorized_proxies[msg.sender] else tx.origin
 
@@ -451,8 +460,6 @@ def create_loan(
     initial_ltv: uint256 = self._compute_ltv(collateral_amount, principal)
     if offer.offer.max_iltv > 0:
         assert initial_ltv <= offer.offer.max_iltv, "initial ltv gt max iltv"
-    else:
-        assert initial_ltv * offer.offer.principal <= offer.offer.min_collateral_amount * BPS, "initial ltv gt min collateral"
 
     if offer.offer.soft_liquidation_ltv > 0:
         assert offer.offer.soft_liquidation_ltv > initial_ltv, "liquidation ltv gt initial ltv"
@@ -609,7 +616,7 @@ def soft_liquidate_loan(loan: Loan):
     current_interest: uint256 = self._compute_settlement_interest(loan)
     current_ltv: uint256 = self._compute_ltv(loan.collateral_amount, loan.amount + current_interest)
 
-    assert current_ltv >= loan.soft_liquidation_ltv, "ltv lt soft liquidation ltv"
+    assert current_ltv >= loan.soft_liquidation_ltv, "ltv lt liquidation ltv"
 
     principal_written_off: uint256 = 0
     collateral_claimed: uint256 = 0
@@ -720,6 +727,60 @@ def call_loan(loan: Loan):
 
 
 @external
+def add_collateral_to_loan(loan: Loan, collateral_amount: uint256, borrower_kyc: SignedWalletValidation):
+
+    """
+    @notice Add collateral to a loan.
+    @param loan The loan to which collateral is to be added.
+    @param collateral_amount The amount of collateral tokens to be added.
+    @param borrower_kyc The signed KYC validation for the borrower.
+    """
+
+    assert self._is_loan_valid(loan), "invalid loan"
+    assert self._check_user(loan.borrower), "not borrower"
+    assert block.timestamp <= loan.maturity, "loan defaulted" # TODO: review if checks on loan defaulted should include call window checks
+    assert staticcall KYCValidator(kyc_validator_addr).check_validation(borrower_kyc), "KYC validation fail"
+
+    self._receive_collateral(loan.borrower, collateral_amount)
+
+    updated_loan: Loan = Loan(
+        id=loan.id,
+        offer_id=loan.offer_id,
+        offer_tracing_id=loan.offer_tracing_id,
+        initial_amount=loan.initial_amount,
+        amount=loan.amount,
+        apr=loan.apr,
+        payment_token=loan.payment_token,
+        maturity=loan.maturity,
+        start_time=loan.start_time,
+        accrual_start_time=loan.accrual_start_time,
+        borrower=loan.borrower,
+        lender=loan.lender,
+        collateral_token=loan.collateral_token,
+        collateral_amount=loan.collateral_amount + collateral_amount,
+        origination_fee_amount=loan.origination_fee_amount,
+        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
+        protocol_settlement_fee=loan.protocol_settlement_fee,
+        soft_liquidation_fee=loan.soft_liquidation_fee,
+        call_eligibility=loan.call_eligibility,
+        call_window=loan.call_window,
+        soft_liquidation_ltv= loan.soft_liquidation_ltv,
+        oracle_addr=loan.oracle_addr,
+        initial_ltv= loan.initial_ltv,
+        call_time=loan.call_time
+    )
+    self.loans[updated_loan.id] = self._loan_state_hash(updated_loan)
+
+    log LoanCollateralAdded(
+        id=loan.id,
+        borrower=loan.borrower,
+        lender=loan.lender,
+        collateral_token=loan.collateral_token,
+        old_collateral_amount=collateral_amount,
+        new_collateral_amount=updated_loan.collateral_amount
+    )
+
+@external
 def revoke_offer(offer: SignedOffer):
 
     """
@@ -810,6 +871,8 @@ def _check_and_update_offer_state(offer: SignedOffer, amount: uint256):
     self.commited_liquidity[offer.offer.tracing_id] = commited_liquidity + amount
 
     self._revoke_offer(offer_id, offer)
+    # TODO: review this, does it still make sense? the whole tracing_id could be dropped and available liquidity used instead if 
+    # offers dont get revoked automatically?
 
 
 @internal
@@ -906,10 +969,10 @@ def _check_offer_validity(offer: SignedOffer):
     assert offer.offer.expiration > block.timestamp, "offer expired"
     assert offer.offer.duration > 0, "duration is 0"
     assert offer.offer.payment_token == payment_token, "invalid payment token"
-    assert offer.offer.collateral_token == collateral_token, "invalid payment token"
+    assert offer.offer.collateral_token == collateral_token, "invalid collateral token"
     assert offer.offer.oracle_addr == empty(address) or offer.offer.oracle_addr == oracle_addr, "invalid oracle address"
     assert offer.offer.call_window != 0 or offer.offer.call_eligibility == 0, "call window is 0"
-    assert offer.offer.min_collateral_amount > 0 or offer.offer.max_iltv > 0, "set min collateral or max iltv"
+    assert offer.offer.min_collateral_amount > 0 or offer.offer.max_iltv > 0, "no min collateral nor max iltv"
 
 
 
