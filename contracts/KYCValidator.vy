@@ -3,9 +3,7 @@
 """
 @title KYCValidator
 @author [Zharta](https://zharta.io/)
-@notice This contract facilitates peer-to-peer lending using ERC20s as collateral.
-
-TODO: KYC validation for borrower and lender
+@notice This contract is used to validate wallets based on signed data from a KYC validator.
 """
 
 # Structs
@@ -50,7 +48,7 @@ ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
 
 DOMAIN_TYPE_HASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
-VALIDATION_TYPE_DEF: constant(String[56]) = "WalletValidation(uint256 wallet,address validation_time)"
+VALIDATION_TYPE_DEF: constant(String[56]) = "WalletValidation(address wallet,uint256 validation_time)"
 VALIDATION_TYPE_HASH: constant(bytes32) = keccak256(VALIDATION_TYPE_DEF)
 
 validation_sig_domain_separator: immutable(bytes32)
@@ -66,6 +64,7 @@ def __init__(_validator: address):
 
     assert _validator != empty(address)
     self.owner = msg.sender
+    self.validator = _validator
 
     validation_sig_domain_separator = keccak256(
         abi_encode(
@@ -102,19 +101,18 @@ def check_validations_pair(validation1: SignedWalletValidation, validation2: Sig
 def _check_validation(signed_validation: SignedWalletValidation) -> bool:
     return ecrecover(
         keccak256(
-            abi_encode(
-                validation_sig_domain_separator,
-                keccak256(abi_encode(
-                    VALIDATION_TYPE_HASH,
-                    signed_validation.validation.wallet,
-                    signed_validation.validation.validation_time
-                ))
+            concat(
+                convert("\x19\x01", Bytes[2]),
+                abi_encode(
+                    validation_sig_domain_separator,
+                    keccak256(abi_encode(VALIDATION_TYPE_HASH, signed_validation.validation))
+                )
             )
         ),
         signed_validation.signature.v,
         signed_validation.signature.r,
         signed_validation.signature.s
-    ) == self.validator and signed_validation.validation.validation_time <= block.timestamp + MAX_VALIDATION_TIME
+    ) == self.validator and signed_validation.validation.validation_time + MAX_VALIDATION_TIME >= block.timestamp
 
 
 @external
@@ -126,8 +124,8 @@ def propose_owner(_address: address):
     @param _address The address of the proposed owner.
     """
 
-    assert msg.sender == self.owner
-    assert _address != empty(address)
+    assert msg.sender == self.owner, "not owner"
+    assert _address != empty(address), "address is zero"
 
     log OwnerProposed(owner=self.owner, proposed_owner=_address)
     self.proposed_owner = _address
@@ -141,7 +139,7 @@ def claim_ownership():
     @dev Claims the ownership of the contract and logs the event. Requires the caller to be the proposed owner.
     """
 
-    assert msg.sender == self.proposed_owner
+    assert msg.sender == self.proposed_owner, "not the proposed owner"
 
     log OwnershipTransferred(old_owner=self.owner, new_owner=self.proposed_owner)
     self.owner = msg.sender
