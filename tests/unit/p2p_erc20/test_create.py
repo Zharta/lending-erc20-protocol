@@ -9,9 +9,11 @@ from ...conftest_base import (
     Loan,
     Offer,
     SignedOffer,
+    calc_ltv,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
+    get_events,
     replace_namedtuple_field,
     sign_offer,
 )
@@ -32,14 +34,6 @@ def kyc_lender(lender, kyc_for, kyc_validator_contract):
 @pytest.fixture(autouse=True)
 def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
     return kyc_for(borrower, kyc_validator_contract.address)
-
-
-def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle):
-    rate = oracle.latestRoundData().answer
-    oracle_decimals = 10 ** oracle.decimals()
-    principal_token_decimals = 10 ** principal_token.decimals()
-    collateral_token_decimals = 10 ** collateral_token.decimals()
-    return principal * BPS * oracle_decimals * collateral_token_decimals // (collateral_amount * rate * principal_token_decimals)
 
 
 def test_create_loan_reverts_if_offer_not_signed_by_lender(
@@ -568,7 +562,38 @@ def test_create_loan_updates_offer_usage_count(p2p_usdc_weth, borrower, now, len
     assert p2p_usdc_weth.commited_liquidity(offer.tracing_id) == principal
 
 
-def test_create_loan_for_token_offer_revokes_offer(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
+def test_create_loan_for_token_offer_revokes_normal_offer(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
+    principal = 1000
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+    offer_id = compute_signed_offer_id(signed_offer)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    usdc.deposit(value=principal, sender=lender)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    event = get_last_event(p2p_usdc_weth, "OfferRevoked")
+    assert event.offer_id == offer_id
+    assert event.lender == offer.lender
+
+    assert p2p_usdc_weth.revoked_offers(offer_id)
+
+
+def test_create_loan_for_token_offer_doesnt_revoke_open_offer(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
     principal = 1000
     collateral_amount = int(1e18)
     offer = Offer(
@@ -591,8 +616,5 @@ def test_create_loan_for_token_offer_revokes_offer(p2p_usdc_weth, borrower, now,
 
     p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
-    event = get_last_event(p2p_usdc_weth, "OfferRevoked")
-    assert event.offer_id == offer_id
-    assert event.lender == offer.lender
-
-    assert p2p_usdc_weth.revoked_offers(offer_id)
+    assert len(get_events(p2p_usdc_weth, "OfferRevoked")) == 0
+    assert not p2p_usdc_weth.revoked_offers(offer_id)
