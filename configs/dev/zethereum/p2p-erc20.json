@@ -24,7 +24,7 @@
     "p2p": {
         "weth-usdc": {
             "abi_key": "5b0ea742bcaf24509c8583bef8e2375b77128eed",
-            "address": "0x4d7F90744B29B8E302496962D6299f10E9bF4F99",
+            "address": "0xA59A0860849C59D41Fe888541688d8990CDf77b9",
             "contract": "P2PLendingErc20",
             "properties": {
                 "collateral_token_key": "common.usdc",

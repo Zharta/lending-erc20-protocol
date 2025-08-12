@@ -43,7 +43,6 @@ struct SignedWalletValidation:
 
 struct Offer:
     principal: uint256 # optional
-#    -- min_principal: uint256 # the minimum principal amount the lender is willing to lend, optional
     apr: uint256
     payment_token: address
     collateral_token: address
@@ -130,7 +129,7 @@ event LoanPaid:
     payment_token: address
     paid_principal: uint256
     paid_interest: uint256
-    originating_fee_amount: uint256
+    origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee_amount: uint256
  
@@ -144,6 +143,15 @@ event LoanCollateralClaimed:
  
 
 event LoanCollateralAdded:
+    id: bytes32
+    borrower: address
+    lender: address
+    collateral_token: address
+    old_collateral_amount: uint256
+    new_collateral_amount: uint256
+
+
+event LoanCollateralRemoved:
     id: bytes32
     borrower: address
     lender: address
@@ -230,7 +238,6 @@ max_protocol_settlement_fee: public(immutable(uint256))
 
 payment_token_decimals: public(immutable(uint256))
 collateral_token_decimals: public(immutable(uint256))
-oracle_decimals: public(immutable(uint256))
 
 
 commited_liquidity: public(HashMap[bytes32, uint256])
@@ -304,7 +311,6 @@ def __init__(
 
     collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
-    oracle_decimals = 10 ** convert(staticcall AggregatorV3Interface(_oracle_addr).decimals(), uint256)
     offer_sig_domain_separator = keccak256(
         abi_encode(
             DOMAIN_TYPE_HASH,
@@ -532,18 +538,16 @@ def create_loan(
 
 
 @external
-def settle_loan(loan: Loan, borrower_kyc: SignedWalletValidation):
+def settle_loan(loan: Loan):
 
     """
     @notice Settle a loan.
     @param loan The loan to be settled.
-    @param borrower_kyc The signed KYC validation for the borrower.
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
     assert block.timestamp <= loan.maturity, "loan defaulted"
     assert self._check_user(loan.borrower), "not borrower"
-    assert staticcall KYCValidator(kyc_validator_addr).check_validation(borrower_kyc), "KYC validation fail"
 
     interest: uint256 = self._compute_settlement_interest(loan)
     protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
@@ -566,7 +570,7 @@ def settle_loan(loan: Loan, borrower_kyc: SignedWalletValidation):
         payment_token=loan.payment_token,
         paid_principal=loan.amount,
         paid_interest=interest,
-        originating_fee_amount=loan.origination_fee_amount,
+        origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee_amount=protocol_settlement_fee
     )
@@ -610,7 +614,7 @@ def soft_liquidate_loan(loan: Loan):
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
-    assert block.timestamp <= loan.maturity, "loan defaulted"
+    assert not self._is_loan_defaulted(loan), "loan defaulted"
     liquidator: address = msg.sender if not self.authorized_proxies[msg.sender] else tx.origin
 
     current_interest: uint256 = self._compute_settlement_interest(loan)
@@ -659,8 +663,11 @@ def soft_liquidate_loan(loan: Loan):
 
     self.loans[loan.id] = self._loan_state_hash(updated_loan)
 
-    self._send_collateral(liquidator, liquidation_fee)
-    self._send_collateral(loan.lender, collateral_claimed)
+    if liquidator == loan.lender:
+        self._send_collateral(liquidator, collateral_claimed + liquidation_fee)
+    else:
+        self._send_collateral(liquidator, liquidation_fee)
+        self._send_collateral(loan.lender, collateral_claimed)
 
     log LoanSoftLiquidated(
         id=loan.id,
@@ -727,19 +734,17 @@ def call_loan(loan: Loan):
 
 
 @external
-def add_collateral_to_loan(loan: Loan, collateral_amount: uint256, borrower_kyc: SignedWalletValidation):
+def add_collateral_to_loan(loan: Loan, collateral_amount: uint256):
 
     """
     @notice Add collateral to a loan.
     @param loan The loan to which collateral is to be added.
     @param collateral_amount The amount of collateral tokens to be added.
-    @param borrower_kyc The signed KYC validation for the borrower.
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
     assert self._check_user(loan.borrower), "not borrower"
-    assert block.timestamp <= loan.maturity, "loan defaulted" # TODO: review if checks on loan defaulted should include call window checks
-    assert staticcall KYCValidator(kyc_validator_addr).check_validation(borrower_kyc), "KYC validation fail"
+    assert not self._is_loan_defaulted(loan), "loan defaulted"
 
     self._receive_collateral(loan.borrower, collateral_amount)
 
@@ -772,6 +777,61 @@ def add_collateral_to_loan(loan: Loan, collateral_amount: uint256, borrower_kyc:
     self.loans[updated_loan.id] = self._loan_state_hash(updated_loan)
 
     log LoanCollateralAdded(
+        id=loan.id,
+        borrower=loan.borrower,
+        lender=loan.lender,
+        collateral_token=loan.collateral_token,
+        old_collateral_amount=collateral_amount,
+        new_collateral_amount=updated_loan.collateral_amount
+    )
+
+@external
+def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
+
+    """
+    @notice Add collateral to a loan.
+    @param loan The loan to which collateral is to be added.
+    @param collateral_amount The amount of collateral tokens to be added.
+    """
+
+    assert self._is_loan_valid(loan), "invalid loan"
+    assert self._check_user(loan.borrower), "not borrower"
+    assert not self._is_loan_defaulted(loan), "loan defaulted"
+
+    assert collateral_amount < loan.collateral_amount, "collateral amount ge loan"
+    assert loan.initial_ltv >= self._compute_ltv(loan.collateral_amount - collateral_amount, loan.amount + self._compute_settlement_interest(loan)), "ltv gt initial ltv"
+
+    updated_loan: Loan = Loan(
+        id=loan.id,
+        offer_id=loan.offer_id,
+        offer_tracing_id=loan.offer_tracing_id,
+        initial_amount=loan.initial_amount,
+        amount=loan.amount,
+        apr=loan.apr,
+        payment_token=loan.payment_token,
+        maturity=loan.maturity,
+        start_time=loan.start_time,
+        accrual_start_time=loan.accrual_start_time,
+        borrower=loan.borrower,
+        lender=loan.lender,
+        collateral_token=loan.collateral_token,
+        collateral_amount=loan.collateral_amount - collateral_amount,
+        origination_fee_amount=loan.origination_fee_amount,
+        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
+        protocol_settlement_fee=loan.protocol_settlement_fee,
+        soft_liquidation_fee=loan.soft_liquidation_fee,
+        call_eligibility=loan.call_eligibility,
+        call_window=loan.call_window,
+        soft_liquidation_ltv= loan.soft_liquidation_ltv,
+        oracle_addr=loan.oracle_addr,
+        initial_ltv= loan.initial_ltv,
+        call_time=loan.call_time
+    )
+    self.loans[updated_loan.id] = self._loan_state_hash(updated_loan)
+
+    self._send_collateral(loan.borrower, collateral_amount)
+
+    log LoanCollateralRemoved(
         id=loan.id,
         borrower=loan.borrower,
         lender=loan.lender,
@@ -870,9 +930,9 @@ def _check_and_update_offer_state(offer: SignedOffer, amount: uint256):
     assert commited_liquidity + amount <= offer.offer.available_liquidity, "offer fully utilized"
     self.commited_liquidity[offer.offer.tracing_id] = commited_liquidity + amount
 
-    self._revoke_offer(offer_id, offer)
-    # TODO: review this, does it still make sense? the whole tracing_id could be dropped and available liquidity used instead if 
-    # offers dont get revoked automatically?
+    if offer.offer.borrower != empty(address):
+        # offer has borrower => normal offer
+        self._revoke_offer(offer_id, offer)
 
 
 @internal
@@ -951,7 +1011,6 @@ def _transfer_funds(_from: address, _to: address, _amount: uint256):
 
 @internal
 def _send_collateral(wallet: address, _amount: uint256):
-    # TODO check for failures?
     assert extcall IERC20(collateral_token).transfer(wallet, _amount), "transfer failed"
 
 

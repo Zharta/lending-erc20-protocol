@@ -163,7 +163,7 @@ def kyc_validator_contract_def(boa_env):
 
 @pytest.fixture(scope="session")
 def p2p_lending_erc20_proxy_contract_def(boa_env):
-    return boa.load_partial("tests/stubs/P2PNftsProxy.vy")
+    return boa.load_partial("tests/stubs/P2PErc20Proxy.vy")
 
 
 @pytest.fixture

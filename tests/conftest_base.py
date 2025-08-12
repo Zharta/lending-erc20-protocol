@@ -22,6 +22,7 @@ from web3 import Web3
 
 ZERO_ADDRESS = boa.eval("empty(address)")
 ZERO_BYTES32 = boa.eval("empty(bytes32)")
+BPS = 10000
 
 
 def get_last_event(contract: VyperContract, name: str | None = None):
@@ -242,71 +243,34 @@ def get_loan_mutations(loan):
 
     yield replace_namedtuple_field(loan, id=ZERO_BYTES32)
     yield replace_namedtuple_field(loan, amount=loan.amount + 1)
-    yield replace_namedtuple_field(loan, interest=loan.interest + 1)
+    yield replace_namedtuple_field(loan, apr=loan.apr + 1)
     yield replace_namedtuple_field(loan, payment_token=random_address)
+    yield replace_namedtuple_field(loan, collateral_token=random_address)
+    yield replace_namedtuple_field(loan, initial_amount=loan.initial_amount + 1)
+    yield replace_namedtuple_field(loan, origination_fee_amount=loan.origination_fee_amount + 1)
+    yield replace_namedtuple_field(loan, protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount + 1)
+    yield replace_namedtuple_field(loan, protocol_settlement_fee=loan.protocol_settlement_fee + 1)
+    yield replace_namedtuple_field(loan, soft_liquidation_fee=loan.soft_liquidation_fee + 1)
+    yield replace_namedtuple_field(loan, call_eligibility=loan.call_eligibility + 1)
+    yield replace_namedtuple_field(loan, call_window=loan.call_window + 1)
+    yield replace_namedtuple_field(loan, soft_liquidation_ltv=loan.soft_liquidation_ltv + 1)
+    yield replace_namedtuple_field(loan, oracle_addr=random_address)
+    yield replace_namedtuple_field(loan, initial_ltv=loan.initial_ltv + 1)
+    yield replace_namedtuple_field(loan, call_time=loan.call_time + 1)
+    yield replace_namedtuple_field(loan, offer_id=ZERO_BYTES32)
+    yield replace_namedtuple_field(loan, offer_tracing_id=b"1")
+    yield replace_namedtuple_field(loan, accrual_start_time=loan.accrual_start_time + 1)
+    yield replace_namedtuple_field(loan, id=keccak(encode(["bytes32"], [compute_loan_hash(loan)])))
     yield replace_namedtuple_field(loan, maturity=loan.maturity - 1)
     yield replace_namedtuple_field(loan, start_time=loan.start_time - 1)
     yield replace_namedtuple_field(loan, borrower=random_address)
     yield replace_namedtuple_field(loan, lender=random_address)
-    yield replace_namedtuple_field(loan, collateral_contract=random_address)
-    yield replace_namedtuple_field(loan, collateral_token_id=loan.collateral_token_id + 1)
-    yield replace_namedtuple_field(loan, pro_rata=not loan.pro_rata)
-
-    fees = loan.fees
-    if len(fees) < 4:
-        yield replace_namedtuple_field(loan, fees=[*fees, Fee(FeeType.PROTOCOL, 0, 0, random_address)])
-
-    for i, fee in enumerate(fees):
-        yield replace_namedtuple_field(loan, fees=fees[:i] + fees[i + 1 :])
-        yield replace_namedtuple_field(
-            loan,
-            fees=replace_list_element(fees, i, replace_namedtuple_field(fee, type=next(t for t in FeeType if t != fee.type))),
-        )
-        yield replace_namedtuple_field(
-            loan, fees=replace_list_element(fees, i, replace_namedtuple_field(fee, upfront_amount=fee.upfront_amount + 1))
-        )
-        yield replace_namedtuple_field(
-            loan, fees=replace_list_element(fees, i, replace_namedtuple_field(fee, settlement_bps=fee.settlement_bps + 1))
-        )
-        yield replace_namedtuple_field(
-            loan, fees=replace_list_element(fees, i, replace_namedtuple_field(fee, wallet=random_address))
-        )
 
 
-class TokenTraitTree:
-    def __init__(self, token_with_traits: list[tuple[str, str, str, int]]):
-        self.token_nodes = sorted(set(starmap(self.token_node, token_with_traits)))
-        size = len(self.token_nodes)
-        self.proofs = [ZERO_BYTES32] * size + self.token_nodes
-        for i in range(size - 1, 0, -1):
-            self.proofs[i] = self._merge(self.proofs[i * 2], self.proofs[i * 2 + 1])
-        self.token_index = dict(zip(self.token_nodes, [size + i for i in range(size)]))
+def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle):
+    rate = oracle.latestRoundData().answer
+    oracle_decimals = 10 ** oracle.decimals()
+    principal_token_decimals = 10 ** principal_token.decimals()
+    collateral_token_decimals = 10 ** collateral_token.decimals()
+    return principal * BPS * oracle_decimals * collateral_token_decimals // (collateral_amount * rate * principal_token_decimals)
 
-    def root(self):
-        return self.proofs[1]
-
-    def proof(self, token_node):
-        if token_node not in self.token_index:
-            return []
-        index = self.token_index[token_node]
-        proof_list = []
-        while index > 1:
-            proof_list.append(self.proofs[index ^ 1])
-            index //= 2
-        return proof_list
-
-    @staticmethod
-    def _merge(b1, b2):
-        h1 = keccak(b1)
-        h2 = keccak(b2)
-        return keccak(bytes(h1[i] ^ h2[i] for i in range(32)))
-
-    @staticmethod
-    def trait_hash(trait_name, trait_value):
-        return sha3_256(sha3_256(trait_name.encode()).digest() + sha3_256(trait_value.encode()).digest()).digest()
-
-    @staticmethod
-    def token_node(contract, trait_name, trait_value, token_id):
-        return keccak(
-            encode(["address", "bytes32", "uint256"], [contract, TokenTraitTree.trait_hash(trait_name, trait_value), token_id])
-        )
