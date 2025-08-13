@@ -87,6 +87,7 @@ struct Loan:
     lender: address
     collateral_token: address
     collateral_amount: uint256
+    min_collateral_amount: uint256
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee: uint256
@@ -110,6 +111,7 @@ event LoanCreated:
     lender: address
     collateral_token: address
     collateral_amount: uint256
+    min_collateral_amount: uint256
     call_eligibility: uint256
     call_window: uint256
     soft_liquidation_ltv: uint256
@@ -132,7 +134,7 @@ event LoanPaid:
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee_amount: uint256
- 
+
 
 event LoanCollateralClaimed:
     id: bytes32
@@ -140,7 +142,7 @@ event LoanCollateralClaimed:
     lender: address
     collateral_token: address
     collateral_amount: uint256
- 
+
 
 event LoanCollateralAdded:
     id: bytes32
@@ -488,6 +490,7 @@ def create_loan(
         lender=offer.offer.lender,
         collateral_token=collateral_token,
         collateral_amount=collateral_amount,
+        min_collateral_amount=offer.offer.min_collateral_amount,
         origination_fee_amount=offer.offer.origination_fee_amount,
         protocol_upfront_fee_amount=self.protocol_upfront_fee * principal // BPS,
         protocol_settlement_fee=self.protocol_settlement_fee,
@@ -522,6 +525,7 @@ def create_loan(
         lender=loan.lender,
         collateral_token=loan.collateral_token,
         collateral_amount=loan.collateral_amount,
+        min_collateral_amount=loan.min_collateral_amount,
         call_eligibility=loan.call_eligibility,
         call_window=loan.call_window,
         soft_liquidation_ltv=loan.soft_liquidation_ltv,
@@ -577,19 +581,16 @@ def settle_loan(loan: Loan):
 
 
 @external
-def claim_defaulted_loan_collateral(loan: Loan, lender_kyc: SignedWalletValidation):
+def claim_defaulted_loan_collateral(loan: Loan):
 
     """
     @notice Claim defaulted loan collateral.
     @param loan The loan whose collateral is to be claimed. The loan maturity must have been passed.
-    @param lender_kyc The signed KYC validation for the lender.
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
     assert self._is_loan_defaulted(loan), "loan not defaulted"
     assert self._check_user(loan.lender), "not lender"
-
-    assert staticcall KYCValidator(kyc_validator_addr).check_validation(lender_kyc), "KYC validation fail"
 
     self.loans[loan.id] = empty(bytes32)
 
@@ -649,6 +650,7 @@ def soft_liquidate_loan(loan: Loan):
         lender=loan.lender,
         collateral_token=loan.collateral_token,
         collateral_amount=loan.collateral_amount - collateral_claimed,
+        min_collateral_amount=loan.min_collateral_amount,
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
@@ -713,6 +715,7 @@ def call_loan(loan: Loan):
         lender=loan.lender,
         collateral_token=loan.collateral_token,
         collateral_amount=loan.collateral_amount,
+        min_collateral_amount=loan.min_collateral_amount,
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
@@ -763,6 +766,7 @@ def add_collateral_to_loan(loan: Loan, collateral_amount: uint256):
         lender=loan.lender,
         collateral_token=loan.collateral_token,
         collateral_amount=loan.collateral_amount + collateral_amount,
+        min_collateral_amount=loan.min_collateral_amount,
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
@@ -798,7 +802,7 @@ def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
     assert self._check_user(loan.borrower), "not borrower"
     assert not self._is_loan_defaulted(loan), "loan defaulted"
 
-    assert collateral_amount < loan.collateral_amount, "collateral amount ge loan"
+    assert loan.min_collateral_amount + collateral_amount <= loan.collateral_amount, "collateral bellow min"
     assert loan.initial_ltv >= self._compute_ltv(loan.collateral_amount - collateral_amount, loan.amount + self._compute_settlement_interest(loan)), "ltv gt initial ltv"
 
     updated_loan: Loan = Loan(
@@ -816,6 +820,7 @@ def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
         lender=loan.lender,
         collateral_token=loan.collateral_token,
         collateral_amount=loan.collateral_amount - collateral_amount,
+        min_collateral_amount=loan.min_collateral_amount,
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
