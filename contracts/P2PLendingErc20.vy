@@ -718,6 +718,7 @@ def call_loan(loan: Loan):
     assert loan.call_eligibility > 0, "loan not callable"
     assert loan.call_time == 0, "loan already called"
     assert block.timestamp >= loan.start_time + loan.call_eligibility, "call eligibility not reached"
+    assert not self._is_loan_defaulted(loan), "loan defaulted"
 
     updated_loan: Loan = Loan(
         id=loan.id,
@@ -941,6 +942,19 @@ def current_ltv(loan: Loan) -> uint256:
     return self._compute_ltv(loan.collateral_amount, loan.amount + self._compute_settlement_interest(loan), convertion_rate)
 
 
+@external
+@view
+def is_loan_defaulted(loan: Loan) -> bool:
+
+    """
+    @notice Check if a loan is defaulted.
+    @param loan The loan to check.
+    @return True if the loan is defaulted, false otherwise.
+    """
+
+    return self._is_loan_defaulted(loan)
+
+
 # Internal functions
 
 @pure
@@ -1122,6 +1136,7 @@ def _compute_soft_liquidation(
     return principal_written_off, collateral_claimed, liquidation_fee
 
 
+@view
 @internal
 def _is_loan_defaulted(loan: Loan) -> bool:
     if block.timestamp > loan.maturity:
