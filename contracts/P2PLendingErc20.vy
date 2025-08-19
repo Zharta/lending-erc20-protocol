@@ -155,6 +155,8 @@ event LoanCollateralAdded:
     collateral_token: address
     old_collateral_amount: uint256
     new_collateral_amount: uint256
+    old_ltv: uint256
+    new_ltv: uint256
 
 
 event LoanCollateralRemoved:
@@ -164,6 +166,8 @@ event LoanCollateralRemoved:
     collateral_token: address
     old_collateral_amount: uint256
     new_collateral_amount: uint256
+    old_ltv: uint256
+    new_ltv: uint256
 
 
 event LoanSoftLiquidated:
@@ -177,6 +181,8 @@ event LoanSoftLiquidated:
     updated_collateral_amount: uint256
     updated_accrual_start_time: uint256
     liquidator: address
+    old_ltv: uint256
+    new_ltv: uint256
 
 event LoanCalled:
     id: bytes32
@@ -692,7 +698,9 @@ def soft_liquidate_loan(loan: Loan):
         updated_amount=updated_loan.amount,
         updated_collateral_amount=updated_loan.collateral_amount,
         updated_accrual_start_time=updated_loan.accrual_start_time,
-        liquidator=liquidator
+        liquidator=liquidator,
+        old_ltv=current_ltv,
+        new_ltv=self._compute_ltv(updated_loan.collateral_amount, updated_loan.amount, convertion_rate)
     )
 
 
@@ -760,6 +768,11 @@ def add_collateral_to_loan(loan: Loan, collateral_amount: uint256):
     assert self._check_user(loan.borrower), "not borrower"
     assert not self._is_loan_defaulted(loan), "loan defaulted"
 
+    convertion_rate: UInt256Rational = self._get_oracle_rate()
+    outstanding_debt: uint256 = loan.amount + self._compute_settlement_interest(loan)
+    old_ltv: uint256 = self._compute_ltv(loan.collateral_amount, outstanding_debt, convertion_rate)
+    new_ltv: uint256 = self._compute_ltv(loan.collateral_amount + collateral_amount, outstanding_debt, convertion_rate)
+
     self._receive_collateral(loan.borrower, collateral_amount)
 
     updated_loan: Loan = Loan(
@@ -797,7 +810,9 @@ def add_collateral_to_loan(loan: Loan, collateral_amount: uint256):
         lender=loan.lender,
         collateral_token=loan.collateral_token,
         old_collateral_amount=loan.collateral_amount,
-        new_collateral_amount=updated_loan.collateral_amount
+        new_collateral_amount=updated_loan.collateral_amount,
+        old_ltv=old_ltv,
+        new_ltv=new_ltv
     )
 
 @external
@@ -816,7 +831,11 @@ def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
     assert loan.min_collateral_amount + collateral_amount <= loan.collateral_amount, "collateral bellow min"
 
     convertion_rate: UInt256Rational = self._get_oracle_rate()
-    assert loan.initial_ltv >= self._compute_ltv(loan.collateral_amount - collateral_amount, loan.amount + self._compute_settlement_interest(loan), convertion_rate), "ltv gt initial ltv"
+    outstanding_debt: uint256 = loan.amount + self._compute_settlement_interest(loan)
+    old_ltv: uint256 = self._compute_ltv(loan.collateral_amount, outstanding_debt, convertion_rate)
+    new_ltv: uint256 = self._compute_ltv(loan.collateral_amount - collateral_amount, outstanding_debt, convertion_rate)
+
+    assert loan.initial_ltv >= new_ltv, "ltv gt initial ltv"
 
     updated_loan: Loan = Loan(
         id=loan.id,
@@ -855,7 +874,9 @@ def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
         lender=loan.lender,
         collateral_token=loan.collateral_token,
         old_collateral_amount=loan.collateral_amount,
-        new_collateral_amount=updated_loan.collateral_amount
+        new_collateral_amount=updated_loan.collateral_amount,
+        old_ltv=old_ltv,
+        new_ltv=new_ltv
     )
 
 @external
