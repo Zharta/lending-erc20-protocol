@@ -303,7 +303,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     erc20 = boa.loads(failing_erc20_code)
     p2p_erc20_weth = p2p_lending_erc20_contract_def.deploy(
-        erc20, weth, oracle, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0
+        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -325,8 +325,6 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     weth.deposit(value=collateral_amount, sender=borrower)
     weth.approve(p2p_erc20_weth.address, collateral_amount, sender=borrower)
-    # erc20.deposit(value=lender_approval, sender=lender)
-    # erc20.approve(p2p_erc20_weth.address, lender_approval, sender=lender)
 
     loan_id = p2p_erc20_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     initial_ltv = calc_ltv(principal, collateral_amount, erc20, weth, oracle)
@@ -352,7 +350,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
-        oracle_addr=offer.oracle_addr,
+        oracle_addr=p2p_erc20_weth.oracle_addr(),
         initial_ltv=initial_ltv,
         call_time=0,
     )

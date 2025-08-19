@@ -53,6 +53,7 @@ class P2PLendingErc20(ContractConfig):
         payment_token_key: str,
         collateral_token_key: str,
         oracle_key: str,
+        oracle_reverse: bool = False,
         kyc_validator_key: str | None = None,
         protocol_upfront_fee: int,
         protocol_settlement_fee: int,
@@ -73,6 +74,7 @@ class P2PLendingErc20(ContractConfig):
                 payment_token_key,
                 collateral_token_key,
                 oracle_key,
+                oracle_reverse,
                 kyc_validator_key or ZERO_ADDRESS,
                 protocol_upfront_fee,
                 protocol_settlement_fee,
@@ -81,28 +83,6 @@ class P2PLendingErc20(ContractConfig):
                 max_protocol_settlement_fee,
                 soft_liquidation_fee,
             ],
-        )
-        if address:
-            self.load_contract(address)
-
-
-@dataclass
-class CryptoPunks(ContractConfig):
-    def __init__(
-        self,
-        *,
-        key: str,
-        version: str | None = None,
-        abi_key: str,
-        address: str | None = None,
-    ):
-        super().__init__(
-            key,
-            None,
-            project.CryptoPunksMarketMock,
-            version=version,
-            abi_key=abi_key,
-            nft=True,
         )
         if address:
             self.load_contract(address)

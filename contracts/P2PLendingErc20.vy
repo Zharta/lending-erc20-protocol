@@ -99,6 +99,10 @@ struct Loan:
     initial_ltv: uint256 # initial ltv, needs to be set if soft_liquidation is defined
     call_time: uint256 # the time when the loan was called, 0 if not called
 
+struct UInt256Rational:
+    numerator: uint256
+    denominator: uint256
+
 
 event LoanCreated:
     id: bytes32
@@ -227,6 +231,7 @@ proposed_owner: public(address)
 payment_token: public(immutable(address))
 collateral_token: public(immutable(address))
 oracle_addr: public(immutable(address))
+oracle_reverse: public(immutable(bool))
 kyc_validator_addr: public(immutable(address))
 
 loans: public(HashMap[bytes32, bytes32])
@@ -268,6 +273,7 @@ def __init__(
     _payment_token: address,
     _collateral_token: address,
     _oracle_addr: address,
+    _oracle_reverse: bool,
     _kyc_validator_addr: address,
     _protocol_upfront_fee: uint256,
     _protocol_settlement_fee: uint256,
@@ -282,6 +288,7 @@ def __init__(
     @param _payment_token The address of the payment token.
     @param _collateral_token The address of the collateral token.
     @param _oracle_addr The address of the oracle contract for collateral valuation.
+    @param _oracle_reverse Whether the oracle returns the collateral price in reverse (i.e., 1 / price).
     @param _protocol_upfront_fee The percentage (bps) of the principal paid to the protocol at origination.
     @param _protocol_settlement_fee The percentage (bps) of the interest paid to the protocol at settlement.
     @param _protocol_wallet The address where the protocol fees are accrued.
@@ -303,6 +310,7 @@ def __init__(
     payment_token = _payment_token
     collateral_token = _collateral_token
     oracle_addr = _oracle_addr
+    oracle_reverse = _oracle_reverse
     kyc_validator_addr = _kyc_validator_addr
     max_protocol_upfront_fee = _max_protocol_upfront_fee
     max_protocol_settlement_fee = _max_protocol_settlement_fee
@@ -465,7 +473,8 @@ def create_loan(
     assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
     assert offer.offer.origination_fee_amount <= principal, "origination fee gt principal"
 
-    initial_ltv: uint256 = self._compute_ltv(collateral_amount, principal)
+    convertion_rate: UInt256Rational = self._get_oracle_rate()
+    initial_ltv: uint256 = self._compute_ltv(collateral_amount, principal, convertion_rate)
     if offer.offer.max_iltv > 0:
         assert initial_ltv <= offer.offer.max_iltv, "initial ltv gt max iltv"
 
@@ -498,7 +507,7 @@ def create_loan(
         call_eligibility=offer.offer.call_eligibility,
         call_window=offer.offer.call_window,
         soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
-        oracle_addr=offer.offer.oracle_addr,
+        oracle_addr=oracle_addr,
         initial_ltv=initial_ltv,
         call_time=0,
     )
@@ -619,7 +628,8 @@ def soft_liquidate_loan(loan: Loan):
     liquidator: address = msg.sender if not self.authorized_proxies[msg.sender] else tx.origin
 
     current_interest: uint256 = self._compute_settlement_interest(loan)
-    current_ltv: uint256 = self._compute_ltv(loan.collateral_amount, loan.amount + current_interest)
+    convertion_rate: UInt256Rational = self._get_oracle_rate()
+    current_ltv: uint256 = self._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate)
 
     assert current_ltv >= loan.soft_liquidation_ltv, "ltv lt liquidation ltv"
 
@@ -631,6 +641,7 @@ def soft_liquidate_loan(loan: Loan):
         loan.amount + current_interest,
         loan.initial_ltv,
         loan.soft_liquidation_fee,
+        convertion_rate,
     )
 
     assert principal_written_off > loan.amount, "written off ge principal"
@@ -785,7 +796,7 @@ def add_collateral_to_loan(loan: Loan, collateral_amount: uint256):
         borrower=loan.borrower,
         lender=loan.lender,
         collateral_token=loan.collateral_token,
-        old_collateral_amount=collateral_amount,
+        old_collateral_amount=loan.collateral_amount,
         new_collateral_amount=updated_loan.collateral_amount
     )
 
@@ -803,7 +814,9 @@ def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
     assert not self._is_loan_defaulted(loan), "loan defaulted"
 
     assert loan.min_collateral_amount + collateral_amount <= loan.collateral_amount, "collateral bellow min"
-    assert loan.initial_ltv >= self._compute_ltv(loan.collateral_amount - collateral_amount, loan.amount + self._compute_settlement_interest(loan)), "ltv gt initial ltv"
+
+    convertion_rate: UInt256Rational = self._get_oracle_rate()
+    assert loan.initial_ltv >= self._compute_ltv(loan.collateral_amount - collateral_amount, loan.amount + self._compute_settlement_interest(loan), convertion_rate), "ltv gt initial ltv"
 
     updated_loan: Loan = Loan(
         id=loan.id,
@@ -841,7 +854,7 @@ def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
         borrower=loan.borrower,
         lender=loan.lender,
         collateral_token=loan.collateral_token,
-        old_collateral_amount=collateral_amount,
+        old_collateral_amount=loan.collateral_amount,
         new_collateral_amount=updated_loan.collateral_amount
     )
 
@@ -891,7 +904,7 @@ def onERC721Received(_operator: address, _from: address, _tokenId: uint256, _dat
     return method_id("onERC721Received(address,address,uint256,bytes)", output_type=bytes4)
 
 
-#view
+@view
 @external
 def current_ltv(loan: Loan) -> uint256:
 
@@ -902,7 +915,9 @@ def current_ltv(loan: Loan) -> uint256:
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
-    return self._compute_ltv(loan.collateral_amount, loan.amount + self._compute_settlement_interest(loan))
+
+    convertion_rate: UInt256Rational = self._get_oracle_rate()
+    return self._compute_ltv(loan.collateral_amount, loan.amount + self._compute_settlement_interest(loan), convertion_rate)
 
 
 # Internal functions
@@ -982,6 +997,7 @@ def _is_offer_signed_by_lender(signed_offer: SignedOffer, lender: address) -> bo
     ) == lender
 
 
+@view
 @internal
 def _compute_settlement_interest(loan: Loan) -> uint256:
     return loan.amount * loan.apr * (block.timestamp - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
@@ -1040,13 +1056,27 @@ def _check_offer_validity(offer: SignedOffer):
 
 
 
+@view
 @internal
-def _compute_ltv(collateral_amount: uint256, amount: uint256) -> uint256:
-    convertion_rate_numerator: uint256 = convert((staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer, uint256)
-    convertion_rate_denominator: uint256 = 10 ** convert(staticcall AggregatorV3Interface(oracle_addr).decimals(), uint256)
-    # convertion_rate_denominator could be a const if the oracle decimals are always the same, but not sure about that
+def _get_oracle_rate() -> UInt256Rational:
+    convertion_rate_numerator: uint256 = 0
+    convertion_rate_denominator: uint256 = 0
+    if oracle_reverse:
+        return UInt256Rational(
+            numerator=10 ** convert(staticcall AggregatorV3Interface(oracle_addr).decimals(), uint256),
+            denominator=convert((staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer, uint256)
+        )
+    else:
+        return UInt256Rational(
+            numerator=convert((staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer, uint256),
+            denominator=10 ** convert(staticcall AggregatorV3Interface(oracle_addr).decimals(), uint256)
+        )
 
-    return amount * BPS * convertion_rate_denominator * collateral_token_decimals // (collateral_amount * convertion_rate_numerator * payment_token_decimals)
+
+@view
+@internal
+def _compute_ltv(collateral_amount: uint256, amount: uint256, convertion_rate: UInt256Rational) -> uint256:
+    return amount * BPS * convertion_rate.denominator * collateral_token_decimals // (collateral_amount * convertion_rate.numerator * payment_token_decimals)
 
 
 @internal
@@ -1055,6 +1085,7 @@ def _compute_soft_liquidation(
     outstanding_debt: uint256,
     initial_ltv: uint256,
     soft_liquidation_fee: uint256,
+    convertion_rate: UInt256Rational,
 ) -> (uint256, uint256, uint256):
     """
     returns:
@@ -1062,12 +1093,9 @@ def _compute_soft_liquidation(
         collateral_claimed: uint256 - the amount of collateral claimed
         liquidation_fee: uint256 - the liquidation fee
     """
-    convertion_rate_numerator: uint256 = convert((staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer, uint256)
-    convertion_rate_denominator: uint256 = 10 ** convert(staticcall AggregatorV3Interface(oracle_addr).decimals(), uint256)
-
-    collateral_value: uint256 = collateral_amount * convertion_rate_numerator * payment_token_decimals // (convertion_rate_denominator * collateral_token_decimals)
+    collateral_value: uint256 = collateral_amount * convertion_rate.numerator * payment_token_decimals // (convertion_rate.denominator * collateral_token_decimals)
     principal_written_off: uint256 = (outstanding_debt * BPS - collateral_value * initial_ltv)  * BPS // (BPS * BPS - (BPS + soft_liquidation_fee) * initial_ltv)
-    collateral_claimed: uint256 = principal_written_off * convertion_rate_denominator * collateral_token_decimals // (convertion_rate_numerator * payment_token_decimals)
+    collateral_claimed: uint256 = principal_written_off * convertion_rate.denominator * collateral_token_decimals // (convertion_rate.numerator * payment_token_decimals)
     liquidation_fee: uint256 = collateral_claimed * soft_liquidation_fee // BPS
 
     return principal_written_off, collateral_claimed, liquidation_fee
