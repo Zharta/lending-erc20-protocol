@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture
 def usdc(weth9_contract_def, owner):
-    return weth9_contract_def.deploy("USDC", "USDC", 9, 10**20)
+    return weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
 
 
 @pytest.fixture
@@ -31,8 +31,9 @@ def kyc_validator_contract(kyc_validator_contract_def, kyc_validator):
 
 @pytest.fixture
 def p2p_usdc_weth(p2p_lending_erc20_contract_def, usdc, weth, oracle, kyc_validator_contract, owner):
-    assert type(p2p_lending_erc20_contract_def) == "VyperContract"
-    return p2p_lending_erc20_contract_def.deploy(usdc, weth, oracle, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0)
+    return p2p_lending_erc20_contract_def.deploy(
+        usdc, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0
+    )
 
 
 @pytest.fixture

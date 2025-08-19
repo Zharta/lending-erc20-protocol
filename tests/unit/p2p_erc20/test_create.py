@@ -12,8 +12,8 @@ from ...conftest_base import (
     calc_ltv,
     compute_loan_hash,
     compute_signed_offer_id,
-    get_last_event,
     get_events,
+    get_last_event,
     replace_namedtuple_field,
     sign_offer,
 )
@@ -125,7 +125,9 @@ def test_create_loan_reverts_if_offer_has_invalid_signature(
             )
 
 
-def test_create_loan_reverts_if_offer_expired(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, usdc):
+def test_create_loan_reverts_if_offer_expired(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, usdc
+):
     token_id = 1
     offer = Offer(
         principal=1000,
@@ -329,7 +331,6 @@ def test_create_loan_reverts_if_collateral_not_approved(
 def test_create_loan_reverts_if_lender_funds_not_approved(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, usdc, weth
 ):
-
     offer = Offer(
         principal=1000,
         payment_token=p2p_usdc_weth.payment_token(),
@@ -388,6 +389,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         borrower=borrower,
         lender=lender,
         collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
         origination_fee_amount=offer.origination_fee_amount,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
@@ -395,16 +397,16 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
-        oracle_addr=offer.oracle_addr,
+        oracle_addr=p2p_usdc_weth.oracle_addr(),
         initial_ltv=initial_ltv,
         call_time=0,
-
     )
     assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
 
 
-def test_create_loan_logs_event(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc, oracle):
-
+def test_create_loan_logs_event(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc, oracle
+):
     principal = 1000 * int(1e9)
     collateral_amount = int(1e18)
     offer = Offer(
@@ -441,7 +443,7 @@ def test_create_loan_logs_event(p2p_usdc_weth, borrower, now, lender, lender_key
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
     assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
-    assert event.oracle_addr == offer.oracle_addr
+    assert event.oracle_addr == p2p_usdc_weth.oracle_addr()
     assert event.initial_ltv == initial_ltv
     assert event.origination_fee_amount == offer.origination_fee_amount
     assert event.protocol_upfront_fee_amount == p2p_usdc_weth.protocol_upfront_fee()
@@ -451,8 +453,9 @@ def test_create_loan_logs_event(p2p_usdc_weth, borrower, now, lender, lender_key
     assert event.offer_tracing_id == offer.tracing_id
 
 
-def test_create_loan_transfers_collateral_to_escrow(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
-
+def test_create_loan_transfers_collateral_to_escrow(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
+):
     principal = 1000
     collateral_amount = int(1e18)
     offer = Offer(
@@ -479,7 +482,9 @@ def test_create_loan_transfers_collateral_to_escrow(p2p_usdc_weth, borrower, now
     assert weth.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
 
 
-def test_create_loan_transfers_principal_to_borrower(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
+def test_create_loan_transfers_principal_to_borrower(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
+):
     principal = 1000
     origination_fee = 100
     collateral_amount = int(1e18)
@@ -507,7 +512,9 @@ def test_create_loan_transfers_principal_to_borrower(p2p_usdc_weth, borrower, no
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee
 
 
-def test_create_loan_transfers_origination_fee_to_lender(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
+def test_create_loan_transfers_origination_fee_to_lender(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
+):
     principal = 1000
     origination_fee = 100
     collateral_amount = int(1e18)
@@ -535,7 +542,9 @@ def test_create_loan_transfers_origination_fee_to_lender(p2p_usdc_weth, borrower
     assert usdc.balanceOf(lender) == lender_balance_before - principal + origination_fee
 
 
-def test_create_loan_updates_offer_usage_count(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
+def test_create_loan_updates_offer_usage_count(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
+):
     principal = 1000
     origination_fee = 100
     collateral_amount = int(1e18)
@@ -562,7 +571,9 @@ def test_create_loan_updates_offer_usage_count(p2p_usdc_weth, borrower, now, len
     assert p2p_usdc_weth.commited_liquidity(offer.tracing_id) == principal
 
 
-def test_create_loan_for_token_offer_revokes_normal_offer(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
+def test_create_loan_for_token_offer_revokes_normal_offer(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
+):
     principal = 1000
     collateral_amount = int(1e18)
     offer = Offer(
@@ -593,7 +604,9 @@ def test_create_loan_for_token_offer_revokes_normal_offer(p2p_usdc_weth, borrowe
     assert p2p_usdc_weth.revoked_offers(offer_id)
 
 
-def test_create_loan_for_token_offer_doesnt_revoke_open_offer(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc):
+def test_create_loan_for_token_offer_doesnt_revoke_open_offer(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
+):
     principal = 1000
     collateral_amount = int(1e18)
     offer = Offer(

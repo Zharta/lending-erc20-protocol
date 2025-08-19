@@ -90,7 +90,9 @@ SignedOffer = namedtuple("SignedOffer", ["offer", "signature"], defaults=[Offer(
 
 WalletValidation = namedtuple("WalletValidation", ["wallet", "validation_time"], defaults=[ZERO_ADDRESS, 0])
 
-SignedWalletValidation = namedtuple("SignedWalletValidation", ["validation", "signature"], defaults=[WalletValidation(), Signature()])
+SignedWalletValidation = namedtuple(
+    "SignedWalletValidation", ["validation", "signature"], defaults=[WalletValidation(), Signature()]
+)
 
 
 class Loan(NamedTuple):
@@ -108,6 +110,7 @@ class Loan(NamedTuple):
     lender: str = ZERO_ADDRESS
     collateral_token: str = ZERO_ADDRESS
     collateral_amount: int = 0
+    min_collateral_amount: int = 0
     origination_fee_amount: int = 0
     protocol_upfront_fee_amount: int = 0
     protocol_settlement_fee: int = 0
@@ -134,7 +137,7 @@ def compute_loan_hash(loan: Loan):
     print(f"compute_loan_hash {loan=}")
     encoded = eth_abi.encode(
         [
-            "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256)"
+            "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256)"
         ],
         [loan],
     )
@@ -246,6 +249,8 @@ def get_loan_mutations(loan):
     yield replace_namedtuple_field(loan, apr=loan.apr + 1)
     yield replace_namedtuple_field(loan, payment_token=random_address)
     yield replace_namedtuple_field(loan, collateral_token=random_address)
+    yield replace_namedtuple_field(loan, collateral_amount=loan.collateral_amount + 1)
+    yield replace_namedtuple_field(loan, min_collateral_amount=loan.min_collateral_amount + 1)
     yield replace_namedtuple_field(loan, initial_amount=loan.initial_amount + 1)
     yield replace_namedtuple_field(loan, origination_fee_amount=loan.origination_fee_amount + 1)
     yield replace_namedtuple_field(loan, protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount + 1)
@@ -272,5 +277,15 @@ def calc_ltv(principal, collateral_amount, principal_token, collateral_token, or
     oracle_decimals = 10 ** oracle.decimals()
     principal_token_decimals = 10 ** principal_token.decimals()
     collateral_token_decimals = 10 ** collateral_token.decimals()
-    return principal * BPS * oracle_decimals * collateral_token_decimals // (collateral_amount * rate * principal_token_decimals)
+    return (
+        principal * BPS * oracle_decimals * collateral_token_decimals // (collateral_amount * rate * principal_token_decimals)
+    )
 
+
+def calc_collateral_from_ltv(principal, ltv, principal_token, collateral_token, oracle):
+    print(f"calc_collateral_from_ltv {principal=}, {ltv=}")
+    rate = oracle.latestRoundData().answer
+    oracle_decimals = 10 ** oracle.decimals()
+    principal_token_decimals = 10 ** principal_token.decimals()
+    collateral_token_decimals = 10 ** collateral_token.decimals()
+    return principal * BPS * oracle_decimals * collateral_token_decimals // (ltv * rate * principal_token_decimals)

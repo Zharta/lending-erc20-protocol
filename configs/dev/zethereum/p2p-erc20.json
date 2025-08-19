@@ -2,7 +2,7 @@
     "common": {
         "kyc": {
             "abi_key": "d275d0efce9094c71f8f554f5715688acec8ddc4",
-            "address": "0xf24D42a7AB0A7514BCF79B003eFACAE922423d06",
+            "address": "0x90c0E75f4e0e951Cd70c7C18886B8B0A5dEEE955",
             "contract": "KYCValidator",
             "properties": {
                 "validator": "0x66aB6D9362d4F35596279692F0251Db635165871"
@@ -22,9 +22,35 @@
     },
     "configs": {},
     "p2p": {
-        "weth-usdc": {
-            "abi_key": "5b0ea742bcaf24509c8583bef8e2375b77128eed",
-            "address": "0xA59A0860849C59D41Fe888541688d8990CDf77b9",
+        "usdc_weth": {
+            "abi_key": "4f192baf122844756146d3512a4ee74426158d07",
+            "address": "0x7452616fA0A45cf67190a8e990FD2375231E81C8",
+            "contract": "P2PLendingErc20",
+            "properties": {
+                "collateral_token_key": "common.weth",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_eth_usd",
+                "oracle_reverse": false,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "soft_liquidation_fee": 1000
+            },
+            "properties_addresses": {
+                "collateral_token": "0xEba85304439c77C74Fb471D302fba836ab3248b4",
+                "kyc_validator": "0x90c0E75f4e0e951Cd70c7C18886B8B0A5dEEE955",
+                "oracle": "0xE0aCe6E4382cC60Ea0088870024029FfA4adBC86",
+                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "weth_usdc": {
+            "abi_key": "9ac2969d594ce772be0f1105683e7c24a4325e93",
+            "address": "0x42D647B342ebb424c6a3aced695D86ee00eD0094",
             "contract": "P2PLendingErc20",
             "properties": {
                 "collateral_token_key": "common.usdc",
@@ -32,6 +58,7 @@
                 "max_protocol_settlement_fee": 1000,
                 "max_protocol_upfront_fee": 1000,
                 "oracle_key": "common.oracle_eth_usd",
+                "oracle_reverse": true,
                 "payment_token_key": "common.weth",
                 "protocol_settlement_fee": 0,
                 "protocol_upfront_fee": 0,
@@ -40,11 +67,11 @@
             },
             "properties_addresses": {
                 "collateral_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
-                "kyc_validator": "0xf24D42a7AB0A7514BCF79B003eFACAE922423d06",
+                "kyc_validator": "0x90c0E75f4e0e951Cd70c7C18886B8B0A5dEEE955",
                 "oracle": "0xE0aCe6E4382cC60Ea0088870024029FfA4adBC86",
                 "payment_token": "0xEba85304439c77C74Fb471D302fba836ab3248b4"
             },
-            "token_symbol": "WETH",
+            "token_symbol": "USDC",
             "version": "1"
         }
     }
