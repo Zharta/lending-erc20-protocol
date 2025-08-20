@@ -104,6 +104,13 @@ struct UInt256Rational:
     denominator: uint256
 
 
+struct SoftLiquidationResult:
+    collateral_claimed: uint256
+    liquidation_fee: uint256
+    debt_written_off: uint256
+    updated_ltv: uint256
+
+
 event LoanCreated:
     id: bytes32
     amount: uint256
@@ -620,7 +627,6 @@ def claim_defaulted_loan_collateral(loan: Loan):
     )
 
 
-
 @external
 def soft_liquidate_loan(loan: Loan):
 
@@ -942,8 +948,8 @@ def current_ltv(loan: Loan) -> uint256:
     return self._compute_ltv(loan.collateral_amount, loan.amount + self._compute_settlement_interest(loan), convertion_rate)
 
 
-@external
 @view
+@external
 def is_loan_defaulted(loan: Loan) -> bool:
 
     """
@@ -954,6 +960,39 @@ def is_loan_defaulted(loan: Loan) -> bool:
 
     return self._is_loan_defaulted(loan)
 
+
+@view
+@external
+def simulate_soft_liquidation(loan: Loan) -> SoftLiquidationResult:
+
+    assert self._is_loan_valid(loan), "invalid loan"
+    assert not self._is_loan_defaulted(loan), "loan defaulted"
+
+    current_interest: uint256 = self._compute_settlement_interest(loan)
+    convertion_rate: UInt256Rational = self._get_oracle_rate()
+    current_ltv: uint256 = self._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate)
+
+    assert current_ltv >= loan.soft_liquidation_ltv, "ltv lt liquidation ltv"
+
+    debt_written_off: uint256 = 0
+    collateral_claimed: uint256 = 0
+    liquidation_fee: uint256 = 0
+    debt_written_off, collateral_claimed, liquidation_fee = self._compute_soft_liquidation(
+        loan.collateral_amount,
+        loan.amount + current_interest,
+        loan.initial_ltv,
+        loan.soft_liquidation_fee,
+        convertion_rate,
+    )
+
+    assert debt_written_off > loan.amount, "written off ge principal"
+
+    return SoftLiquidationResult(
+        collateral_claimed=collateral_claimed,
+        liquidation_fee=liquidation_fee,
+        debt_written_off=debt_written_off,
+        updated_ltv=self._compute_ltv(loan.collateral_amount - collateral_claimed, loan.amount + current_interest - debt_written_off, convertion_rate)
+    )
 
 # Internal functions
 
@@ -1114,6 +1153,7 @@ def _compute_ltv(collateral_amount: uint256, amount: uint256, convertion_rate: U
     return amount * BPS * convertion_rate.denominator * collateral_token_decimals // (collateral_amount * convertion_rate.numerator * payment_token_decimals)
 
 
+@view
 @internal
 def _compute_soft_liquidation(
     collateral_amount: uint256,
