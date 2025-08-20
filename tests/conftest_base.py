@@ -70,7 +70,7 @@ class Offer(NamedTuple):
     payment_token: str = ZERO_ADDRESS
     collateral_token: str = ZERO_ADDRESS
     duration: int = 0
-    origination_fee_amount: int = 0
+    origination_fee_bps: int = 0
     min_collateral_amount: int = 0
     max_iltv: int = 0
     available_liquidity: int = 0
@@ -172,7 +172,7 @@ def sign_offer(offer: Offer, lender_key: str, verifying_contract: str) -> Signed
                 {"name": "payment_token", "type": "address"},
                 {"name": "collateral_token", "type": "address"},
                 {"name": "duration", "type": "uint256"},
-                {"name": "origination_fee_amount", "type": "uint256"},
+                {"name": "origination_fee_bps", "type": "uint256"},
                 {"name": "min_collateral_amount", "type": "uint256"},
                 {"name": "max_iltv", "type": "uint256"},
                 {"name": "available_liquidity", "type": "uint256"},

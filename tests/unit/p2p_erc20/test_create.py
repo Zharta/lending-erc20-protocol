@@ -54,7 +54,7 @@ def test_create_loan_reverts_if_offer_not_signed_by_lender(
         collateral_token=weth.address,
         min_collateral_amount=1,
         duration=100,
-        origination_fee_amount=0,
+        origination_fee_bps=0,
         expiration=now + 100,
         lender=lender,
     )
@@ -82,7 +82,7 @@ def test_create_loan_reverts_if_offer_has_invalid_signature(
         payment_token=usdc.address,
         collateral_token=weth.address,
         duration=100,
-        origination_fee_amount=0,
+        origination_fee_bps=0,
         min_collateral_amount=1,
         max_iltv=10000,
         available_liquidity=1000,
@@ -103,7 +103,7 @@ def test_create_loan_reverts_if_offer_has_invalid_signature(
         replace_namedtuple_field(offer, payment_token=boa.env.generate_address("random")),
         replace_namedtuple_field(offer, collateral_token=boa.env.generate_address("random")),
         replace_namedtuple_field(offer, duration=offer.duration + 1),
-        replace_namedtuple_field(offer, origination_fee_amount=offer.origination_fee_amount + 1),
+        replace_namedtuple_field(offer, origination_fee_bps=offer.origination_fee_bps + 1),
         replace_namedtuple_field(offer, min_collateral_amount=offer.min_collateral_amount + 1),
         replace_namedtuple_field(offer, max_iltv=offer.max_iltv + 1),
         replace_namedtuple_field(offer, available_liquidity=offer.available_liquidity + 1),
@@ -200,7 +200,6 @@ def test_create_loan_reverts_if_oracle_address_invalid(
         payment_token=p2p_usdc_weth.payment_token(),
         collateral_token=p2p_usdc_weth.collateral_token(),
         duration=100,
-        origination_fee_amount=0,
         oracle_addr=boa.env.generate_address("random"),  # invalid oracle address
         expiration=now + 100,
         lender=lender,
@@ -219,7 +218,6 @@ def test_create_loan_reverts_if_call_window_is_zero(
         payment_token=p2p_usdc_weth.payment_token(),
         collateral_token=p2p_usdc_weth.collateral_token(),
         duration=100,
-        origination_fee_amount=0,
         call_eligibility=1,
         call_window=0,  # zero call window
         expiration=now + 100,
@@ -239,7 +237,6 @@ def test_create_loan_reverts_if_min_collateral_and_max_iltv_are_zero(
         payment_token=p2p_usdc_weth.payment_token(),
         collateral_token=p2p_usdc_weth.collateral_token(),
         duration=100,
-        origination_fee_amount=0,
         min_collateral_amount=0,  # zero min collateral
         max_iltv=0,  # zero max iltv
         expiration=now + 100,
@@ -298,7 +295,7 @@ def test_create_loan_reverts_if_origination_fee_exceeds_principal(
         collateral_token=p2p_usdc_weth.collateral_token(),
         duration=100,
         min_collateral_amount=1,
-        origination_fee_amount=1001,  # origination fee exceeds principal
+        origination_fee_bps=10001,  # origination fee exceeds principal
         expiration=now + 100,
         lender=lender,
     )
@@ -390,7 +387,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         lender=lender,
         collateral_amount=collateral_amount,
         min_collateral_amount=offer.min_collateral_amount,
-        origination_fee_amount=offer.origination_fee_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
         soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
@@ -445,7 +442,7 @@ def test_create_loan_logs_event(
     assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
     assert event.oracle_addr == p2p_usdc_weth.oracle_addr()
     assert event.initial_ltv == initial_ltv
-    assert event.origination_fee_amount == offer.origination_fee_amount
+    assert event.origination_fee_amount == offer.origination_fee_bps * principal // BPS
     assert event.protocol_upfront_fee_amount == p2p_usdc_weth.protocol_upfront_fee()
     assert event.protocol_settlement_fee == p2p_usdc_weth.protocol_settlement_fee()
     assert event.soft_liquidation_fee == p2p_usdc_weth.soft_liquidation_fee()
@@ -486,11 +483,10 @@ def test_create_loan_transfers_principal_to_borrower(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
 ):
     principal = 1000
-    origination_fee = 100
     collateral_amount = int(1e18)
     offer = Offer(
         principal=principal,
-        origination_fee_amount=origination_fee,
+        origination_fee_bps=1000,
         payment_token=p2p_usdc_weth.payment_token(),
         collateral_token=p2p_usdc_weth.collateral_token(),
         duration=100,
@@ -506,6 +502,7 @@ def test_create_loan_transfers_principal_to_borrower(
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
     borrower_balance_before = usdc.balanceOf(borrower)
+    origination_fee = offer.origination_fee_bps * principal // BPS
 
     p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
@@ -516,11 +513,10 @@ def test_create_loan_transfers_origination_fee_to_lender(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
 ):
     principal = 1000
-    origination_fee = 100
     collateral_amount = int(1e18)
     offer = Offer(
         principal=principal,
-        origination_fee_amount=origination_fee,
+        origination_fee_bps=1000,
         payment_token=p2p_usdc_weth.payment_token(),
         collateral_token=p2p_usdc_weth.collateral_token(),
         duration=100,
@@ -536,6 +532,7 @@ def test_create_loan_transfers_origination_fee_to_lender(
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
     lender_balance_before = usdc.balanceOf(lender)
+    origination_fee = offer.origination_fee_bps * principal // BPS
 
     p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
@@ -546,11 +543,9 @@ def test_create_loan_updates_offer_usage_count(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
 ):
     principal = 1000
-    origination_fee = 100
     collateral_amount = int(1e18)
     offer = Offer(
         principal=principal,
-        origination_fee_amount=origination_fee,
         payment_token=p2p_usdc_weth.payment_token(),
         collateral_token=p2p_usdc_weth.collateral_token(),
         duration=100,

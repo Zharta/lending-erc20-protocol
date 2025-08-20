@@ -16,7 +16,7 @@ from ...conftest_base import (
     sign_offer,
 )
 
-FOREVER = 2**256 - 1
+BPS = 10000
 
 
 @pytest.fixture(autouse=True)
@@ -51,14 +51,13 @@ def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
 @pytest.fixture
 def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_usdc_weth):
     principal = 1000 * 10**6
-    originating_fee = 10 * 10**6
     offer = Offer(
         principal=principal,
         apr=1000,
         payment_token=usdc.address,
         collateral_token=weth.address,
         duration=100,
-        origination_fee_amount=originating_fee,
+        origination_fee_bps=100,
         min_collateral_amount=0,
         max_iltv=8000,
         available_liquidity=principal,
@@ -92,7 +91,7 @@ def ongoing_loan_usdc_weth(
     offer = offer_usdc_weth.offer
     principal = offer.principal
     collateral_amount = int(1e18)
-    lender_approval = principal - offer.origination_fee_amount + (p2p_usdc_weth.protocol_upfront_fee() * principal // 10000)
+    lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
     weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
@@ -120,8 +119,8 @@ def ongoing_loan_usdc_weth(
         borrower=borrower,
         lender=lender,
         collateral_amount=collateral_amount,
-        origination_fee_amount=offer.origination_fee_amount,
-        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // 10000,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
         soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
@@ -321,8 +320,6 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     signed_offer = sign_offer(offer, lender_key, p2p_erc20_weth.address)
 
     collateral_amount = int(1e18)
-    lender_approval = principal - offer.origination_fee_amount + (p2p_erc20_weth.protocol_upfront_fee() * principal // 10000)
-
     weth.deposit(value=collateral_amount, sender=borrower)
     weth.approve(p2p_erc20_weth.address, collateral_amount, sender=borrower)
 
@@ -343,8 +340,8 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         borrower=borrower,
         lender=lender,
         collateral_amount=collateral_amount,
-        origination_fee_amount=offer.origination_fee_amount,
-        protocol_upfront_fee_amount=p2p_erc20_weth.protocol_upfront_fee() * principal // 10000,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_erc20_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_erc20_weth.protocol_settlement_fee(),
         soft_liquidation_fee=p2p_erc20_weth.soft_liquidation_fee(),
         call_eligibility=offer.call_eligibility,

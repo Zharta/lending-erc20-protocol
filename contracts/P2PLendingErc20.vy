@@ -47,15 +47,15 @@ struct Offer:
     payment_token: address
     collateral_token: address
     duration: uint256
-    origination_fee_amount: uint256
+    origination_fee_bps: uint256
 
     min_collateral_amount: uint256 # optional
     max_iltv: uint256 # max initial LTV, optional and needs to be set if min_collateral_amount isn't specified
     available_liquidity: uint256 # amount of the principal token allocated to the offer
-    call_eligibility: uint256 # amount of seconds after the start of the loan when the loan starts to be callable, 0 if not callable
-    call_window: uint256 # amount of seconds after the loan is called where the borrower can repay the loan or the loan defaults entirely, optional and needs to be set if callable is set
+    call_eligibility: uint256 # when the loan starts to be callable, 0 if not callable
+    call_window: uint256 # time after the loan is called where the borrower can repay the loan or the loan defaults entirely
     soft_liquidation_ltv: uint256 # optional, used if > 0
-    oracle_addr: address # optional, needs to be set if max_iltv and/or soft_liquidaiton are defined
+    oracle_addr: address # optional, must match the oracle used for collateral valuation if defined
 
     expiration: uint256
     lender: address
@@ -266,7 +266,7 @@ ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
 
 DOMAIN_TYPE_HASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
 OFFER_TYPE_DEF: constant(String[370]) = "Offer(uint256 principal,uint256 apr,address payment_token,address collateral_token,uint256 duration," \
-                                        "uint256 origination_fee_amount,uint256 min_collateral_amount,uint256 max_iltv,uint256 available_liquidity," \
+                                        "uint256 origination_fee_bps,uint256 min_collateral_amount,uint256 max_iltv,uint256 available_liquidity," \
                                         "uint256 call_eligibility,uint256 call_window,uint256 soft_liquidation_ltv,address oracle_addr," \
                                         "uint256 expiration,address lender,address borrower,bytes32 tracing_id)"
 OFFER_TYPE_HASH: constant(bytes32) = keccak256(OFFER_TYPE_DEF)
@@ -477,7 +477,7 @@ def create_loan(
     assert offer.offer.borrower == empty(address) or offer.offer.borrower == borrower, "borrower not allowed"
     assert offer.offer.principal == 0 or offer.offer.principal == principal, "offer principal mismatch"
     assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
-    assert offer.offer.origination_fee_amount <= principal, "origination fee gt principal"
+    assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"
 
     convertion_rate: UInt256Rational = self._get_oracle_rate()
     initial_ltv: uint256 = self._compute_ltv(collateral_amount, principal, convertion_rate)
@@ -506,7 +506,7 @@ def create_loan(
         collateral_token=collateral_token,
         collateral_amount=collateral_amount,
         min_collateral_amount=offer.offer.min_collateral_amount,
-        origination_fee_amount=offer.offer.origination_fee_amount,
+        origination_fee_amount=offer.offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=self.protocol_upfront_fee * principal // BPS,
         protocol_settlement_fee=self.protocol_settlement_fee,
         soft_liquidation_fee=self.soft_liquidation_fee,
@@ -524,7 +524,7 @@ def create_loan(
     self.loans[loan.id] = self._loan_state_hash(loan)
 
     self._receive_collateral(loan.borrower, loan.collateral_amount)
-    self._transfer_funds(loan.lender, loan.borrower, loan.amount - offer.offer.origination_fee_amount)
+    self._transfer_funds(loan.lender, loan.borrower, loan.amount - loan.origination_fee_amount)
 
     if loan.protocol_upfront_fee_amount > 0:
         self._transfer_funds(loan.lender, self.protocol_wallet, loan.protocol_upfront_fee_amount)
