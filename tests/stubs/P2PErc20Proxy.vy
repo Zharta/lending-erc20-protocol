@@ -13,6 +13,13 @@ interface P2PLendingErc20:
         borrower_kyc: SignedWalletValidation,
         lender_kyc: SignedWalletValidation
     ) -> bytes32: nonpayable
+    def replace_loan(
+        loan: Loan,
+        offer: SignedOffer,
+        principal: uint256,
+        collateral_amount: uint256,
+        lender_kyc: SignedWalletValidation
+    ) -> bytes32: nonpayable
     def settle_loan(loan: Loan): nonpayable
     def claim_defaulted_loan_collateral(loan: Loan): nonpayable
     def revoke_offer(offer: SignedOffer): nonpayable
@@ -106,6 +113,16 @@ def create_loan(
     lender_kyc: SignedWalletValidation
 ) -> bytes32:
     return extcall P2PLendingErc20(self.p2p_lending_erc20).create_loan(offer, principal, collateral_amount, borrower_kyc, lender_kyc)
+
+@external
+def replace_loan(
+    loan: Loan,
+    offer: SignedOffer,
+    principal: uint256,
+    collateral_amount: uint256,
+    lender_kyc: SignedWalletValidation
+) -> bytes32:
+    return extcall P2PLendingErc20(self.p2p_lending_erc20).replace_loan(loan, offer, principal, collateral_amount, lender_kyc)
 
 @external
 def settle_loan(loan: Loan):

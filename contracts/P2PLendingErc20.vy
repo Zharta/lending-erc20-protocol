@@ -994,7 +994,7 @@ def replace_loan(
     self.loans[loan.id] = empty(bytes32)
     self._reduce_commited_liquidity(loan.offer_tracing_id, loan.amount)
 
-    self._check_and_update_offer_state(offer, principal)
+    self._check_and_update_offer_state(offer, new_principal)
     self.loans[new_loan.id] = self._loan_state_hash(new_loan)
 
     if collateral_amount > loan.collateral_amount:
@@ -1008,11 +1008,6 @@ def replace_loan(
     new_lender_delta: int256 = convert(new_loan.origination_fee_amount, int256) - convert(new_loan.amount + new_loan.protocol_upfront_fee_amount, int256)
     if borrower_delta < 0:
         self._receive_funds(loan.borrower, convert(-borrower_delta, uint256))
-    if new_lender_delta < 0:
-        self._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256))
-
-    if borrower_delta > 0:
-        self._send_funds(loan.borrower, convert(borrower_delta, uint256))
 
     if loan.lender == offer.offer.lender:
         lender_delta: int256 = convert(old_lender_delta, int256) + new_lender_delta
@@ -1021,12 +1016,15 @@ def replace_loan(
         elif lender_delta > 0:
             self._send_funds(loan.lender, convert(lender_delta, uint256))
     else:
-        if old_lender_delta > 0:
-            self._send_funds(loan.lender, old_lender_delta)
         if new_lender_delta < 0:
             self._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256))
+        if old_lender_delta > 0:
+            self._send_funds(loan.lender, old_lender_delta)
         else:
             self._send_funds(new_loan.lender, convert(new_lender_delta, uint256))
+
+    if borrower_delta > 0:
+        self._send_funds(loan.borrower, convert(borrower_delta, uint256))
 
 
     if protocol_settlement_fee + new_loan.protocol_upfront_fee_amount > 0:

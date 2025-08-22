@@ -134,7 +134,6 @@ AggregatorV3LatestRoundData = namedtuple(
 
 
 def compute_loan_hash(loan: Loan):
-    print(f"compute_loan_hash {loan=}")
     encoded = eth_abi.encode(
         [
             "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256)"
