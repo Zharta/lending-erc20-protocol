@@ -147,6 +147,31 @@ event LoanPaid:
     protocol_settlement_fee_amount: uint256
 
 
+event LoanReplaced:
+    id: bytes32
+    amount: uint256
+    apr: uint256
+    maturity: uint256
+    start_time: uint256
+    borrower: address
+    lender: address
+    collateral_amount: uint256
+    min_collateral_amount: uint256
+    call_eligibility: uint256
+    call_window: uint256
+    soft_liquidation_ltv: uint256
+    initial_ltv: uint256
+    origination_fee_amount: uint256
+    protocol_upfront_fee_amount: uint256
+    protocol_settlement_fee: uint256
+    soft_liquidation_fee: uint256
+    offer_id: bytes32
+    offer_tracing_id: bytes32
+    original_loan_id: bytes32
+    paid_principal: uint256
+    paid_interest: uint256
+    paid_protocol_settlement_fee_amount: uint256
+
 event LoanCollateralClaimed:
     id: bytes32
     borrower: address
@@ -885,6 +910,156 @@ def remove_collateral_from_loan(loan: Loan, collateral_amount: uint256):
         old_ltv=old_ltv,
         new_ltv=new_ltv
     )
+
+@external
+def replace_loan(
+    loan: Loan,
+    offer: SignedOffer,
+    principal: uint256,
+    collateral_amount: uint256,
+    lender_kyc: SignedWalletValidation
+) -> bytes32:
+
+    """
+    @notice Replace an existing loan by accepting a new offer over the same collateral. The current loan is settled and the new loan is created. Must be called by the borrower.
+    @dev No collateral transfer is required. The borrower must be the same as the borrower of the current loan.
+    @param loan The loan to be replaced.
+    @param offer The new signed offer.
+    @param principal The principal amount of the new loan, 0 means the outstanding debt
+    @param collateral_amount The amount of collateral tokens to be used for the new loan.
+    @param lender_kyc The signed KYC validation for the lender.
+    @return The ID of the new loan.
+    """
+
+    assert self._is_loan_valid(loan), "invalid loan"
+    assert self._check_user(loan.borrower), "not borrower"
+    assert not self._is_loan_defaulted(loan), "loan defaulted"
+
+    assert self._is_offer_signed_by_lender(offer, offer.offer.lender), "offer not signed by lender"
+    self._check_offer_validity(offer)
+
+    assert staticcall KYCValidator(kyc_validator_addr).check_validation(lender_kyc), "KYC validation fail"
+    assert offer.offer.borrower == empty(address) or offer.offer.borrower == loan.borrower, "borrower not allowed"
+    assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
+    assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"
+
+    interest: uint256 = self._compute_settlement_interest(loan)
+    protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
+    outstanding_debt: uint256 = loan.amount + interest
+    new_principal: uint256 = outstanding_debt if principal == 0 else principal
+    assert offer.offer.principal == 0 or offer.offer.principal == new_principal, "offer principal mismatch"
+
+    convertion_rate: UInt256Rational = self._get_oracle_rate()
+    initial_ltv: uint256 = self._compute_ltv(collateral_amount, new_principal, convertion_rate)
+
+    if offer.offer.max_iltv > 0:
+        assert initial_ltv <= offer.offer.max_iltv, "initial ltv gt max iltv"
+
+    if offer.offer.soft_liquidation_ltv > 0:
+        assert offer.offer.soft_liquidation_ltv > initial_ltv, "liquidation ltv gt initial ltv"
+        # required for soft liquidation: (1 + f) * iltv < 1
+        assert (BPS + self.soft_liquidation_fee) * initial_ltv < BPS * BPS, "initial ltv too high"
+
+    offer_id: bytes32 = self._compute_signed_offer_id(offer)
+    new_loan: Loan = Loan(
+        id=empty(bytes32),
+        offer_id=offer_id,
+        offer_tracing_id=offer.offer.tracing_id,
+        initial_amount=new_principal,
+        amount=new_principal,
+        apr=offer.offer.apr,
+        payment_token=offer.offer.payment_token,
+        maturity=block.timestamp + offer.offer.duration,
+        start_time=block.timestamp,
+        accrual_start_time=block.timestamp,
+        borrower=loan.borrower,
+        lender=offer.offer.lender,
+        collateral_token=collateral_token,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.offer.min_collateral_amount,
+        origination_fee_amount=offer.offer.origination_fee_bps * new_principal // BPS,
+        protocol_upfront_fee_amount=self.protocol_upfront_fee * new_principal // BPS,
+        protocol_settlement_fee=self.protocol_settlement_fee,
+        soft_liquidation_fee=self.soft_liquidation_fee,
+        call_eligibility=offer.offer.call_eligibility,
+        call_window=offer.offer.call_window,
+        soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
+        oracle_addr=oracle_addr,
+        initial_ltv=initial_ltv,
+        call_time=0,
+    )
+    new_loan.id = self._compute_loan_id(new_loan)
+    assert self.loans[new_loan.id] == empty(bytes32), "loan already exists"
+
+    self.loans[loan.id] = empty(bytes32)
+    self._reduce_commited_liquidity(loan.offer_tracing_id, loan.amount)
+
+    self._check_and_update_offer_state(offer, principal)
+    self.loans[new_loan.id] = self._loan_state_hash(new_loan)
+
+    if collateral_amount > loan.collateral_amount:
+        self._receive_collateral(loan.borrower, collateral_amount - loan.collateral_amount)
+    elif collateral_amount < loan.collateral_amount:
+        self._send_collateral(loan.borrower, loan.collateral_amount - collateral_amount)
+
+
+    borrower_delta: int256 = convert(new_principal, int256) - convert(outstanding_debt + new_loan.origination_fee_amount, int256)
+    old_lender_delta: uint256 = outstanding_debt - protocol_settlement_fee
+    new_lender_delta: int256 = convert(new_loan.origination_fee_amount, int256) - convert(new_loan.amount + new_loan.protocol_upfront_fee_amount, int256)
+    if borrower_delta < 0:
+        self._receive_funds(loan.borrower, convert(-borrower_delta, uint256))
+    if new_lender_delta < 0:
+        self._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256))
+
+    if borrower_delta > 0:
+        self._send_funds(loan.borrower, convert(borrower_delta, uint256))
+
+    if loan.lender == offer.offer.lender:
+        lender_delta: int256 = convert(old_lender_delta, int256) + new_lender_delta
+        if lender_delta < 0:
+            self._receive_funds(loan.lender, convert(-lender_delta, uint256))
+        elif lender_delta > 0:
+            self._send_funds(loan.lender, convert(lender_delta, uint256))
+    else:
+        if old_lender_delta > 0:
+            self._send_funds(loan.lender, old_lender_delta)
+        if new_lender_delta < 0:
+            self._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256))
+        else:
+            self._send_funds(new_loan.lender, convert(new_lender_delta, uint256))
+
+
+    if protocol_settlement_fee + new_loan.protocol_upfront_fee_amount > 0:
+        self._send_funds(self.protocol_wallet, protocol_settlement_fee + new_loan.protocol_upfront_fee_amount)
+
+    log LoanReplaced(
+        id=new_loan.id,
+        amount=new_loan.initial_amount,
+        apr=new_loan.apr,
+        maturity=new_loan.maturity,
+        start_time=new_loan.start_time,
+        borrower=new_loan.borrower,
+        lender=new_loan.lender,
+        collateral_amount=new_loan.collateral_amount,
+        min_collateral_amount=new_loan.min_collateral_amount,
+        call_eligibility=new_loan.call_eligibility,
+        call_window=new_loan.call_window,
+        soft_liquidation_ltv=new_loan.soft_liquidation_ltv,
+        initial_ltv=new_loan.initial_ltv,
+        origination_fee_amount=new_loan.origination_fee_amount,
+        protocol_upfront_fee_amount=new_loan.protocol_upfront_fee_amount,
+        protocol_settlement_fee=new_loan.protocol_settlement_fee,
+        soft_liquidation_fee=new_loan.soft_liquidation_fee,
+        offer_id=new_loan.offer_id,
+        offer_tracing_id=new_loan.offer_tracing_id,
+        original_loan_id=loan.id,
+        paid_principal=loan.amount,
+        paid_interest=interest,
+        paid_protocol_settlement_fee_amount=protocol_settlement_fee
+    )
+
+    return new_loan.id
+
 
 @external
 def revoke_offer(offer: SignedOffer):
