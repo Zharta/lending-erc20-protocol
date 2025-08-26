@@ -10,7 +10,7 @@
 
 struct WalletValidation:
     wallet: address
-    validation_time: uint256
+    expiration_time: uint256
 
 struct Signature:
     v: uint256
@@ -40,15 +40,13 @@ proposed_owner: public(address)
 
 validator: public(address)
 
-MAX_VALIDATION_TIME: constant(uint256) = 365 * 24 * 60 * 60  # 1 year in seconds
-
-VERSION: public(constant(String[30])) = "KYCValidator.20250731"
+VERSION: public(constant(String[30])) = "KYCValidator.20250826"
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
 
 DOMAIN_TYPE_HASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
-VALIDATION_TYPE_DEF: constant(String[56]) = "WalletValidation(address wallet,uint256 validation_time)"
+VALIDATION_TYPE_DEF: constant(String[56]) = "WalletValidation(address wallet,uint256 expiration_time)"
 VALIDATION_TYPE_HASH: constant(bytes32) = keccak256(VALIDATION_TYPE_DEF)
 
 validation_sig_domain_separator: immutable(bytes32)
@@ -112,7 +110,7 @@ def _check_validation(signed_validation: SignedWalletValidation) -> bool:
         signed_validation.signature.v,
         signed_validation.signature.r,
         signed_validation.signature.s
-    ) == self.validator and signed_validation.validation.validation_time + MAX_VALIDATION_TIME >= block.timestamp
+    ) == self.validator and signed_validation.validation.expiration_time >= block.timestamp
 
 
 @external
@@ -156,5 +154,3 @@ def set_validator(_validator: address):
 
     log ValidatorSet(old_validator=self.validator, new_validator=_validator)
     self.validator = _validator
-
-

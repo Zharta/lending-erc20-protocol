@@ -35,7 +35,7 @@ YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
 struct WalletValidation:
     wallet: address
-    validation_time: uint256
+    expiration_time: uint256
 
 struct SignedWalletValidation:
     validation: WalletValidation
@@ -291,7 +291,7 @@ revoked_offers: public(HashMap[bytes32, bool])
 authorized_proxies: public(HashMap[address, bool])
 pending_transfers: public(HashMap[address, uint256])
 
-VERSION: public(constant(String[30])) = "P2PLendingErc20.20250729"
+VERSION: public(constant(String[30])) = "P2PLendingErc20.20250826"
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
