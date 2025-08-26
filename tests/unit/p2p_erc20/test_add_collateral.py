@@ -100,7 +100,7 @@ def ongoing_loan_usdc_weth(
     loan_id = p2p_usdc_weth.create_loan(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
-    event = get_last_event(p2p_usdc_weth, "LoanCreated")
+    get_last_event(p2p_usdc_weth, "LoanCreated")
     initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
 
     loan = Loan(

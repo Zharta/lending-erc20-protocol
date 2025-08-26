@@ -288,3 +288,32 @@ def calc_collateral_from_ltv(principal, ltv, principal_token, collateral_token, 
     principal_token_decimals = 10 ** principal_token.decimals()
     collateral_token_decimals = 10 ** collateral_token.decimals()
     return principal * BPS * oracle_decimals * collateral_token_decimals // (ltv * rate * principal_token_decimals)
+
+
+def calc_soft_liquidation(loan, principal_token, collateral_token, oracle, timestamp):
+    convertion_rate_numerator = oracle.latestRoundData().answer
+    convertion_rate_denominator = 10 ** oracle.decimals()
+    payment_token_decimals = 10 ** principal_token.decimals()
+    collateral_token_decimals = 10 ** collateral_token.decimals()
+    collateral_amount = loan.collateral_amount
+    outstanding_debt = loan.amount + loan.get_interest(timestamp)
+    collateral_value = (
+        collateral_amount
+        * convertion_rate_numerator
+        * payment_token_decimals
+        // (convertion_rate_denominator * collateral_token_decimals)
+    )
+    principal_written_off = (
+        (outstanding_debt * BPS - collateral_value * loan.initial_ltv)
+        * BPS
+        // (BPS * BPS - (BPS + loan.soft_liquidation_fee) * loan.initial_ltv)
+    )
+    collateral_claimed = (
+        principal_written_off
+        * convertion_rate_denominator
+        * collateral_token_decimals
+        // (convertion_rate_numerator * payment_token_decimals)
+    )
+    liquidation_fee = collateral_claimed * loan.soft_liquidation_fee // BPS
+
+    return principal_written_off, collateral_claimed, liquidation_fee

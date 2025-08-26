@@ -681,7 +681,7 @@ def soft_liquidate_loan(loan: Loan):
         convertion_rate,
     )
 
-    assert principal_written_off > loan.amount, "written off ge principal"
+    assert principal_written_off < loan.amount, "written off ge principal"
 
     updated_loan: Loan = Loan(
         id=loan.id,
