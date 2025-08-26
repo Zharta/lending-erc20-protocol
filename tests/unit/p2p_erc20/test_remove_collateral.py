@@ -101,7 +101,7 @@ def ongoing_loan_usdc_weth(
     loan_id = p2p_usdc_weth.create_loan(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
-    event = get_last_event(p2p_usdc_weth, "LoanCreated")
+    get_last_event(p2p_usdc_weth, "LoanCreated")
     initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
 
     loan = Loan(
@@ -143,7 +143,7 @@ def test_remove_collateral_from_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongo
     for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
-            p2p_usdc_weth.claim_defaulted_loan_collateral(loan, sender=ongoing_loan_usdc_weth.borrower)
+            p2p_usdc_weth.remove_collateral_from_loan(loan, 1000, sender=ongoing_loan_usdc_weth.borrower)
 
 
 def test_remove_collateral_from_loan_reverts_if_not_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, lender):

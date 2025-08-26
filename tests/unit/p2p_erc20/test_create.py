@@ -128,7 +128,6 @@ def test_create_loan_reverts_if_offer_has_invalid_signature(
 def test_create_loan_reverts_if_offer_expired(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, usdc
 ):
-    token_id = 1
     offer = Offer(
         principal=1000,
         payment_token=p2p_usdc_weth.payment_token(),
