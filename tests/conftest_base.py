@@ -88,7 +88,7 @@ Signature = namedtuple("Signature", ["v", "r", "s"], defaults=[0, ZERO_BYTES32, 
 
 SignedOffer = namedtuple("SignedOffer", ["offer", "signature"], defaults=[Offer(), Signature()])
 
-WalletValidation = namedtuple("WalletValidation", ["wallet", "validation_time"], defaults=[ZERO_ADDRESS, 0])
+WalletValidation = namedtuple("WalletValidation", ["wallet", "expiration_time"], defaults=[ZERO_ADDRESS, 0])
 
 SignedWalletValidation = namedtuple(
     "SignedWalletValidation", ["validation", "signature"], defaults=[WalletValidation(), Signature()]
@@ -202,7 +202,7 @@ def sign_offer(offer: Offer, lender_key: str, verifying_contract: str) -> Signed
 
 
 def sign_kyc(wallet: str, timestamp: int, signer_key: str, verifying_contract: str) -> SignedWalletValidation:
-    wallet_validation = {"wallet": wallet, "validation_time": timestamp}
+    wallet_validation = {"wallet": wallet, "expiration_time": timestamp}
     typed_data = {
         "types": {
             "EIP712Domain": [
@@ -213,7 +213,7 @@ def sign_kyc(wallet: str, timestamp: int, signer_key: str, verifying_contract: s
             ],
             "WalletValidation": [
                 {"name": "wallet", "type": "address"},
-                {"name": "validation_time", "type": "uint256"},
+                {"name": "expiration_time", "type": "uint256"},
             ],
         },
         "primaryType": "WalletValidation",

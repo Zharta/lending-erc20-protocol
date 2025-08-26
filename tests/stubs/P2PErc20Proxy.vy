@@ -32,7 +32,7 @@ interface P2PLendingErc20:
 
 struct WalletValidation:
     wallet: address
-    validation_time: uint256
+    expiration_time: uint256
 
 struct SignedWalletValidation:
     validation: WalletValidation
