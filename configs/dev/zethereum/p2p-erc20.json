@@ -1,8 +1,7 @@
 {
     "common": {
         "kyc": {
-            "abi_key": "d275d0efce9094c71f8f554f5715688acec8ddc4",
-            "address": "0x90c0E75f4e0e951Cd70c7C18886B8B0A5dEEE955",
+            "address": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
             "contract": "KYCValidator",
             "properties": {
                 "validator": "0x66aB6D9362d4F35596279692F0251Db635165871"
@@ -10,8 +9,7 @@
             "properties_addresses": {}
         },
         "oracle_btc_usd": {
-            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
-            "address": "0x5Ef82C9D7570a92B678CfD46218d8f1eD3258aCF",
+            "address": "0x4F7A42F426897a46A2a30CEC315773140F1fb104",
             "contract": "Oracle",
             "properties": {
                 "decimals": 8,
@@ -20,8 +18,7 @@
             "properties_addresses": {}
         },
         "oracle_cbbtc_usd": {
-            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
-            "address": "0xa9cCaa21118A9BAB1490b36fe3fc26677c5ab3Ab",
+            "address": "0xe3680b612343EE64f011a7d8fF1b9C375F8Cc980",
             "contract": "Oracle",
             "properties": {
                 "decimals": 8,
@@ -29,9 +26,17 @@
             },
             "properties_addresses": {}
         },
+        "oracle_dummy": {
+            "address": "0xA1550fc6198257c9f4B1CEA110d1Fc2b59557BE2",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "387780390000"
+            },
+            "properties_addresses": {}
+        },
         "oracle_eth_usd": {
-            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
-            "address": "0xE0aCe6E4382cC60Ea0088870024029FfA4adBC86",
+            "address": "0x6F0B008C9860d3D9d6837aFa08E16EE0C58C5A47",
             "contract": "Oracle",
             "properties": {
                 "decimals": 8,
@@ -40,7 +45,6 @@
             "properties_addresses": {}
         },
         "oracle_usdc_eth": {
-            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
             "address": "0x40c5Fcd5906f1D5978E1A72FD55D69825367EAB6",
             "contract": "Oracle",
             "properties": {
@@ -53,8 +57,7 @@
     "configs": {},
     "p2p": {
         "usdc_cbbtc": {
-            "abi_key": "c9121d997c93417773add9b38a687879471647a8",
-            "address": "0xA942c947173f586c8959095b314aa2711E593af5",
+            "address": "0xa147F48A01c3c932B2743C5DDAd90C8927000f46",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: cbBTC / USD",
             "properties": {
@@ -72,16 +75,15 @@
             },
             "properties_addresses": {
                 "collateral_token": "0x1a7E47Ca5143d661619dF68a028eEb65bd5b642F",
-                "kyc_validator": "0x90c0E75f4e0e951Cd70c7C18886B8B0A5dEEE955",
-                "oracle": "0xa9cCaa21118A9BAB1490b36fe3fc26677c5ab3Ab",
+                "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
+                "oracle": "0xe3680b612343EE64f011a7d8fF1b9C375F8Cc980",
                 "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_wbtc": {
-            "abi_key": "c9121d997c93417773add9b38a687879471647a8",
-            "address": "0x7AaF9096367bD75c27acdc041E9753D5b0683B4D",
+            "address": "0x7a2d2F25E018Dd07dC39B6b00419D27f2F363F93",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: BTC/USD",
             "properties": {
@@ -99,16 +101,15 @@
             },
             "properties_addresses": {
                 "collateral_token": "0x4aF802216a2Fd654C1275DC62f48DfC7fB5B2B7a",
-                "kyc_validator": "0x90c0E75f4e0e951Cd70c7C18886B8B0A5dEEE955",
-                "oracle": "0x5Ef82C9D7570a92B678CfD46218d8f1eD3258aCF",
+                "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
+                "oracle": "0x4F7A42F426897a46A2a30CEC315773140F1fb104",
                 "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_weth": {
-            "abi_key": "c9121d997c93417773add9b38a687879471647a8",
-            "address": "0x4dD1dF263A87496efd656680573f10075C68CfC6",
+            "address": "0xaC822e5e092B197727F5Bb6698351F1336296F1b",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: USDC / ETH",
             "properties": {
@@ -126,7 +127,7 @@
             },
             "properties_addresses": {
                 "collateral_token": "0xEba85304439c77C74Fb471D302fba836ab3248b4",
-                "kyc_validator": "0x90c0E75f4e0e951Cd70c7C18886B8B0A5dEEE955",
+                "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "oracle": "0x40c5Fcd5906f1D5978E1A72FD55D69825367EAB6",
                 "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883"
             },
