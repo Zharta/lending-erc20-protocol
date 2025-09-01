@@ -132,6 +132,12 @@ AggregatorV3LatestRoundData = namedtuple(
     defaults=[0, 0, 0, 0, 0],
 )
 
+SoftLiquidationResult = namedtuple(
+    "SoftLiquidationResult",
+    ["collateral_claimed", "liquidation_fee", "debt_written_off", "updated_ltv"],
+    defaults=[0, 0, 0, 0],
+)
+
 
 def compute_loan_hash(loan: Loan):
     encoded = eth_abi.encode(

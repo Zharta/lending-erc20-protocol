@@ -597,7 +597,7 @@ def settle_loan(loan: Loan):
     """
 
     assert self._is_loan_valid(loan), "invalid loan"
-    assert block.timestamp <= loan.maturity, "loan defaulted"
+    assert not self._is_loan_defaulted(loan), "loan defaulted"
     assert self._check_user(loan.borrower), "not borrower"
 
     interest: uint256 = self._compute_settlement_interest(loan)
@@ -681,7 +681,7 @@ def soft_liquidate_loan(loan: Loan):
         convertion_rate,
     )
 
-    assert principal_written_off < loan.amount, "written off ge principal"
+    assert principal_written_off < loan.amount + current_interest, "written off ge debt"
 
     updated_loan: Loan = Loan(
         id=loan.id,
@@ -1158,7 +1158,7 @@ def simulate_soft_liquidation(loan: Loan) -> SoftLiquidationResult:
         convertion_rate,
     )
 
-    assert debt_written_off > loan.amount, "written off ge principal"
+    assert debt_written_off < loan.amount + current_interest, "written off ge debt"
 
     return SoftLiquidationResult(
         collateral_claimed=collateral_claimed,
