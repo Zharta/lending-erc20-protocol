@@ -13,6 +13,7 @@ from ...conftest_base import (
     compute_signed_offer_id,
     get_last_event,
     get_loan_mutations,
+    replace_namedtuple_field,
     sign_offer,
 )
 
@@ -61,8 +62,8 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         min_collateral_amount=0,
         max_iltv=8000,
         available_liquidity=principal,
-        call_eligibility=0,
-        call_window=0,
+        call_eligibility=10,
+        call_window=10,
         soft_liquidation_ltv=0,
         oracle_addr=oracle.address,
         expiration=now + 100,
@@ -149,6 +150,19 @@ def test_settle_loan_reverts_if_loan_defaulted(p2p_usdc_weth, ongoing_loan_usdc_
 
     with boa.reverts("loan defaulted"):
         p2p_usdc_weth.settle_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
+
+
+def test_settle_loan_reverts_if_loan_called(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
+    time_to_call = ongoing_loan_usdc_weth.call_eligibility
+    boa.env.time_travel(seconds=time_to_call)
+
+    p2p_usdc_weth.call_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.lender)
+    updated_timestamp = now + ongoing_loan_usdc_weth.call_eligibility
+    updated_loan = replace_namedtuple_field(ongoing_loan_usdc_weth, call_time=updated_timestamp)
+    boa.env.time_travel(seconds=ongoing_loan_usdc_weth.call_window + 1)
+
+    with boa.reverts("loan defaulted"):
+        p2p_usdc_weth.settle_loan(updated_loan, sender=ongoing_loan_usdc_weth.borrower)
 
 
 def test_settle_loan_reverts_if_loan_already_settled(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
