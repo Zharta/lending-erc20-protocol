@@ -6,7 +6,7 @@ import pytest
 
 from ...conftest_base import ZERO_ADDRESS, get_last_event
 
-FOREVER = 2**256 - 1
+BPS = 10000
 
 
 def test_initial_state(
@@ -235,3 +235,30 @@ def test_kyc_validator_claim_ownership_logs_event(kyc_validator_contract, owner)
 
     assert event.old_owner == owner
     assert event.new_owner == new_owner
+
+
+def test_set_soft_liquidation_fee_reverts_if_not_owner(p2p_usdc_weth):
+    with boa.reverts():
+        p2p_usdc_weth.set_soft_liquidation_fee(1, sender=boa.env.generate_address("random"))
+
+
+def test_set_soft_liquidation_fee_reverts_if_gt_max(p2p_usdc_weth, owner):
+    with boa.reverts("soft liquidation fee exceeds BPS"):
+        p2p_usdc_weth.set_soft_liquidation_fee(BPS + 1, sender=owner)
+
+
+def test_set_soft_liquidation_fee(p2p_usdc_weth, owner):
+    new_soft_liquidation_fee = 1234
+    p2p_usdc_weth.set_soft_liquidation_fee(new_soft_liquidation_fee, sender=owner)
+    assert p2p_usdc_weth.soft_liquidation_fee() == new_soft_liquidation_fee
+
+
+def test_set_soft_liquidation_fee_logs_event(p2p_usdc_weth, owner):
+    old_soft_liquidation_fee = p2p_usdc_weth.soft_liquidation_fee()
+    new_soft_liquidation_fee = old_soft_liquidation_fee + 1
+
+    p2p_usdc_weth.set_soft_liquidation_fee(new_soft_liquidation_fee, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "SoftLiquidationFeeSet")
+
+    assert event.old_fee == old_soft_liquidation_fee
+    assert event.new_fee == new_soft_liquidation_fee

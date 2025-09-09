@@ -97,9 +97,7 @@ SignedOffer = namedtuple("SignedOffer", ["offer", "signature"], defaults=[Offer(
 WalletValidation = namedtuple("WalletValidation", ["wallet", "validation_time"], defaults=[ZERO_ADDRESS, 0])
 
 SignedWalletValidation = namedtuple(
-    "SignedWalletValidation",
-    ["validation", "signature"],
-    defaults=[WalletValidation(), Signature()]
+    "SignedWalletValidation", ["validation", "signature"], defaults=[WalletValidation(), Signature()]
 )
 
 
@@ -271,7 +269,6 @@ def create_offer_backend(signer: Account, **offer):
         "lender": _offer.lender,
         "borrower": _offer.borrower,
         "tracing_id": _offer.tracing_id.hex(),
-
         "p2p_contract": offer.get("p2p_contract"),
         "signature": {"v": sig.v, "r": sig.r.hex(), "s": sig.s.hex()},
     }
@@ -343,11 +340,12 @@ def create_loan(
     _offer = Offer(**filtered_offer)
     offer_signature = signed_offer.get("signature")
     _signed_offer = SignedOffer(
-        _offer, Signature(
+        _offer,
+        Signature(
             offer_signature.get("v"),
             from_hexstr_to_int(offer_signature.get("r")),
-            from_hexstr_to_int(offer_signature.get("s"))
-        )
+            from_hexstr_to_int(offer_signature.get("s")),
+        ),
     )
 
     kyc_validator_contract = contract.kyc_validator_addr()
@@ -433,7 +431,7 @@ def get_loan(loan_id):
         soft_liquidation_ltv=int(loan_data["soft_liquidation_ltv"]),
         oracle_addr=loan_data["oracle_addr"],
         initial_ltv=int(loan_data["initial_ltv"]),
-        call_time=int(loan_data.get("call_time") or 0)
+        call_time=int(loan_data.get("call_time") or 0),
     )
     print(loan)
 
@@ -444,7 +442,6 @@ def get_loan(loan_id):
 
 
 def pay_loan(loan, contract, *, sender):
-
     loan_hash = compute_loan_hash(loan)
     print(f"loan_hash: {loan_hash.hex()}")
 
@@ -471,7 +468,6 @@ def calc_ltv(principal, collateral_amount, principal_token, collateral_token, or
 
 
 def ape_init_extras():
-
     globals()["dm"] = dm
     globals()["owner"] = dm.owner
     for k, v in dm.context.contracts.items():

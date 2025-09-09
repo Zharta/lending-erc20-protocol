@@ -277,9 +277,12 @@ def get_loan_mutations(loan):
     yield replace_namedtuple_field(loan, lender=random_address)
 
 
-def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle):
-    rate = oracle.latestRoundData().answer
+def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle, *, oracle_reverse=False):
+    latest_round_data = AggregatorV3LatestRoundData(*oracle.latestRoundData())
+    rate = latest_round_data.answer
     oracle_decimals = 10 ** oracle.decimals()
+    if oracle_reverse:
+        rate, oracle_decimals = oracle_decimals, rate
     principal_token_decimals = 10 ** principal_token.decimals()
     collateral_token_decimals = 10 ** collateral_token.decimals()
     return (
@@ -296,9 +299,11 @@ def calc_collateral_from_ltv(principal, ltv, principal_token, collateral_token, 
     return principal * BPS * oracle_decimals * collateral_token_decimals // (ltv * rate * principal_token_decimals)
 
 
-def calc_soft_liquidation(loan, principal_token, collateral_token, oracle, timestamp):
+def calc_soft_liquidation(loan, principal_token, collateral_token, oracle, timestamp, *, oracle_reverse=False):
     convertion_rate_numerator = oracle.latestRoundData().answer
     convertion_rate_denominator = 10 ** oracle.decimals()
+    if oracle_reverse:
+        convertion_rate_numerator, convertion_rate_denominator = convertion_rate_denominator, convertion_rate_numerator
     payment_token_decimals = 10 ** principal_token.decimals()
     collateral_token_decimals = 10 ** collateral_token.decimals()
     collateral_amount = loan.collateral_amount

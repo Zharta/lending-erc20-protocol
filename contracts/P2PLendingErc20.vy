@@ -291,7 +291,7 @@ revoked_offers: public(HashMap[bytes32, bool])
 authorized_proxies: public(HashMap[address, bool])
 pending_transfers: public(HashMap[address, uint256])
 
-VERSION: public(constant(String[30])) = "P2PLendingErc20.20250826"
+VERSION: public(constant(String[30])) = "P2PLendingErc20.20250909"
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
@@ -1086,23 +1086,6 @@ def claim_pending_transfers():
     assert extcall IERC20(payment_token).transfer(msg.sender, _amount), "error sending funds"
     log PendingTransfersClaimed(_to=msg.sender, amount=_amount)
 
-
-
-@view
-@external
-def onERC721Received(_operator: address, _from: address, _tokenId: uint256, _data: Bytes[1024]) -> bytes4:
-
-    """
-    @notice ERC721 token receiver callback.
-    @dev Returns the ERC721 receiver callback selector.
-    @param _operator The address which called `safeTransferFrom` function.
-    @param _from The address which previously owned the token.
-    @param _tokenId The NFT identifier which is being transferred.
-    @param _data Additional data with no specified format.
-    @return The ERC721 receiver callback selector.
-    """
-
-    return method_id("onERC721Received(address,address,uint256,bytes)", output_type=bytes4)
 
 
 @view
