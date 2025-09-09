@@ -464,7 +464,7 @@ def test_replace_loan_reverts_if_lender_funds_not_approved(
 
 
 def _calc_deltas(loan, offer, principal, timestamp, contract) -> (int, int, int, int):
-    interest = loan.amount * loan.apr * (timestamp - loan.accrual_start_time) // (DAY * BPS)
+    interest = loan.amount * loan.apr * (timestamp - loan.accrual_start_time) // (365 * DAY * BPS)
     protocol_settlement_fee = interest * loan.protocol_settlement_fee // BPS
     outanding_debt = loan.amount + interest
     new_principal = outanding_debt if principal == 0 else principal

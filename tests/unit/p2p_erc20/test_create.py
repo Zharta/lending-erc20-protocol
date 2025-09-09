@@ -398,6 +398,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         call_time=0,
     )
     assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert p2p_usdc_weth.current_ltv(loan) == initial_ltv
 
 
 def test_create_loan_logs_event(
