@@ -25,6 +25,8 @@ CHAIN = os.environ.get("CHAIN", "nochain")
 ZERO_ADDRESS = "0x" + "0" * 40
 ZERO_BYTES32 = b"\0" * 32
 BPS = 10000
+DAY = 24 * 3600
+FAR_AWAY_IN_THE_FUTURE = 4911095666
 
 URL_ENV_INFIX = f".{ENV.name}" if ENV != Environment.prod else ""  # noqa: SIM300 Yoda this condition is not
 ERC20_SERVICE_BASE_URL = f"https://api{URL_ENV_INFIX}.zharta.io/loans-erc20/v1"
@@ -94,7 +96,7 @@ Signature = namedtuple("Signature", ["v", "r", "s"], defaults=[0, ZERO_BYTES32, 
 
 SignedOffer = namedtuple("SignedOffer", ["offer", "signature"], defaults=[Offer(), Signature()])
 
-WalletValidation = namedtuple("WalletValidation", ["wallet", "validation_time"], defaults=[ZERO_ADDRESS, 0])
+WalletValidation = namedtuple("WalletValidation", ["wallet", "expiration_time"], defaults=[ZERO_ADDRESS, 0])
 
 SignedWalletValidation = namedtuple(
     "SignedWalletValidation", ["validation", "signature"], defaults=[WalletValidation(), Signature()]
@@ -143,19 +145,16 @@ def compute_loan_hash(loan: Loan):
     return boa.eval(f"""keccak256({encoded})""")
 
 
-def compute_signed_offer_id(offer: SignedOffer):
+def _compute_signed_offer_id(offer: SignedOffer):
     import boa  # noqa: PLC0415 temp workaround
 
-    return boa.eval(
-        dedent(
-            f"""keccak256(
-            concat(
-                convert({offer.signature.v}, bytes32),
-                convert({offer.signature.r}, bytes32),
-                convert({offer.signature.s}, bytes32),
-            ))"""
-        )
+    offer_id = boa.eval(
+        dedent(f"""keccak256(concat(convert({offer.signature.v}, bytes32), {offer.signature.r}, {offer.signature.s}))""")
     )
+    return HexBytes(offer_id).to_0x_hex()
+
+
+SignedOffer.offer_id = property(_compute_signed_offer_id)
 
 
 def sign_offer(offer: Offer, lender: Account, verifying_contract: str) -> SignedOffer:
@@ -202,8 +201,9 @@ def sign_offer(offer: Offer, lender: Account, verifying_contract: str) -> Signed
     return SignedOffer(offer, lender_signature)
 
 
-def sign_kyc(wallet: str, timestamp: int, signer: Account, verifying_contract: str) -> SignedWalletValidation:
-    wallet_validation = {"wallet": wallet, "expiration_time": timestamp}
+def sign_kyc(wallet: str, signer: Account, verifying_contract: str, expiration: int = 0) -> SignedWalletValidation:
+    expiration = expiration or now() + 30 * 24 * 3600
+    wallet_validation = {"wallet": wallet, "expiration_time": expiration}
     typed_data = {
         "types": {
             "EIP712Domain": [
@@ -234,18 +234,110 @@ def sign_kyc(wallet: str, timestamp: int, signer: Account, verifying_contract: s
     return SignedWalletValidation(WalletValidation(**wallet_validation), signature)
 
 
-def create_offer_backend(signer: Account, **offer):
+def get_offer(offer_id: str | HexBytes | bytes) -> SignedOffer:
+    if type(offer_id) is HexBytes:
+        offer_id = offer_id.to_0x_hex()
+    elif type(offer_id) is bytes:
+        offer_id = "0x" + offer_id.hex()
+    response = requests.get(f"{ERC20_SERVICE_BASE_URL}/offers/{offer_id}")
+    if response.status_code != 200:
+        print(response.text)
+    response.raise_for_status()
+    offer_data = response.json()
+    return _parse_offer_data(offer_data)
+
+
+def get_offers(**filters) -> list[SignedOffer]:
+    results = []
+    more_pages = True
+    page = 1
+    while more_pages:
+        filters["page"] = page
+        query_params = "&".join(f"{k}={v}" for k, v in filters.items())
+        response = requests.get(f"{ERC20_SERVICE_BASE_URL}/offers?{query_params}")
+        if response.status_code != 200:
+            print(response.text)
+        response.raise_for_status()
+        response_json = response.json()
+        results.extend(response_json["offers"])
+        more_pages = response_json.get("page") < response_json.get("total_pages")
+
+    return [_parse_offer_data(offer_data) for offer_data in results]
+
+
+def get_loan(loan_id: str | bytes | HexBytes) -> Loan:
+    if type(loan_id) is HexBytes:
+        loan_id = loan_id.to_0x_hex()
+    elif type(loan_id) is bytes:
+        loan_id = "0x" + loan_id.hex()
+    response = requests.get(f"{ERC20_SERVICE_BASE_URL}/loans/{loan_id}")
+    if response.status_code != 200:
+        print(response.text)
+    response.raise_for_status()
+
+    loan_data = response.json()
+    print(loan_data)
+
+    loan = _parse_loan_data(loan_data)
+    print(loan)
+
+    loan_hash = compute_loan_hash(loan)
+    print(f"loan_hash: {loan_hash.hex()}")
+
+
+def get_loans(**filters) -> list[Loan]:
+    results = []
+    more_pages = True
+    page = 1
+    while more_pages:
+        filters["page"] = page
+        query_params = "&".join(f"{k}={v}" for k, v in filters.items())
+        response = requests.get(f"{ERC20_SERVICE_BASE_URL}/loans?{query_params}")
+        if response.status_code != 200:
+            print(response.text)
+        response.raise_for_status()
+        response_json = response.json()
+        results.extend(response_json["loans"])
+        more_pages = response_json.get("page") < response_json.get("total_pages")
+
+    return [_parse_loan_data(loan_data) for loan_data in results]
+
+
+def get_kyc(wallet: str, p2p_contract) -> SignedWalletValidation | None:
+    response = requests.get(f"{ERC20_SERVICE_BASE_URL}/kyc/{wallet}")
+    if response.status_code != 200:
+        print(response.text)
+    response.raise_for_status()
+    validator = p2p_contract.kyc_validator_addr()
+    kyc_data = response.json().get("validations").get(validator)
+    if not kyc_data:
+        return None
+    wallet_validation = WalletValidation(kyc_data["validation"]["wallet"], int(kyc_data["validation"]["expiration_time"]))
+    signature_data = kyc_data["signature"]
+    signature = Signature(int(signature_data["v"]), signature_data["r"], signature_data["s"])
+    return SignedWalletValidation(wallet_validation, signature) if kyc_data else None
+
+
+def _create_offer_backend(signer: Account, **offer):
     filtered_offer = {k: v for k, v in offer.items() if k in Offer._fields}
+    contract = ape.Contract(offer.get("p2p_contract"))
     filtered_offer["principal"] = int(filtered_offer["principal"])
     filtered_offer["apr"] = int(filtered_offer["apr"])
     filtered_offer["origination_fee_bps"] = int(filtered_offer.get("origination_fee_bps", 0))
     filtered_offer["tracing_id"] = bytes.fromhex(filtered_offer.get("tracing_id", ZERO_BYTES32.hex()))
+    filtered_offer["expiration"] = int(filtered_offer.get("expiration", 0)) or FAR_AWAY_IN_THE_FUTURE
+    filtered_offer["lender"] = filtered_offer.get("lender", signer.address)
+    filtered_offer["payment_token"] = filtered_offer.get("payment_token", contract.payment_token())
+    filtered_offer["collateral_token"] = filtered_offer.get("collateral_token", contract.collateral_token())
+    filtered_offer["duration"] = int(filtered_offer.get("duration", 0))
+    filtered_offer["available_liquidity"] = int(filtered_offer.get("available_liquidity", filtered_offer["principal"]))
+
     _offer = Offer(**filtered_offer)
 
     if _offer.tracing_id == ZERO_BYTES32:
         _offer = _offer._replace(tracing_id=random.randbytes(32))
 
-    chain = offer.get("chain")
+    chain = offer.get("chain", CHAIN)
     verifying_contract = offer.get("p2p_contract")
     signed_offer = sign_offer(_offer, signer, verifying_contract)
     sig = signed_offer.signature
@@ -281,13 +373,12 @@ def create_offer_backend(signer: Account, **offer):
     return response.json()
 
 
-def get_offer(offer_id):
-    response = requests.get(f"{ERC20_SERVICE_BASE_URL}/offers/{offer_id}")
-    if response.status_code != 200:
-        print(response.text)
-    response.raise_for_status()
-    offer_data = response.json()
+def create_offer_backend(signer: Account, **offer) -> SignedOffer:
+    response_data = _create_offer_backend(signer, **offer)
+    return _parse_offer_data(response_data)
 
+
+def _parse_offer_data(offer_data) -> SignedOffer:
     offer = Offer(
         principal=int(offer_data["principal"]),
         apr=int(offer_data["apr"]),
@@ -312,101 +403,8 @@ def get_offer(offer_id):
     return SignedOffer(offer, signature)
 
 
-def from_hexstr_to_bytes(hex_str: str) -> bytes:
-    hex_str = hex_str.removeprefix("0x")
-    return bytes.fromhex(hex_str)
-
-
-def from_hexstr_to_int(hex_str: str) -> bytes:
-    hex_str = hex_str.removeprefix("0x")
-    return int(hex_str, 16)
-
-
-def create_loan(
-    signed_offer: dict,
-    principal: int,
-    collateral_amount: int,
-    contract,
-    kyc_borrower: SignedWalletValidation | None = None,
-    kyc_lender: SignedWalletValidation | None = None,
-    *,
-    kyc_validator: Account = dm.owner,
-    sender,
-):
-    filtered_offer = {k: v for k, v in signed_offer.items() if k in Offer._fields}
-    filtered_offer["principal"] = int(filtered_offer["principal"])
-    # filtered_offer["collateral_amount"] = int(filtered_offer["collateral_amount"])
-    filtered_offer["tracing_id"] = from_hexstr_to_bytes(filtered_offer["tracing_id"])
-    _offer = Offer(**filtered_offer)
-    offer_signature = signed_offer.get("signature")
-    _signed_offer = SignedOffer(
-        _offer,
-        Signature(
-            offer_signature.get("v"),
-            from_hexstr_to_int(offer_signature.get("r")),
-            from_hexstr_to_int(offer_signature.get("s")),
-        ),
-    )
-
-    kyc_validator_contract = contract.kyc_validator_addr()
-    if kyc_borrower is None:
-        kyc_borrower = sign_kyc(sender.address, now(), kyc_validator, kyc_validator_contract)
-    if kyc_lender is None:
-        kyc_lender = sign_kyc(_offer.lender, now(), kyc_validator, kyc_validator_contract)
-
-    _kyc_borrower = SignedWalletValidation(
-        kyc_borrower.validation,
-        Signature(
-            kyc_borrower.signature.v,
-            int(HexBytes(kyc_borrower.signature.r).to_0x_hex(), base=16),
-            int(HexBytes(kyc_borrower.signature.s).to_0x_hex(), base=16),
-        ),
-    )
-    _kyc_lender = SignedWalletValidation(
-        kyc_lender.validation,
-        Signature(
-            kyc_lender.signature.v,
-            int(HexBytes(kyc_lender.signature.r).to_0x_hex(), base=16),
-            int(HexBytes(kyc_lender.signature.s).to_0x_hex(), base=16),
-        ),
-    )
-
-    payment_contract = ape.Contract(_offer.payment_token)
-    collateral_contract = ape.Contract(_offer.collateral_token)
-
-    # if payment_contract.allowance(_offer.lender, contract.address) < principal - _offer.origination_fee_amount:
-    #     print(f"Approving {payment_contract.address} for {principal - _offer.origination_fee_amount}")
-    #     payment_contract.approve(
-    #         contract.address, principal - _offer.origination_fee_amount, sender=Account.f_offer.lender
-    #     )
-
-    if collateral_contract.allowance(sender, contract.address) < collateral_amount:
-        print(f"Approving {collateral_contract.address} for {collateral_amount}")
-        collateral_contract.approve(contract.address, collateral_amount, sender=sender)
-
-    print(f"{_signed_offer=}")
-    print(f"{_kyc_borrower=}")
-    print(f"{_kyc_lender=}")
-    return contract.create_loan(
-        _signed_offer,
-        principal,
-        collateral_amount,
-        _kyc_borrower,
-        _kyc_lender,
-        sender=sender,
-    )
-
-
-def get_loan(loan_id):
-    response = requests.get(f"{ERC20_SERVICE_BASE_URL}/loans/{loan_id}")
-    if response.status_code != 200:
-        print(response.text)
-    response.raise_for_status()
-
-    loan_data = response.json()
-    print(loan_data)
-
-    loan = Loan(
+def _parse_loan_data(loan_data: dict) -> Loan:
+    return Loan(
         id=HexBytes(loan_data["loan_id"]),
         offer_id=HexBytes(loan_data["offer_id"]),
         offer_tracing_id=HexBytes(loan_data["offer_tracing_id"]),
@@ -433,12 +431,77 @@ def get_loan(loan_id):
         initial_ltv=int(loan_data["initial_ltv"]),
         call_time=int(loan_data.get("call_time") or 0),
     )
-    print(loan)
 
-    loan_hash = compute_loan_hash(loan)
-    print(f"loan_hash: {loan_hash.hex()}")
 
-    return loan
+def from_hexstr_to_bytes(hex_str: str) -> bytes:
+    hex_str = hex_str.removeprefix("0x")
+    return bytes.fromhex(hex_str)
+
+
+def from_hexstr_to_int(hex_str: str) -> bytes:
+    hex_str = hex_str.removeprefix("0x")
+    return int(hex_str, 16)
+
+
+def create_loan(  # noqa: PLR0917
+    signed_offer: SignedOffer,
+    principal: int,
+    collateral_amount: int,
+    contract,
+    kyc_borrower: SignedWalletValidation | None = None,
+    kyc_lender: SignedWalletValidation | None = None,
+    *,
+    kyc_validator: Account = dm.owner,
+    sender,
+):
+    offer = signed_offer.offer
+    kyc_validator_contract = contract.kyc_validator_addr()
+    if kyc_borrower is None:
+        print("Signing KYC for borrower")
+        kyc_borrower = sign_kyc(sender.address, kyc_validator, kyc_validator_contract)
+    if kyc_lender is None:
+        print("Signing KYC for lender")
+        kyc_lender = sign_kyc(offer.lender, kyc_validator, kyc_validator_contract)
+
+    _kyc_borrower = SignedWalletValidation(
+        kyc_borrower.validation,
+        Signature(
+            kyc_borrower.signature.v,
+            int(HexBytes(kyc_borrower.signature.r).to_0x_hex(), base=16),
+            int(HexBytes(kyc_borrower.signature.s).to_0x_hex(), base=16),
+        ),
+    )
+    _kyc_lender = SignedWalletValidation(
+        kyc_lender.validation,
+        Signature(
+            kyc_lender.signature.v,
+            int(HexBytes(kyc_lender.signature.r).to_0x_hex(), base=16),
+            int(HexBytes(kyc_lender.signature.s).to_0x_hex(), base=16),
+        ),
+    )
+
+    payment_contract = ape.Contract(offer.payment_token)
+    collateral_contract = ape.Contract(offer.collateral_token)
+
+    approval = principal + (contract.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    assert payment_contract.balanceOf(offer.lender) >= approval, f"Lender must have {approval}"
+    assert payment_contract.allowance(offer.lender, contract.address) >= approval, f"Lender must approve {approval}"
+
+    if collateral_contract.allowance(sender, contract.address) < collateral_amount:
+        print(f"Approving {collateral_amount} for {collateral_contract.address}")
+        collateral_contract.approve(contract.address, collateral_amount, sender=sender)
+
+    print(f"{signed_offer=}")
+    print(f"{_kyc_borrower=}")
+    print(f"{_kyc_lender=}")
+    return contract.create_loan(
+        signed_offer,
+        principal,
+        collateral_amount,
+        _kyc_borrower,
+        _kyc_lender,
+        sender=sender,
+    )
 
 
 def pay_loan(loan, contract, *, sender):
@@ -450,12 +513,58 @@ def pay_loan(loan, contract, *, sender):
 
     payment_contract = ape.Contract(loan.payment_token)
     amount_to_approve = loan.amount + loan.get_interest(now() + 60)
-    payment_contract.approve(contract.address, amount_to_approve, sender=sender)
+
+    if payment_contract.allowance(sender, contract.address) < amount_to_approve:
+        print(f"Approving {amount_to_approve} for {contract.address}")
+        payment_contract.approve(contract.address, amount_to_approve, sender=sender)
 
     contract.settle_loan.estimate_gas_cost(loan, sender=sender)
 
 
-def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle, oracle_reverse=False):
+def add_collateral(loan: Loan, contract, collateral_amount: int, sender):
+    collateral_contract = ape.Contract(loan.collateral_token)
+
+    if collateral_contract.allowance(loan.borrower, contract.address) < collateral_amount:
+        print(f"Approving {collateral_amount} for {contract.address}")
+        collateral_contract.approve(dm.p2p_usdc_weth.address, collateral_amount, sender=loan.borrower)
+
+    contract.add_collateral_to_loan(loan.id, collateral_amount, sender=sender)
+
+
+def remove_collateral(loan: Loan, contract, collateral_amount: int, sender):
+    contract.remove_collateral_from_loan(loan.id, collateral_amount, sender=sender)
+
+
+def refinance(loan: Loan, offer: SignedOffer, contract, kyc_borrower: SignedWalletValidation | None, sender):
+    if kyc_borrower is None:
+        print("Signing KYC for borrower")
+        kyc_borrower = sign_kyc(sender.address, dm.owner, contract.kyc_validator_addr())
+
+    _kyc_borrower = SignedWalletValidation(
+        kyc_borrower.validation,
+        Signature(
+            kyc_borrower.signature.v,
+            HexBytes(kyc_borrower.signature.r).to_0x_hex(),
+            HexBytes(kyc_borrower.signature.s).to_0x_hex(),
+        ),
+    )
+
+    delta_borrower, _, delta_new_lender, _ = calc_deltas(loan, offer.offer, 0, contract, now() + 60)
+    payment_contract = ape.Contract(offer.offer.payment_token)
+    if delta_borrower < 0:
+        approval = -delta_borrower
+        if payment_contract.allowance(sender, contract.address) < approval:
+            print(f"Approving {approval} for {contract.address}")
+            payment_contract.approve(contract.address, approval, sender=sender)
+    if delta_new_lender < 0:
+        approval = -delta_new_lender
+        assert payment_contract.balanceOf(offer.offer.lender) >= approval, f"New lender must have {approval}"
+        assert payment_contract.allowance(offer.offer.lender, contract.address) >= approval, f"Lender must approve {approval}"
+
+    return contract.refinance_loan(loan.id, offer, _kyc_borrower, sender=sender)
+
+
+def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle, *, oracle_reverse=False):
     rate = oracle.latestRoundData().answer
     oracle_decimals = 10 ** oracle.decimals()
     if oracle_reverse:
@@ -465,6 +574,24 @@ def calc_ltv(principal, collateral_amount, principal_token, collateral_token, or
     return (
         principal * BPS * oracle_decimals * collateral_token_decimals // (collateral_amount * rate * principal_token_decimals)
     )
+
+
+def calc_deltas(loan: Loan, offer: Offer, principal: int, contract, timestamp: int = 0) -> (int, int, int, int):
+    if not timestamp:
+        timestamp = now()
+    interest = loan.amount * loan.apr * (timestamp - loan.accrual_start_time) // (365 * DAY * BPS)
+    protocol_settlement_fee = interest * loan.protocol_settlement_fee // BPS
+    outanding_debt = loan.amount + interest
+    new_principal = outanding_debt if principal == 0 else principal
+    origination_fee_amount = offer.origination_fee_bps * new_principal // BPS
+    protocol_fee_amount = contract.protocol_upfront_fee() * new_principal // BPS
+
+    delta_borrower = new_principal - outanding_debt - origination_fee_amount
+    delta_lender = outanding_debt - protocol_settlement_fee
+    delta_new_lender = origination_fee_amount - new_principal - protocol_fee_amount
+    delta_protocol = protocol_settlement_fee + protocol_fee_amount
+
+    return delta_borrower, delta_lender, delta_new_lender, delta_protocol
 
 
 def ape_init_extras():
