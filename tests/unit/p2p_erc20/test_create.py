@@ -15,6 +15,7 @@ from ...conftest_base import (
     get_events,
     get_last_event,
     replace_namedtuple_field,
+    sign_kyc,
     sign_offer,
 )
 
@@ -345,6 +346,66 @@ def test_create_loan_reverts_if_lender_funds_not_approved(
 
     with boa.reverts():
         p2p_usdc_weth.create_loan(signed_offer, offer.principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+
+def test_create_loan_reverts_if_borrower_kyc_not_correct(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_lender, kyc_validator_contract, usdc, weth, kyc_validator_key
+):
+    offer = Offer(
+        principal=1000,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=1000,
+        expiration=now + 100,
+        lender=lender,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    invalid_kyc_borrower_list = [
+        sign_kyc(boa.env.generate_address("random"), now, kyc_validator_key, kyc_validator_contract.address),
+        sign_kyc(borrower, now - 1, kyc_validator_key, kyc_validator_contract.address),
+        sign_kyc(borrower, now, lender_key, kyc_validator_contract.address),
+        sign_kyc(borrower, now, kyc_validator_key, boa.env.generate_address("random")),
+    ]
+
+    for kyc_borrower in invalid_kyc_borrower_list:
+        print(f"{kyc_borrower=}")
+        with boa.reverts("KYC validation fail"):
+            p2p_usdc_weth.create_loan(
+                signed_offer, offer.principal, offer.min_collateral_amount, kyc_borrower, kyc_lender, sender=borrower
+            )
+
+
+def test_create_loan_reverts_if_lender_kyc_not_correct(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_validator_contract, usdc, weth, kyc_validator_key
+):
+    offer = Offer(
+        principal=1000,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=1000,
+        expiration=now + 100,
+        lender=lender,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    invalid_kyc_lender_list = [
+        sign_kyc(boa.env.generate_address("random"), now, kyc_validator_key, kyc_validator_contract.address),
+        sign_kyc(offer.lender, now - 1, kyc_validator_key, kyc_validator_contract.address),
+        sign_kyc(offer.lender, now, lender_key, kyc_validator_contract.address),
+        sign_kyc(offer.lender, now, kyc_validator_key, boa.env.generate_address("random")),
+    ]
+
+    for kyc_lender in invalid_kyc_lender_list:
+        print(f"{kyc_lender=}")
+        with boa.reverts("KYC validation fail"):
+            p2p_usdc_weth.create_loan(
+                signed_offer, offer.principal, offer.min_collateral_amount, kyc_borrower, kyc_lender, sender=borrower
+            )
 
 
 def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc, oracle):

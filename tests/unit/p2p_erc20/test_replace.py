@@ -15,6 +15,7 @@ from ...conftest_base import (
     get_last_event,
     get_loan_mutations,
     replace_namedtuple_field,
+    sign_kyc,
     sign_offer,
 )
 
@@ -461,6 +462,33 @@ def test_replace_loan_reverts_if_lender_funds_not_approved(
 
     with boa.reverts():
         p2p_usdc_weth.replace_loan(loan, offer_usdc_weth2, 0, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_reverts_if_lender_kyc_not_correct(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    now,
+    offer_usdc_weth2,
+    kyc_lender2,
+    kyc_validator_key,
+    kyc_validator_contract,
+    lender_key,
+    lender2,
+):
+    loan = ongoing_loan_usdc_weth
+
+    invalid_kyc_lender_list = [
+        sign_kyc(boa.env.generate_address("random"), now, kyc_validator_key, kyc_validator_contract.address),
+        sign_kyc(lender2, now - 1, kyc_validator_key, kyc_validator_contract.address),
+        sign_kyc(lender2, now, lender_key, kyc_validator_contract.address),
+        sign_kyc(lender2, now, kyc_validator_key, boa.env.generate_address("random")),
+    ]
+
+    for kyc_lender in invalid_kyc_lender_list:
+        print(f"{kyc_lender=}")
+        with boa.reverts("KYC validation fail"):
+            p2p_usdc_weth.replace_loan(loan, offer_usdc_weth2, 0, loan.collateral_amount, kyc_lender, sender=loan.borrower)
 
 
 def _calc_deltas(loan, offer, principal, timestamp, contract) -> (int, int, int, int):

@@ -1,3 +1,5 @@
+# ruff: noqa: ERA001
+
 import os
 import random
 from collections import namedtuple
@@ -276,13 +278,12 @@ def get_loan(loan_id: str | bytes | HexBytes) -> Loan:
     response.raise_for_status()
 
     loan_data = response.json()
-    print(loan_data)
-
     loan = _parse_loan_data(loan_data)
-    print(loan)
 
     loan_hash = compute_loan_hash(loan)
     print(f"loan_hash: {loan_hash.hex()}")
+
+    return loan
 
 
 def get_loans(**filters) -> list[Loan]:
@@ -373,9 +374,23 @@ def _create_offer_backend(signer: Account, **offer):
     return response.json()
 
 
-def create_offer_backend(signer: Account, **offer) -> SignedOffer:
-    response_data = _create_offer_backend(signer, **offer)
-    return _parse_offer_data(response_data)
+def create_offer_backend(signer: Account, approve=True, **offer) -> SignedOffer:  # noqa: FBT002
+    contract_key = offer.get("contract_key")
+    p2p_contract = dm.context.contracts.get(f"p2p.{contract_key}").contract
+    _offer = offer | {"p2p_contract": p2p_contract.address}
+    print(f"Signing offer for {p2p_contract.address}")
+    response_data = _create_offer_backend(signer, **_offer)
+    offer = _parse_offer_data(response_data)
+    if approve:
+        payment_contract = ape.Contract(offer.offer.payment_token)
+        allowance = payment_contract.allowance(signer.address, p2p_contract)
+        if allowance < offer.offer.available_liquidity:
+            print(f"Approving {offer.offer.available_liquidity} for {p2p_contract}")
+            payment_contract.approve(p2p_contract, offer.offer.available_liquidity, sender=signer)
+        balance = payment_contract.balanceOf(signer.address)
+        if balance < offer.offer.available_liquidity:
+            raise ValueError(f"Not enough balance {balance} to cover {offer.offer.available_liquidity}")
+    return offer
 
 
 def _parse_offer_data(offer_data) -> SignedOffer:
@@ -483,7 +498,7 @@ def create_loan(  # noqa: PLR0917
     payment_contract = ape.Contract(offer.payment_token)
     collateral_contract = ape.Contract(offer.collateral_token)
 
-    approval = principal + (contract.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    approval = principal - offer.origination_fee_bps * principal // BPS
     assert payment_contract.balanceOf(offer.lender) >= approval, f"Lender must have {approval}"
     assert payment_contract.allowance(offer.lender, contract.address) >= approval, f"Lender must approve {approval}"
 
@@ -518,7 +533,7 @@ def pay_loan(loan, contract, *, sender):
         print(f"Approving {amount_to_approve} for {contract.address}")
         payment_contract.approve(contract.address, amount_to_approve, sender=sender)
 
-    contract.settle_loan.estimate_gas_cost(loan, sender=sender)
+    contract.settle_loan(loan, sender=sender)
 
 
 def add_collateral(loan: Loan, contract, collateral_amount: int, sender):
@@ -526,26 +541,37 @@ def add_collateral(loan: Loan, contract, collateral_amount: int, sender):
 
     if collateral_contract.allowance(loan.borrower, contract.address) < collateral_amount:
         print(f"Approving {collateral_amount} for {contract.address}")
-        collateral_contract.approve(dm.p2p_usdc_weth.address, collateral_amount, sender=loan.borrower)
+        collateral_contract.approve(contract.address, collateral_amount, sender=sender)
 
-    contract.add_collateral_to_loan(loan.id, collateral_amount, sender=sender)
+    contract.add_collateral_to_loan(loan, collateral_amount, sender=sender)
 
 
 def remove_collateral(loan: Loan, contract, collateral_amount: int, sender):
-    contract.remove_collateral_from_loan(loan.id, collateral_amount, sender=sender)
+    contract.remove_collateral_from_loan(loan, collateral_amount, sender=sender)
 
 
-def refinance(loan: Loan, offer: SignedOffer, contract, kyc_borrower: SignedWalletValidation | None, sender):
-    if kyc_borrower is None:
+def refinance(  # noqa: PLR0917
+    loan: Loan,
+    offer: SignedOffer,
+    contract,
+    principal: int,
+    collateral_amount: int,
+    kyc_lender: SignedWalletValidation | None,
+    sender,
+):
+    if not collateral_amount:
+        collateral_amount = max(loan.collateral_amount, offer.offer.min_collateral_amount)
+
+    if kyc_lender is None:
         print("Signing KYC for borrower")
-        kyc_borrower = sign_kyc(sender.address, dm.owner, contract.kyc_validator_addr())
+        kyc_lender = sign_kyc(offer.offer.lender, dm.owner, contract.kyc_validator_addr())
 
-    _kyc_borrower = SignedWalletValidation(
-        kyc_borrower.validation,
+    _kyc_lender = SignedWalletValidation(
+        kyc_lender.validation,
         Signature(
-            kyc_borrower.signature.v,
-            HexBytes(kyc_borrower.signature.r).to_0x_hex(),
-            HexBytes(kyc_borrower.signature.s).to_0x_hex(),
+            kyc_lender.signature.v,
+            HexBytes(kyc_lender.signature.r).to_0x_hex(),
+            HexBytes(kyc_lender.signature.s).to_0x_hex(),
         ),
     )
 
@@ -561,7 +587,7 @@ def refinance(loan: Loan, offer: SignedOffer, contract, kyc_borrower: SignedWall
         assert payment_contract.balanceOf(offer.offer.lender) >= approval, f"New lender must have {approval}"
         assert payment_contract.allowance(offer.offer.lender, contract.address) >= approval, f"Lender must approve {approval}"
 
-    return contract.refinance_loan(loan.id, offer, _kyc_borrower, sender=sender)
+    return contract.replace_loan(loan, offer, principal, collateral_amount, _kyc_lender, sender=sender)
 
 
 def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle, *, oracle_reverse=False):

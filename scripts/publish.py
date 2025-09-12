@@ -80,7 +80,7 @@ def update_abi(abi_key: str, abi: list[dict]):
 
 
 @click.command()
-def cli():  # noqa: C901
+def cli():
     dm = DeploymentManager(ENV, CHAIN)
 
     print(f"Updating p2p erc20 configs in {ENV.name} for {CHAIN}")
