@@ -1,16 +1,9 @@
 import json
 from dataclasses import dataclass
-from hashlib import sha3_256
 
 from ape import project
-from ape.contracts.base import ContractContainer
-from ethpm_types.contract_type import ContractType
-from hexbytes import HexBytes
-from rich import print
-from rich.markup import escape
 
 from .basetypes import ContractConfig, DeploymentContext, abi_key
-from .transactions import check_owner, execute, execute_read
 
 ZERO_ADDRESS = "0x" + "00" * 20
 ZERO_BYTES32 = "0x" + "00" * 32

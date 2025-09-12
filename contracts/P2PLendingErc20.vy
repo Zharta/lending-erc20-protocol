@@ -291,7 +291,7 @@ revoked_offers: public(HashMap[bytes32, bool])
 authorized_proxies: public(HashMap[address, bool])
 pending_transfers: public(HashMap[address, uint256])
 
-VERSION: public(constant(String[30])) = "P2PLendingErc20.20250909"
+VERSION: public(constant(String[30])) = "P2PLendingErc20.20250912"
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
@@ -506,6 +506,8 @@ def create_loan(
     borrower: address = msg.sender if not self.authorized_proxies[msg.sender] else tx.origin
 
     assert staticcall KYCValidator(kyc_validator_addr).check_validations_pair(borrower_kyc, lender_kyc), "KYC validation fail"
+    assert lender_kyc.validation.wallet == offer.offer.lender, "KYC validation fail"
+    assert borrower_kyc.validation.wallet == borrower, "KYC validation fail"
     assert offer.offer.borrower == empty(address) or offer.offer.borrower == borrower, "borrower not allowed"
     assert offer.offer.principal == 0 or offer.offer.principal == principal, "offer principal mismatch"
     assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
@@ -939,6 +941,7 @@ def replace_loan(
     self._check_offer_validity(offer)
 
     assert staticcall KYCValidator(kyc_validator_addr).check_validation(lender_kyc), "KYC validation fail"
+    assert lender_kyc.validation.wallet == offer.offer.lender, "KYC validation fail"
     assert offer.offer.borrower == empty(address) or offer.offer.borrower == loan.borrower, "borrower not allowed"
     assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
     assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"
@@ -1020,8 +1023,6 @@ def replace_loan(
             self._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256))
         if old_lender_delta > 0:
             self._send_funds(loan.lender, old_lender_delta)
-        else:
-            self._send_funds(new_loan.lender, convert(new_lender_delta, uint256))
 
     if borrower_delta > 0:
         self._send_funds(loan.borrower, convert(borrower_delta, uint256))
