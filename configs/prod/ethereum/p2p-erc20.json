@@ -2,7 +2,7 @@
     "common": {
         "kyc": {
             "abi_key": "c9c669b817531c2dd57ea0619817312855a9935c",
-            "address": "",
+            "address": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
             "contract": "KYCValidator",
             "properties": {
                 "validator": "0x5723759D679662cf931d686f129E3296D9545190"
@@ -44,7 +44,7 @@
     "p2p": {
         "usdc_cbbtc": {
             "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
-            "address": "",
+            "address": "0xCF4364B22266C88B0c3c8B350966451509B872Ee",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: cbBTC / USD",
             "properties": {
@@ -61,13 +61,17 @@
                 "soft_liquidation_fee": 250
             },
             "properties_addresses": {
+                "collateral_token": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+                "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
+                "oracle": "0x2665701293fCbEB223D11A08D826563EDcCE423A",
+                "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_wbtc": {
             "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
-            "address": "",
+            "address": "0x3f9Eee6f2E0311f3aF191c4Cb90Dc0F1601e9a3a",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: BTC/USD",
             "properties": {
@@ -84,13 +88,17 @@
                 "soft_liquidation_fee": 250
             },
             "properties_addresses": {
+                "collateral_token": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+                "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
+                "oracle": "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
+                "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_weth": {
             "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
-            "address": "",
+            "address": "0xc4Cb90d51547E11Cb1AAa0588659D445cB1290c7",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: USDC / ETH",
             "properties": {
@@ -107,6 +115,10 @@
                 "soft_liquidation_fee": 250
             },
             "properties_addresses": {
+                "collateral_token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+                "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
+                "oracle": "0x986b5E1e1755e3C2440e960477f25201B0a8bbD4",
+                "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
             },
             "token_symbol": "USDC",
             "version": "1"
