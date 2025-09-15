@@ -703,7 +703,7 @@ def soft_liquidate_loan(loan: Loan):
         borrower=loan.borrower,
         lender=loan.lender,
         collateral_token=loan.collateral_token,
-        collateral_amount=loan.collateral_amount - collateral_claimed,
+        collateral_amount=loan.collateral_amount - collateral_claimed - liquidation_fee,
         min_collateral_amount=loan.min_collateral_amount,
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
