@@ -44,7 +44,7 @@
     "p2p": {
         "usdc_cbbtc": {
             "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
-            "address": "0x0F902cA2D5534Fab72e46109ce2f57B02aB6DEFd",
+            "address": "0x198FC46193f23163C9c5230b79286215eC0b4690",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: cbBTC / USD",
             "properties": {
@@ -71,7 +71,7 @@
         },
         "usdc_wbtc": {
             "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
-            "address": "0xCb2dB722CC4b9cbcF0A7DB9d00560eFADe8041e3",
+            "address": "0x6847F7c7752F8a5f79F8556042bc425FF15D26eD",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: BTC/USD",
             "properties": {
@@ -98,7 +98,7 @@
         },
         "usdc_weth": {
             "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
-            "address": "0x9c0d2E5f4B7CA2161Dac67c3a11e50aA9E17026A",
+            "address": "0x81B174bE09891697127b815AEd0424a495f1A9B3",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: USDC / ETH",
             "properties": {
