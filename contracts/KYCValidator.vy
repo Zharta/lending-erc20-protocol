@@ -40,7 +40,7 @@ proposed_owner: public(address)
 
 validator: public(address)
 
-VERSION: public(constant(String[30])) = "KYCValidator.20250826"
+VERSION: public(constant(String[30])) = "KYCValidator.20250915"
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
@@ -75,6 +75,7 @@ def __init__(_validator: address):
     )
 
 
+@view
 @external
 def check_validation(validation: SignedWalletValidation) -> bool:
     """
@@ -84,6 +85,7 @@ def check_validation(validation: SignedWalletValidation) -> bool:
     """
     return self._check_validation(validation)
 
+@view
 @external
 def check_validations_pair(validation1: SignedWalletValidation, validation2: SignedWalletValidation) -> bool:
     """
@@ -95,6 +97,7 @@ def check_validations_pair(validation1: SignedWalletValidation, validation2: Sig
     return self._check_validation(validation1) and self._check_validation(validation2)
 
 
+@view
 @internal
 def _check_validation(signed_validation: SignedWalletValidation) -> bool:
     return ecrecover(
