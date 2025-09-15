@@ -1,0 +1,115 @@
+{
+    "common": {
+        "kyc": {
+            "abi_key": "c9c669b817531c2dd57ea0619817312855a9935c",
+            "address": "",
+            "contract": "KYCValidator",
+            "properties": {
+                "validator": "0x5723759D679662cf931d686f129E3296D9545190"
+            },
+            "properties_addresses": {}
+        },
+        "oracle_btc_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "0"
+            },
+            "properties_addresses": {}
+        },
+        "oracle_cbbtc_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0x2665701293fCbEB223D11A08D826563EDcCE423A",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "0"
+            },
+            "properties_addresses": {}
+        },
+        "oracle_usdc_eth": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0x986b5E1e1755e3C2440e960477f25201B0a8bbD4",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 18,
+                "rate": "0"
+            },
+            "properties_addresses": {}
+        }
+    },
+    "configs": {},
+    "p2p": {
+        "usdc_cbbtc": {
+            "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
+            "address": "",
+            "contract": "P2PLendingErc20",
+            "oracle_name": "Chainlink Feed: cbBTC / USD",
+            "properties": {
+                "collateral_token_key": "common.cbbtc",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 5000,
+                "max_protocol_upfront_fee": 5000,
+                "oracle_key": "common.oracle_cbbtc_usd",
+                "oracle_reverse": false,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
+                "soft_liquidation_fee": 250
+            },
+            "properties_addresses": {
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_wbtc": {
+            "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
+            "address": "",
+            "contract": "P2PLendingErc20",
+            "oracle_name": "Chainlink Feed: BTC/USD",
+            "properties": {
+                "collateral_token_key": "common.wbtc",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 5000,
+                "max_protocol_upfront_fee": 5000,
+                "oracle_key": "common.oracle_btc_usd",
+                "oracle_reverse": false,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
+                "soft_liquidation_fee": 250
+            },
+            "properties_addresses": {
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_weth": {
+            "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
+            "address": "",
+            "contract": "P2PLendingErc20",
+            "oracle_name": "Chainlink Feed: USDC / ETH",
+            "properties": {
+                "collateral_token_key": "common.weth",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 5000,
+                "max_protocol_upfront_fee": 5000,
+                "oracle_key": "common.oracle_usdc_eth",
+                "oracle_reverse": true,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
+                "soft_liquidation_fee": 250
+            },
+            "properties_addresses": {
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        }
+    }
+}
