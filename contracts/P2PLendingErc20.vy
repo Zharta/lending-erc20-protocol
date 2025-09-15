@@ -514,14 +514,18 @@ def create_loan(
     assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"
 
     convertion_rate: UInt256Rational = self._get_oracle_rate()
+
+    max_initial_ltv: uint256 = offer.offer.max_iltv
+    if offer.offer.max_iltv == 0:
+        max_initial_ltv = self._compute_ltv(offer.offer.min_collateral_amount, principal, convertion_rate)
+
     initial_ltv: uint256 = self._compute_ltv(collateral_amount, principal, convertion_rate)
-    if offer.offer.max_iltv > 0:
-        assert initial_ltv <= offer.offer.max_iltv, "initial ltv gt max iltv"
+    assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 
     if offer.offer.soft_liquidation_ltv > 0:
-        assert offer.offer.soft_liquidation_ltv > initial_ltv, "liquidation ltv gt initial ltv"
+        assert offer.offer.soft_liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
         # required for soft liquidation: (1 + f) * iltv < 1
-        assert (BPS + self.soft_liquidation_fee) * initial_ltv < BPS * BPS, "initial ltv too high"
+        assert (BPS + self.soft_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
 
     offer_id: bytes32 = self._compute_signed_offer_id(offer)
     loan: Loan = Loan(
@@ -548,7 +552,7 @@ def create_loan(
         call_window=offer.offer.call_window,
         soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
         oracle_addr=oracle_addr,
-        initial_ltv=initial_ltv,
+        initial_ltv=max_initial_ltv,
         call_time=0,
     )
     loan.id = self._compute_loan_id(loan)
@@ -684,6 +688,7 @@ def soft_liquidate_loan(loan: Loan):
     )
 
     assert principal_written_off < loan.amount + current_interest, "written off ge debt"
+    assert loan.collateral_amount >= loan.min_collateral_amount + collateral_claimed, "collateral lt min after liq"
 
     updated_loan: Loan = Loan(
         id=loan.id,
@@ -953,15 +958,18 @@ def replace_loan(
     assert offer.offer.principal == 0 or offer.offer.principal == new_principal, "offer principal mismatch"
 
     convertion_rate: UInt256Rational = self._get_oracle_rate()
-    initial_ltv: uint256 = self._compute_ltv(collateral_amount, new_principal, convertion_rate)
 
-    if offer.offer.max_iltv > 0:
-        assert initial_ltv <= offer.offer.max_iltv, "initial ltv gt max iltv"
+    max_initial_ltv: uint256 = offer.offer.max_iltv
+    if offer.offer.max_iltv == 0:
+        max_initial_ltv = self._compute_ltv(offer.offer.min_collateral_amount, new_principal, convertion_rate)
+
+    initial_ltv: uint256 = self._compute_ltv(collateral_amount, new_principal, convertion_rate)
+    assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 
     if offer.offer.soft_liquidation_ltv > 0:
-        assert offer.offer.soft_liquidation_ltv > initial_ltv, "liquidation ltv gt initial ltv"
+        assert offer.offer.soft_liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
         # required for soft liquidation: (1 + f) * iltv < 1
-        assert (BPS + self.soft_liquidation_fee) * initial_ltv < BPS * BPS, "initial ltv too high"
+        assert (BPS + self.soft_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
 
     offer_id: bytes32 = self._compute_signed_offer_id(offer)
     new_loan: Loan = Loan(
@@ -988,7 +996,7 @@ def replace_loan(
         call_window=offer.offer.call_window,
         soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
         oracle_addr=oracle_addr,
-        initial_ltv=initial_ltv,
+        initial_ltv=max_initial_ltv,
         call_time=0,
     )
     new_loan.id = self._compute_loan_id(new_loan)

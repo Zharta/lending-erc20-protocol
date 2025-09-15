@@ -429,7 +429,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
 
     loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
-    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
+    initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, weth, oracle)
 
     loan = Loan(
         id=loan_id,
@@ -459,7 +459,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         call_time=0,
     )
     assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
-    assert p2p_usdc_weth.current_ltv(loan) == initial_ltv
+    assert p2p_usdc_weth.current_ltv(loan) == calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
 
 
 def test_create_loan_logs_event(
@@ -486,7 +486,7 @@ def test_create_loan_logs_event(
 
     loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
-    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
+    initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, weth, oracle)
 
     assert event.id == loan_id
     assert event.amount == principal

@@ -59,7 +59,7 @@ def offer_usdc_weth(now, borrower, lender, oracle_usdc_eth, lender_key, usdc, we
         duration=100,
         origination_fee_bps=100,
         min_collateral_amount=0,
-        max_iltv=8000,
+        max_iltv=4000,
         available_liquidity=principal,
         call_eligibility=1,
         call_window=3600,
@@ -101,7 +101,6 @@ def ongoing_loan_usdc_weth(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
     get_last_event(p2p_usdc_weth, "LoanCreated")
-    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle_usdc_eth, oracle_reverse=True)
 
     loan = Loan(
         id=loan_id,
@@ -126,7 +125,7 @@ def ongoing_loan_usdc_weth(
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
         oracle_addr=offer.oracle_addr,
-        initial_ltv=initial_ltv,
+        initial_ltv=offer.max_iltv,
         call_time=0,
     )
     assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
@@ -145,6 +144,7 @@ def test_remove_collateral_from_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, weth
     updated_loan = replace_namedtuple_field(ongoing_loan_usdc_weth, collateral_amount=collateral_amount - removed_collateral)
     assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
 
+    old_ltv = calc_ltv(ongoing_loan_usdc_weth.amount, collateral_amount, usdc, weth, oracle_usdc_eth, oracle_reverse=True)
     new_ltv = calc_ltv(
         ongoing_loan_usdc_weth.amount, collateral_amount - removed_collateral, usdc, weth, oracle_usdc_eth, oracle_reverse=True
     )
@@ -154,7 +154,7 @@ def test_remove_collateral_from_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, weth
     assert event.collateral_token == ongoing_loan_usdc_weth.collateral_token
     assert event.old_collateral_amount == collateral_amount
     assert event.new_collateral_amount == collateral_amount - removed_collateral
-    assert event.old_ltv == ongoing_loan_usdc_weth.initial_ltv
+    assert event.old_ltv == old_ltv
     assert event.new_ltv == new_ltv
 
     assert weth.balanceOf(p2p_usdc_weth.address) == collateral_amount - removed_collateral

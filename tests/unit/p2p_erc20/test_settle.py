@@ -103,7 +103,6 @@ def ongoing_loan_usdc_weth(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
-    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
 
     loan = Loan(
         id=loan_id,
@@ -128,7 +127,7 @@ def ongoing_loan_usdc_weth(
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
         oracle_addr=offer.oracle_addr,
-        initial_ltv=initial_ltv,
+        initial_ltv=offer.max_iltv,
         call_time=0,
     )
     print(event)
@@ -338,7 +337,6 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     weth.approve(p2p_erc20_weth.address, collateral_amount, sender=borrower)
 
     loan_id = p2p_erc20_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
-    initial_ltv = calc_ltv(principal, collateral_amount, erc20, weth, oracle)
     loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(signed_offer),
@@ -362,7 +360,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
         oracle_addr=p2p_erc20_weth.oracle_addr(),
-        initial_ltv=initial_ltv,
+        initial_ltv=offer.max_iltv,
         call_time=0,
     )
     assert compute_loan_hash(loan) == p2p_erc20_weth.loans(loan_id)
