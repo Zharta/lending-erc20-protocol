@@ -688,7 +688,6 @@ def soft_liquidate_loan(loan: Loan):
     )
 
     assert principal_written_off < loan.amount + current_interest, "written off ge debt"
-    assert loan.collateral_amount >= loan.min_collateral_amount + collateral_claimed, "collateral lt min after liq"
 
     updated_loan: Loan = Loan(
         id=loan.id,
@@ -1156,7 +1155,7 @@ def simulate_soft_liquidation(loan: Loan) -> SoftLiquidationResult:
         collateral_claimed=collateral_claimed,
         liquidation_fee=liquidation_fee,
         debt_written_off=debt_written_off,
-        updated_ltv=self._compute_ltv(loan.collateral_amount - collateral_claimed, loan.amount + current_interest - debt_written_off, convertion_rate)
+        updated_ltv=self._compute_ltv(loan.collateral_amount - collateral_claimed - liquidation_fee, loan.amount + current_interest - debt_written_off, convertion_rate)
     )
 
 # Internal functions
