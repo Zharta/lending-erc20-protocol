@@ -59,7 +59,7 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         duration=100,
         origination_fee_bps=100,
         min_collateral_amount=0,
-        max_iltv=8000,
+        max_iltv=4000,
         available_liquidity=principal,
         call_eligibility=1,
         call_window=3600,
@@ -102,7 +102,6 @@ def ongoing_loan_usdc_weth(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
     get_last_event(p2p_usdc_weth, "LoanCreated")
-    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
 
     loan = Loan(
         id=loan_id,
@@ -127,7 +126,7 @@ def ongoing_loan_usdc_weth(
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
         oracle_addr=offer.oracle_addr,
-        initial_ltv=initial_ltv,
+        initial_ltv=offer.max_iltv,
         call_time=0,
     )
     assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
@@ -176,7 +175,14 @@ def test_remove_collateral_from_loan_reverts_if_above_iltv(
     outstanding_debt = ongoing_loan_usdc_weth.amount + ongoing_loan_usdc_weth.get_interest(now)
     initial_ltv_collateral = calc_collateral_from_ltv(outstanding_debt, ongoing_loan_usdc_weth.initial_ltv, usdc, weth, oracle)
     print(f"{initial_ltv_collateral=}")
-    removed_collateral = int(0.6e18)
+
+    removed_collateral = int(1.2e18)
+    with boa.reverts("collateral bellow min"):
+        p2p_usdc_weth.remove_collateral_from_loan(
+            ongoing_loan_usdc_weth, removed_collateral, sender=ongoing_loan_usdc_weth.borrower
+        )
+
+    removed_collateral = int(0.8e18)
     with boa.reverts("ltv gt initial ltv"):
         p2p_usdc_weth.remove_collateral_from_loan(
             ongoing_loan_usdc_weth, removed_collateral, sender=ongoing_loan_usdc_weth.borrower
@@ -220,7 +226,7 @@ def test_remove_collateral_from_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc
     assert event.collateral_token == ongoing_loan_usdc_weth.collateral_token
     assert event.old_collateral_amount == collateral_amount
     assert event.new_collateral_amount == collateral_amount - removed_collateral
-    assert event.old_ltv == ongoing_loan_usdc_weth.initial_ltv
+    assert event.old_ltv == calc_ltv(ongoing_loan_usdc_weth.amount, collateral_amount, usdc, weth, oracle)
     assert event.new_ltv == calc_ltv(ongoing_loan_usdc_weth.amount, collateral_amount - removed_collateral, usdc, weth, oracle)
 
 

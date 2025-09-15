@@ -62,7 +62,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
 
     loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
-    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle_usdc_eth, oracle_reverse=True)
+    initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, weth, oracle_usdc_eth, oracle_reverse=True)
 
     loan = Loan(
         id=loan_id,

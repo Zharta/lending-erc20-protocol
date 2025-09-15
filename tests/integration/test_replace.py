@@ -136,7 +136,6 @@ def ongoing_loan_usdc_weth(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
-    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle_usdc_eth, oracle_reverse=True)
 
     loan = Loan(
         id=loan_id,
@@ -161,7 +160,7 @@ def ongoing_loan_usdc_weth(
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
         oracle_addr=offer.oracle_addr,
-        initial_ltv=initial_ltv,
+        initial_ltv=offer.max_iltv,
         call_time=0,
     )
     print(event)
@@ -220,8 +219,6 @@ def test_replace_loan(
     )
     event = get_last_event(p2p_usdc_weth, "LoanReplaced")
 
-    initial_ltv = calc_ltv(offer.principal, new_collateral_amount, usdc, weth, oracle_usdc_eth, oracle_reverse=True)
-
     assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
     assert usdc.balanceOf(p2p_usdc_weth.address) == 0
 
@@ -237,7 +234,7 @@ def test_replace_loan(
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
     assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
-    assert event.initial_ltv == initial_ltv
+    assert event.initial_ltv == offer.max_iltv
     assert event.origination_fee_amount == offer.origination_fee_bps * offer.principal // BPS
     assert event.protocol_upfront_fee_amount == p2p_usdc_weth.protocol_upfront_fee() * offer.principal // BPS
     assert event.protocol_settlement_fee == p2p_usdc_weth.protocol_settlement_fee()
