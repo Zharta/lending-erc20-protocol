@@ -35,4 +35,4 @@ jobs:
 
     - name: Run project integration tests
       run: |
-        pytest tests/integration --durations=0 --gas-profile
+        pytest tests/integration
