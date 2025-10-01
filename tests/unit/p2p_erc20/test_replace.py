@@ -708,6 +708,7 @@ def test_replace_loan_pays_protocol_fees(
 
 def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_erc20_contract_def,
+    p2p_refinance,
     weth,
     owner,
     borrower,
@@ -742,7 +743,7 @@ def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     erc20 = boa.loads(failing_erc20_code)
     p2p_erc20_weth = p2p_lending_erc20_contract_def.deploy(
-        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0
+        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0, p2p_refinance.address
     )
     principal = 1000 * 10**6
     offer = Offer(

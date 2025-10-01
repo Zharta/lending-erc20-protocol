@@ -285,6 +285,7 @@ def test_settle_loan_pays_protocol_fees(p2p_usdc_weth, ongoing_loan_usdc_weth, u
 
 def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_erc20_contract_def,
+    p2p_refinance,
     weth,
     owner,
     borrower,
@@ -315,7 +316,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     erc20 = boa.loads(failing_erc20_code)
     p2p_erc20_weth = p2p_lending_erc20_contract_def.deploy(
-        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0
+        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0, p2p_refinance.address
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -375,7 +376,7 @@ def test_claim_pending_transactions(p2p_usdc_weth, usdc):
     user = boa.env.generate_address()
     value = 10**6
 
-    p2p_usdc_weth.eval(f"self.pending_transfers[{user}] = {value}")
+    p2p_usdc_weth.eval(f"base.pending_transfers[{user}] = {value}")
     boa.env.set_balance(p2p_usdc_weth.address, value)
     usdc.deposit(value=value, sender=p2p_usdc_weth.address)
 

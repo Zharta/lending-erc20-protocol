@@ -152,16 +152,13 @@ def oracle(oracle_contract_def, owner):
 
 
 @pytest.fixture(scope="session")
+def p2p_lending_refinance_contract_def(boa_env):
+    return boa.load_partial("contracts/P2PLendingRefinance.vy")
+
+
+@pytest.fixture(scope="session")
 def p2p_lending_erc20_contract_def(boa_env):
     return boa.load_partial("contracts/P2PLendingErc20.vy")
-    # filename = "contracts/P2PLendingErc20.vy"
-    # with open(filename) as f:
-    #     return boa.loads_partial(
-    #         f.read(),
-    #         name=filename,
-    #         filename=filename,
-    #         no_vvm=True,
-    #     )
 
 
 @pytest.fixture(scope="session")
