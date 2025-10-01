@@ -89,10 +89,10 @@ def offer_usdc_weth(now, borrower, lender, oracle_usdc_eth, lender_key, usdc, we
 
 @pytest.fixture
 def offer_usdc_weth2(now, borrower, lender2, oracle_usdc_eth, lender2_key, usdc, weth, p2p_usdc_weth):
-    principal = 2000 * 10**6
+    principal = 1000 * 10**6
     offer = Offer(
         principal=principal,
-        apr=1000,
+        apr=500,
         payment_token=usdc.address,
         collateral_token=weth.address,
         duration=10 * DAY,
@@ -182,6 +182,10 @@ def _calc_deltas(loan, offer, principal, timestamp, contract) -> (int, int, int,
     delta_new_lender = origination_fee_amount - new_principal - protocol_fee_amount
     delta_protocol = protocol_settlement_fee + protocol_fee_amount
 
+    if delta_borrower < 0:
+        delta_lender += delta_borrower
+        delta_borrower = 0
+
     return delta_borrower, delta_lender, delta_new_lender, delta_protocol
 
 
@@ -190,19 +194,13 @@ def test_replace_loan(
 ):
     loan = ongoing_loan_usdc_weth
     offer = offer_usdc_weth2.offer
-    new_collateral_amount = loan.collateral_amount * 2
     replace_timestamp = now + 1 * DAY
     delta_borrower, delta_lender, delta_new_lender, protocol_delta = _calc_deltas(
         loan, offer, offer.principal, replace_timestamp, p2p_usdc_weth
     )
 
-    if delta_borrower < 0:
-        usdc.approve(p2p_usdc_weth.address, -delta_borrower, sender=loan.borrower)
     if delta_new_lender < 0:
         usdc.approve(p2p_usdc_weth.address, -delta_new_lender, sender=lender2)
-    if new_collateral_amount > loan.collateral_amount:
-        weth.deposit(value=new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
-        weth.approve(p2p_usdc_weth.address, new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
 
     offer1_liquidity_before = p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id)
     offer2_liquidity_before = p2p_usdc_weth.commited_liquidity(offer.tracing_id)
@@ -214,9 +212,7 @@ def test_replace_loan(
     initial_protocol_wallet_balance = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
 
     boa.env.time_travel(seconds=replace_timestamp - now)
-    new_loan_id = p2p_usdc_weth.replace_loan(  # noqa: F841
-        loan, offer_usdc_weth2, offer.principal, new_collateral_amount, kyc_lender2, sender=loan.borrower
-    )
+    new_loan_id = p2p_usdc_weth.replace_loan_lender(loan, offer_usdc_weth2, offer.principal, kyc_lender2, sender=loan.lender)  # noqa: F841
     # TODO: re-enable event checks once event parsing is fixed
     # event = get_last_event(p2p_usdc_weth, "LoanReplaced")
 
@@ -251,10 +247,8 @@ def test_replace_loan(
     assert p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id) == offer1_liquidity_before - loan.amount
     assert p2p_usdc_weth.commited_liquidity(offer.tracing_id) == offer2_liquidity_before + offer.principal
 
-    assert (
-        weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral + new_collateral_amount - loan.collateral_amount
-    )
-    assert weth.balanceOf(loan.borrower) == initial_borrower_collateral - new_collateral_amount + loan.collateral_amount
+    assert weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral
+    assert weth.balanceOf(loan.borrower) == initial_borrower_collateral
 
     assert usdc.balanceOf(loan.borrower) == initial_borrower_balance + delta_borrower
     assert usdc.balanceOf(loan.lender) == initial_lender_balance + delta_lender
