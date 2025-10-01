@@ -126,24 +126,12 @@ event TransferFailed:
 owner: public(address)
 proposed_owner: public(address)
 
-payment_token: public(immutable(address))
-collateral_token: public(immutable(address))
-oracle_addr: public(immutable(address))
-oracle_reverse: public(immutable(bool))
-kyc_validator_addr: public(immutable(address))
-
 loans: public(HashMap[bytes32, bytes32])
 
 protocol_wallet: public(address)
 protocol_upfront_fee: public(uint256)
 soft_liquidation_fee: public(uint256)
 protocol_settlement_fee: public(uint256)
-max_protocol_upfront_fee: public(immutable(uint256))
-max_protocol_settlement_fee: public(immutable(uint256))
-
-payment_token_decimals: public(immutable(uint256))
-collateral_token_decimals: public(immutable(uint256))
-
 
 commited_liquidity: public(HashMap[bytes32, uint256])
 revoked_offers: public(HashMap[bytes32, bool])
@@ -161,73 +149,10 @@ OFFER_TYPE_DEF: constant(String[370]) = "Offer(uint256 principal,uint256 apr,add
                                         "uint256 expiration,address lender,address borrower,bytes32 tracing_id)"
 OFFER_TYPE_HASH: constant(bytes32) = keccak256(OFFER_TYPE_DEF)
 
-offer_sig_domain_separator: immutable(bytes32)
-
 
 @deploy
-def __init__(
-    _payment_token: address,
-    _collateral_token: address,
-    _oracle_addr: address,
-    _oracle_reverse: bool,
-    _kyc_validator_addr: address,
-    _protocol_upfront_fee: uint256,
-    _protocol_settlement_fee: uint256,
-    _protocol_wallet: address,
-    _max_protocol_upfront_fee: uint256,
-    _max_protocol_settlement_fee: uint256,
-    _soft_liquidation_fee: uint256,
-):
-
-    """
-    @notice Initialize the contract with the given parameters.
-    @param _payment_token The address of the payment token.
-    @param _collateral_token The address of the collateral token.
-    @param _oracle_addr The address of the oracle contract for collateral valuation.
-    @param _oracle_reverse Whether the oracle returns the collateral price in reverse (i.e., 1 / price).
-    @param _protocol_upfront_fee The percentage (bps) of the principal paid to the protocol at origination.
-    @param _protocol_settlement_fee The percentage (bps) of the interest paid to the protocol at settlement.
-    @param _protocol_wallet The address where the protocol fees are accrued.
-    @param _max_protocol_upfront_fee The maximum percentage (bps) of the principal that can be charged as protocol upfront fee.
-    @param _max_protocol_settlement_fee The maximum percentage (bps) of the interest that can be charged as protocol settlement fee.
-    @param _soft_liquidation_fee The percentage (bps) of the principal that is charged as a liquidation fee when a loan is soft liquidated.
-    """
-
-    assert _protocol_wallet != empty(address)
-    assert _payment_token != empty(address)
-    assert _collateral_token != empty(address)
-    assert _oracle_addr != empty(address)
-
-    assert _max_protocol_settlement_fee <= BPS
-    assert _protocol_upfront_fee <= _max_protocol_upfront_fee
-    assert _protocol_settlement_fee <= _max_protocol_settlement_fee
-
+def __init__():
     self.owner = msg.sender
-    payment_token = _payment_token
-    collateral_token = _collateral_token
-    oracle_addr = _oracle_addr
-    oracle_reverse = _oracle_reverse
-    kyc_validator_addr = _kyc_validator_addr
-    max_protocol_upfront_fee = _max_protocol_upfront_fee
-    max_protocol_settlement_fee = _max_protocol_settlement_fee
-    self.protocol_upfront_fee = _protocol_upfront_fee
-    self.protocol_settlement_fee = _protocol_settlement_fee
-    self.protocol_wallet = _protocol_wallet
-    self.soft_liquidation_fee = _soft_liquidation_fee
-
-    collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
-    payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
-    offer_sig_domain_separator = keccak256(
-        abi_encode(
-            DOMAIN_TYPE_HASH,
-            keccak256(ZHARTA_DOMAIN_NAME),
-            keccak256(ZHARTA_DOMAIN_VERSION),
-            chain.id,
-            self
-        )
-    )
-
-
 
 
 # Internal functions
@@ -290,7 +215,7 @@ def _loan_state_hash(loan: Loan) -> bytes32:
 
 
 @internal
-def _is_offer_signed_by_lender(signed_offer: SignedOffer) -> bool:
+def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separator: bytes32) -> bool:
     return ecrecover(
         keccak256(
             concat(
@@ -314,7 +239,7 @@ def _compute_settlement_interest(loan: Loan) -> uint256:
 
 
 @internal
-def _send_funds(_to: address, _amount: uint256):
+def _send_funds(_to: address, _amount: uint256, payment_token: address):
     success: bool = False
     response: Bytes[32] = b""
 
@@ -331,22 +256,22 @@ def _send_funds(_to: address, _amount: uint256):
 
 
 @internal
-def _receive_funds(_from: address, _amount: uint256):
+def _receive_funds(_from: address, _amount: uint256, payment_token: address):
     assert extcall IERC20(payment_token).transferFrom(_from, self, _amount), "transferFrom failed"
 
 
 @internal
-def _transfer_funds(_from: address, _to: address, _amount: uint256):
+def _transfer_funds(_from: address, _to: address, _amount: uint256, payment_token: address):
     assert extcall IERC20(payment_token).transferFrom(_from, _to, _amount), "transferFrom failed"
 
 
 @internal
-def _send_collateral(wallet: address, _amount: uint256):
+def _send_collateral(wallet: address, _amount: uint256, collateral_token: address):
     assert extcall IERC20(collateral_token).transfer(wallet, _amount), "transfer failed"
 
 
 @internal
-def _receive_collateral(_from: address, _amount: uint256):
+def _receive_collateral(_from: address, _amount: uint256, collateral_token: address):
     assert extcall IERC20(collateral_token).transferFrom(_from, self, _amount), "transferFrom failed"
 
 
@@ -355,7 +280,7 @@ def _check_user(user: address) -> bool:
     return msg.sender == user or (self.authorized_proxies[msg.sender] and user == tx.origin)
 
 @internal
-def _check_offer_validity(offer: SignedOffer):
+def _check_offer_validity(offer: SignedOffer, payment_token: address, collateral_token: address, oracle_addr: address):
     assert offer.offer.expiration > block.timestamp, "offer expired"
     assert offer.offer.duration > 0, "duration is 0"
     assert offer.offer.payment_token == payment_token, "invalid payment token"
@@ -365,10 +290,9 @@ def _check_offer_validity(offer: SignedOffer):
     assert offer.offer.min_collateral_amount > 0 or offer.offer.max_iltv > 0, "no min collateral nor max iltv"
 
 
-
 @view
 @internal
-def _get_oracle_rate() -> UInt256Rational:
+def _get_oracle_rate(oracle_addr: address, oracle_reverse: bool) -> UInt256Rational:
     convertion_rate_numerator: uint256 = 0
     convertion_rate_denominator: uint256 = 0
     if oracle_reverse:
@@ -385,7 +309,7 @@ def _get_oracle_rate() -> UInt256Rational:
 
 @view
 @internal
-def _compute_ltv(collateral_amount: uint256, amount: uint256, convertion_rate: UInt256Rational) -> uint256:
+def _compute_ltv(collateral_amount: uint256, amount: uint256, convertion_rate: UInt256Rational, payment_token_decimals: uint256, collateral_token_decimals: uint256) -> uint256:
     return amount * BPS * convertion_rate.denominator * collateral_token_decimals // (collateral_amount * convertion_rate.numerator * payment_token_decimals)
 
 
@@ -397,6 +321,8 @@ def _compute_soft_liquidation(
     initial_ltv: uint256,
     soft_liquidation_fee: uint256,
     convertion_rate: UInt256Rational,
+    payment_token_decimals: uint256,
+    collateral_token_decimals: uint256
 ) -> (uint256, uint256, uint256):
     """
     returns:

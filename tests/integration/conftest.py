@@ -189,6 +189,11 @@ def p2p_lending_erc20_contract_def():
 
 
 @pytest.fixture(scope="session")
+def p2p_lending_refinance_contract_def():
+    return boa.load_partial("contracts/P2PLendingRefinance.vy")
+
+
+@pytest.fixture(scope="session")
 def kyc_validator_contract_def():
     return boa.load_partial("contracts/KYCValidator.vy")
 
@@ -217,9 +222,14 @@ def kyc_validator_contract(kyc_validator_contract_def, kyc_validator):
 
 
 @pytest.fixture
-def p2p_usdc_weth(p2p_lending_erc20_contract_def, usdc, weth, oracle_usdc_eth, kyc_validator_contract, owner):
+def p2p_refinance(p2p_lending_refinance_contract_def):
+    return p2p_lending_refinance_contract_def.deploy()
+
+
+@pytest.fixture
+def p2p_usdc_weth(p2p_lending_erc20_contract_def, p2p_refinance, usdc, weth, oracle_usdc_eth, kyc_validator_contract, owner):
     return p2p_lending_erc20_contract_def.deploy(
-        usdc, weth, oracle_usdc_eth, True, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0
+        usdc, weth, oracle_usdc_eth, True, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0, p2p_refinance.address
     )
 
 

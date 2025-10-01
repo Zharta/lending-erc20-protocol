@@ -82,50 +82,8 @@ VERSION: public(constant(String[30])) = "P2PLendingRefinance.20251001"
 
 
 @deploy
-def __init__(
-    _payment_token: address,
-    _collateral_token: address,
-    _oracle_addr: address,
-    _oracle_reverse: bool,
-    _kyc_validator_addr: address,
-    _protocol_upfront_fee: uint256,
-    _protocol_settlement_fee: uint256,
-    _protocol_wallet: address,
-    _max_protocol_upfront_fee: uint256,
-    _max_protocol_settlement_fee: uint256,
-    _soft_liquidation_fee: uint256,
-):
-
-    """
-    @notice Initialize the contract with the given parameters.
-    @param _payment_token The address of the payment token.
-    @param _collateral_token The address of the collateral token.
-    @param _oracle_addr The address of the oracle contract for collateral valuation.
-    @param _oracle_reverse Whether the oracle returns the collateral price in reverse (i.e., 1 / price).
-    @param _protocol_upfront_fee The percentage (bps) of the principal paid to the protocol at origination.
-    @param _protocol_settlement_fee The percentage (bps) of the interest paid to the protocol at settlement.
-    @param _protocol_wallet The address where the protocol fees are accrued.
-    @param _max_protocol_upfront_fee The maximum percentage (bps) of the principal that can be charged as protocol upfront fee.
-    @param _max_protocol_settlement_fee The maximum percentage (bps) of the interest that can be charged as protocol settlement fee.
-    @param _soft_liquidation_fee The percentage (bps) of the principal that is charged as a liquidation fee when a loan is soft liquidated.
-
-    @dev This requires a P2PLendingRefinance deployment for each base contract.
-    @dev TODO: Eval alternative impl so the P2PLendingRefinance could be shared: initialize the base module with empty data, add the relevant data to the methods signatures and appended it to the calldata in the delegatecall from the main contract.
-    """
-
-    base.__init__(
-    _payment_token,
-    _collateral_token,
-    _oracle_addr,
-    _oracle_reverse,
-    _kyc_validator_addr,
-    _protocol_upfront_fee,
-    _protocol_settlement_fee,
-    _protocol_wallet,
-    _max_protocol_upfront_fee,
-    _max_protocol_settlement_fee,
-    _soft_liquidation_fee,
-    )
+def __init__():
+    base.__init__()
 
 
 
@@ -137,12 +95,21 @@ def replace_loan(
     offer: base.SignedOffer,
     principal: uint256,
     collateral_amount: uint256,
-    lender_kyc: base.SignedWalletValidation
+    lender_kyc: base.SignedWalletValidation,
+
+    payment_token: address,
+    collateral_token: address,
+    oracle_addr: address,
+    oracle_reverse: bool,
+    kyc_validator_addr: address,
+    collateral_token_decimals: uint256,
+    payment_token_decimals: uint256,
+    offer_sig_domain_separator: bytes32,
 ) -> bytes32:
 
     """
     @notice Replace an existing loan by accepting a new offer over the same collateral. The current loan is settled and the new loan is created. Must be called by the borrower.
-    @dev No collateral transfer is required. The borrower must be the same as the borrower of the current loan.
+    @dev The borrower must be the same as the borrower of the current loan.
     @param loan The loan to be replaced.
     @param offer The new signed offer.
     @param principal The principal amount of the new loan, 0 means the outstanding debt
@@ -155,27 +122,27 @@ def replace_loan(
     assert base._check_user(loan.borrower), "not borrower"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
 
-    assert base._is_offer_signed_by_lender(offer), "offer not signed by lender"
-    base._check_offer_validity(offer)
+    assert base._is_offer_signed_by_lender(offer, offer_sig_domain_separator), "offer not signed by lender"
+    base._check_offer_validity(offer, payment_token, collateral_token, oracle_addr)
 
-    self._validate_kyc(lender_kyc, offer.offer.lender)
+    self._validate_kyc(lender_kyc, offer.offer.lender, kyc_validator_addr)
     assert offer.offer.borrower == empty(address) or offer.offer.borrower == loan.borrower, "borrower not allowed"
     assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
     assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"
 
     interest: uint256 = base._compute_settlement_interest(loan)
-    protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
+    protocol_settlement_fee_amount: uint256 = loan.protocol_settlement_fee * interest // BPS
     outstanding_debt: uint256 = loan.amount + interest
     new_principal: uint256 = outstanding_debt if principal == 0 else principal
     assert offer.offer.principal == 0 or offer.offer.principal == new_principal, "offer principal mismatch"
 
-    convertion_rate: base.UInt256Rational = base._get_oracle_rate()
+    convertion_rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
 
     max_initial_ltv: uint256 = offer.offer.max_iltv
     if offer.offer.max_iltv == 0:
-        max_initial_ltv = base._compute_ltv(offer.offer.min_collateral_amount, new_principal, convertion_rate)
+        max_initial_ltv = base._compute_ltv(offer.offer.min_collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
 
-    initial_ltv: uint256 = base._compute_ltv(collateral_amount, new_principal, convertion_rate)
+    initial_ltv: uint256 = base._compute_ltv(collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
     assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 
     if offer.offer.soft_liquidation_ltv > 0:
@@ -197,7 +164,7 @@ def replace_loan(
         accrual_start_time=block.timestamp,
         borrower=loan.borrower,
         lender=offer.offer.lender,
-        collateral_token=base.collateral_token,
+        collateral_token=collateral_token,
         collateral_amount=collateral_amount,
         min_collateral_amount=offer.offer.min_collateral_amount,
         origination_fee_amount=offer.offer.origination_fee_bps * new_principal // BPS,
@@ -207,7 +174,7 @@ def replace_loan(
         call_eligibility=offer.offer.call_eligibility,
         call_window=offer.offer.call_window,
         soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
-        oracle_addr=base.oracle_addr,
+        oracle_addr=oracle_addr,
         initial_ltv=max_initial_ltv,
         call_time=0,
     )
@@ -221,35 +188,35 @@ def replace_loan(
     base.loans[new_loan.id] = base._loan_state_hash(new_loan)
 
     if collateral_amount > loan.collateral_amount:
-        base._receive_collateral(loan.borrower, collateral_amount - loan.collateral_amount)
+        base._receive_collateral(loan.borrower, collateral_amount - loan.collateral_amount, collateral_token)
     elif collateral_amount < loan.collateral_amount:
-        base._send_collateral(loan.borrower, loan.collateral_amount - collateral_amount)
+        base._send_collateral(loan.borrower, loan.collateral_amount - collateral_amount, collateral_token)
 
 
     borrower_delta: int256 = convert(new_principal, int256) - convert(outstanding_debt + new_loan.origination_fee_amount, int256)
-    old_lender_delta: uint256 = outstanding_debt - protocol_settlement_fee
+    old_lender_delta: uint256 = outstanding_debt - protocol_settlement_fee_amount
     new_lender_delta: int256 = convert(new_loan.origination_fee_amount, int256) - convert(new_loan.amount + new_loan.protocol_upfront_fee_amount, int256)
     if borrower_delta < 0:
-        base._receive_funds(loan.borrower, convert(-borrower_delta, uint256))
+        base._receive_funds(loan.borrower, convert(-borrower_delta, uint256), payment_token)
 
     if loan.lender == offer.offer.lender:
         lender_delta: int256 = convert(old_lender_delta, int256) + new_lender_delta
         if lender_delta < 0:
-            base._receive_funds(loan.lender, convert(-lender_delta, uint256))
+            base._receive_funds(loan.lender, convert(-lender_delta, uint256), payment_token)
         elif lender_delta > 0:
-            base._send_funds(loan.lender, convert(lender_delta, uint256))
+            base._send_funds(loan.lender, convert(lender_delta, uint256), payment_token)
     else:
         if new_lender_delta < 0:
-            base._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256))
+            base._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256), payment_token)
         if old_lender_delta > 0:
-            base._send_funds(loan.lender, old_lender_delta)
+            base._send_funds(loan.lender, old_lender_delta, payment_token)
 
     if borrower_delta > 0:
-        base._send_funds(loan.borrower, convert(borrower_delta, uint256))
+        base._send_funds(loan.borrower, convert(borrower_delta, uint256), payment_token)
 
 
-    if protocol_settlement_fee + new_loan.protocol_upfront_fee_amount > 0:
-        base._send_funds(base.protocol_wallet, protocol_settlement_fee + new_loan.protocol_upfront_fee_amount)
+    if protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount > 0:
+        base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount, payment_token)
 
     log LoanReplaced(
         id=new_loan.id,
@@ -274,7 +241,7 @@ def replace_loan(
         original_loan_id=loan.id,
         paid_principal=loan.amount,
         paid_interest=interest,
-        paid_protocol_settlement_fee_amount=protocol_settlement_fee
+        paid_protocol_settlement_fee_amount=protocol_settlement_fee_amount
     )
 
     return new_loan.id
@@ -285,11 +252,20 @@ def replace_loan_lender(
     loan: base.Loan,
     offer: base.SignedOffer,
     principal: uint256,
-    lender_kyc: base.SignedWalletValidation
+    lender_kyc: base.SignedWalletValidation,
+
+    payment_token: address,
+    collateral_token: address,
+    oracle_addr: address,
+    oracle_reverse: bool,
+    kyc_validator_addr: address,
+    collateral_token_decimals: uint256,
+    payment_token_decimals: uint256,
+    offer_sig_domain_separator: bytes32,
 ) -> bytes32:
 
     """
-    @notice Replace an existing loan by accepting a new offer over the same collateral. The current loan is settled and the new loan is created. Must be called by the borrower.
+    @notice Sell an existing loan by accepting a new offer over the same collateral. The current loan is settled and the new loan is created. Must be called by the lender.
     @dev No collateral transfer is required. The borrower must be the same as the borrower of the current loan.
     @param loan The loan to be replaced.
     @param offer The new signed offer.
@@ -302,28 +278,28 @@ def replace_loan_lender(
     assert base._check_user(loan.lender), "not lender"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
 
-    assert base._is_offer_signed_by_lender(offer), "offer not signed by lender"
-    base._check_offer_validity(offer)
-    self._validate_kyc(lender_kyc, offer.offer.lender)
+    assert base._is_offer_signed_by_lender(offer, offer_sig_domain_separator), "offer not signed by lender"
+    base._check_offer_validity(offer, payment_token, collateral_token, oracle_addr)
+    self._validate_kyc(lender_kyc, offer.offer.lender, kyc_validator_addr)
 
     assert offer.offer.borrower == empty(address) or offer.offer.borrower == loan.borrower, "borrower not allowed"
     assert offer.offer.min_collateral_amount <= loan.collateral_amount, "low collateral amount"
     assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"
 
     interest: uint256 = base._compute_settlement_interest(loan)
-    protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
+    protocol_settlement_fee_amount: uint256 = loan.protocol_settlement_fee * interest // BPS
     outstanding_debt: uint256 = loan.amount + interest
     new_principal: uint256 = outstanding_debt if principal == 0 else principal
     assert offer.offer.principal == 0 or offer.offer.principal == new_principal, "offer principal mismatch"
 
-    convertion_rate: base.UInt256Rational = base._get_oracle_rate()
+    convertion_rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
 
     max_initial_ltv: uint256 = offer.offer.max_iltv
     if offer.offer.max_iltv == 0:
-        max_initial_ltv = base._compute_ltv(offer.offer.min_collateral_amount, new_principal, convertion_rate)
+        max_initial_ltv = base._compute_ltv(offer.offer.min_collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
 
-    current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount, convertion_rate)
-    initial_ltv: uint256 = base._compute_ltv(loan.collateral_amount, new_principal, convertion_rate)
+    current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount, convertion_rate, payment_token_decimals, collateral_token_decimals)
+    initial_ltv: uint256 = base._compute_ltv(loan.collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
     assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 
     if offer.offer.soft_liquidation_ltv > 0:
@@ -345,7 +321,7 @@ def replace_loan_lender(
         accrual_start_time=block.timestamp,
         borrower=loan.borrower,
         lender=offer.offer.lender,
-        collateral_token=base.collateral_token,
+        collateral_token=collateral_token,
         collateral_amount=loan.collateral_amount,
         min_collateral_amount=offer.offer.min_collateral_amount,
         origination_fee_amount=offer.offer.origination_fee_bps * new_principal // BPS,
@@ -355,21 +331,12 @@ def replace_loan_lender(
         call_eligibility=offer.offer.call_eligibility,
         call_window=offer.offer.call_window,
         soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
-        oracle_addr=base.oracle_addr,
+        oracle_addr=oracle_addr,
         initial_ltv=max_initial_ltv,
         call_time=0,
     )
     new_loan.id = base._compute_loan_id(new_loan)
     assert base.loans[new_loan.id] == empty(bytes32), "loan already exists"
-
-    # New loan earlier repayment date must be equal or higher than current loan earlier repayment date
-    # Net repayment must be equal or lower during period
-    # New Loan LTV must be equal or lower than New Loan Max LTV
-    # Loan LLTV <= New Loan LLTV (if applicable)
-    # Call window <= New Loan Call windown (if applicable)
-    # Call Eligilibity - Actual maturity <= New Call Eligibility
-    # Max LTV <= New Loan Max LTV
-    # Loan LTV >= New Loan LTV if there is Liquidation
 
     repayment_time_old_loan: uint256 = self._get_repayment_time(loan)
     repayment_time_new_loan: uint256 = self._get_repayment_time(new_loan)
@@ -391,7 +358,7 @@ def replace_loan_lender(
 
 
     borrower_delta: int256 = convert(new_principal, int256) - convert(outstanding_debt + new_loan.origination_fee_amount, int256)
-    old_lender_delta: int256 = convert(outstanding_debt - protocol_settlement_fee, int256)
+    old_lender_delta: int256 = convert(outstanding_debt - protocol_settlement_fee_amount, int256)
     new_lender_delta: int256 = convert(new_loan.origination_fee_amount, int256) - convert(new_loan.amount + new_loan.protocol_upfront_fee_amount, int256)
     if borrower_delta < 0:
         old_lender_delta += borrower_delta
@@ -400,23 +367,23 @@ def replace_loan_lender(
     if loan.lender == offer.offer.lender:
         lender_delta: int256 = old_lender_delta + new_lender_delta
         if lender_delta < 0:
-            base._receive_funds(loan.lender, convert(-lender_delta, uint256))
+            base._receive_funds(loan.lender, convert(-lender_delta, uint256), payment_token)
         elif lender_delta > 0:
-            base._send_funds(loan.lender, convert(lender_delta, uint256))
+            base._send_funds(loan.lender, convert(lender_delta, uint256), payment_token)
     else:
         if new_lender_delta < 0:
-            base._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256))
+            base._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256), payment_token)
         if old_lender_delta < 0:
-            base._receive_funds(loan.lender, convert(-old_lender_delta, uint256))
+            base._receive_funds(loan.lender, convert(-old_lender_delta, uint256), payment_token)
         if old_lender_delta > 0:
-            base._send_funds(loan.lender, convert(old_lender_delta, uint256))
+            base._send_funds(loan.lender, convert(old_lender_delta, uint256), payment_token)
 
     if borrower_delta > 0:
-        base._send_funds(loan.borrower, convert(borrower_delta, uint256))
+        base._send_funds(loan.borrower, convert(borrower_delta, uint256), payment_token)
 
 
-    if protocol_settlement_fee + new_loan.protocol_upfront_fee_amount > 0:
-        base._send_funds(base.protocol_wallet, protocol_settlement_fee + new_loan.protocol_upfront_fee_amount)
+    if protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount > 0:
+        base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount, payment_token)
 
     log LoanReplacedByLender(
         id=new_loan.id,
@@ -441,7 +408,7 @@ def replace_loan_lender(
         original_loan_id=loan.id,
         paid_principal=loan.amount,
         paid_interest=interest,
-        paid_protocol_settlement_fee_amount=protocol_settlement_fee
+        paid_protocol_settlement_fee_amount=protocol_settlement_fee_amount
     )
 
     return new_loan.id
@@ -463,5 +430,5 @@ def _get_repayment_time(loan: base.Loan) -> uint256:
 
 @view
 @internal
-def _validate_kyc(validation: base.SignedWalletValidation, wallet: address):
-    assert (staticcall base.KYCValidator(base.kyc_validator_addr).check_validation(validation) and validation.validation.wallet == wallet), "KYC validation fail"
+def _validate_kyc(validation: base.SignedWalletValidation, wallet: address, kyc_validator_addr: address):
+    assert (staticcall base.KYCValidator(kyc_validator_addr).check_validation(validation) and validation.validation.wallet == wallet), "KYC validation fail"
