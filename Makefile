@@ -6,6 +6,7 @@ PYTHON=${VENV}/bin/python3
 CONTRACTS := $(shell find contracts -depth 1 -name '*.vy')
 NATSPEC := $(patsubst contracts/%, natspec/%, $(CONTRACTS:%.vy=%.json))
 PATH := ${VENV}/bin:${PATH}
+PYTHONPATH:=contracts:scripts:$(PYTHONPATH)
 
 vpath %.vy ./contracts
 

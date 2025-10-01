@@ -5,6 +5,7 @@ import random
 from collections import namedtuple
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from textwrap import dedent
 from typing import NamedTuple
 
@@ -12,6 +13,7 @@ import ape
 import boa
 import eth_abi
 import requests
+import vyper
 import web3
 from ape import convert, networks
 from eth_account import Account
@@ -618,6 +620,19 @@ def calc_deltas(loan: Loan, offer: Offer, principal: int, contract, timestamp: i
     delta_protocol = protocol_settlement_fee + protocol_fee_amount
 
     return delta_borrower, delta_lender, delta_new_lender, delta_protocol
+
+
+def contract_size(path):
+    c = vyper.compile_code(Path(path).read_text(encoding="utf-8"))
+    codesize = len(c["bytecode"]) // 2
+    limit = 24 * 1024
+    print(f"{path} size: {codesize} / {limit} bytes ({limit - codesize} left)")
+    return codesize
+
+
+def contract_sizes():
+    for path in Path("contracts").rglob("*.vy"):
+        contract_size(path)
 
 
 def ape_init_extras():
