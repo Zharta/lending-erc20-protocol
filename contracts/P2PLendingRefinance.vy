@@ -356,20 +356,21 @@ def replace_loan_lender(
     base._check_and_update_offer_state(offer, new_principal)
     base.loans[new_loan.id] = base._loan_state_hash(new_loan)
 
+    max_interest_delta: uint256 = self._max_interest_delta(loan, offer.offer, new_principal)
 
-    borrower_delta: int256 = convert(new_principal, int256) - convert(outstanding_debt + new_loan.origination_fee_amount, int256)
-    old_lender_delta: int256 = convert(outstanding_debt - protocol_settlement_fee_amount, int256)
+    borrower_compensation: uint256 = convert(max(convert(max_interest_delta, int256), convert(outstanding_debt + new_loan.origination_fee_amount, int256) - convert(new_principal, int256)), uint256)
+    borrower_delta: int256 = convert(new_principal + borrower_compensation, int256) - convert(outstanding_debt + new_loan.origination_fee_amount, int256)
+    old_lender_delta: int256 = convert(outstanding_debt - protocol_settlement_fee_amount, int256) - convert(borrower_compensation, int256)
     new_lender_delta: int256 = convert(new_loan.origination_fee_amount, int256) - convert(new_loan.amount + new_loan.protocol_upfront_fee_amount, int256)
-    if borrower_delta < 0:
-        old_lender_delta += borrower_delta
-        borrower_delta = 0
+
+    assert borrower_delta >= 0, "borrower delta neg"
 
     if loan.lender == offer.offer.lender:
         lender_delta: int256 = old_lender_delta + new_lender_delta
         if lender_delta < 0:
             base._receive_funds(loan.lender, convert(-lender_delta, uint256), payment_token)
-        elif lender_delta > 0:
-            base._send_funds(loan.lender, convert(lender_delta, uint256), payment_token)
+        # cant be positive as borrower_delta >= 0
+
     else:
         if new_lender_delta < 0:
             base._receive_funds(new_loan.lender, convert(-new_lender_delta, uint256), payment_token)
@@ -432,3 +433,14 @@ def _get_repayment_time(loan: base.Loan) -> uint256:
 @internal
 def _validate_kyc(validation: base.SignedWalletValidation, wallet: address, kyc_validator_addr: address):
     assert (staticcall base.KYCValidator(kyc_validator_addr).check_validation(validation) and validation.validation.wallet == wallet), "KYC validation fail"
+
+@view
+@internal
+def _max_interest_delta(loan: base.Loan, offer: base.Offer, new_principal: uint256) -> uint256:
+    return convert(
+        max(
+            0,
+            (convert(new_principal * offer.apr, int256) - convert(loan.amount * loan.apr, int256)) * convert(loan.maturity - block.timestamp, int256) // convert(365 * 86400 * BPS, int256)
+        ),
+        uint256
+    )
