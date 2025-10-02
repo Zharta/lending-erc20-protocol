@@ -169,23 +169,51 @@ def ongoing_loan_usdc_weth(
     return loan
 
 
+def _max_interest_delta(loan: Loan, offer: Offer, new_principal: int, refinance_timestamp: int):
+    assert refinance_timestamp >= loan.start_time
+    assert refinance_timestamp <= loan.maturity
+    print(f"_max_interest_delta: {loan=}, {offer=}, {refinance_timestamp=}")
+
+    loan_interest_delta_at_maturity = loan.amount * loan.apr * (loan.maturity - refinance_timestamp) // (365 * DAY * BPS)
+    offer_interest_at_loan_maturity = new_principal * offer.apr * (loan.maturity - refinance_timestamp) // (365 * DAY * BPS)
+
+    return max(0, offer_interest_at_loan_maturity - loan_interest_delta_at_maturity)
+
+
+def _max_interest_delta(loan: Loan, offer: Offer, new_principal: int, refinance_timestamp: int):
+    assert refinance_timestamp >= loan.start_time
+    assert refinance_timestamp <= loan.maturity
+    print(f"_max_interest_delta: {loan=}, {offer=}, {refinance_timestamp=}")
+    print(
+        f"_max_interest_delta: {loan.amount=} {loan.apr=} {new_principal=}, {offer.apr=} {loan.maturity=}, {refinance_timestamp=}"  # noqa: E501
+    )  # noqa: E501
+
+    loan_interest_delta_at_maturity = loan.amount * loan.apr * (loan.maturity - refinance_timestamp) // (365 * DAY * BPS)
+    offer_interest_at_loan_maturity = new_principal * offer.apr * (loan.maturity - refinance_timestamp) // (365 * DAY * BPS)
+
+    return max(0, offer_interest_at_loan_maturity - loan_interest_delta_at_maturity)
+
+
 def _calc_deltas(loan, offer, principal, timestamp, contract) -> (int, int, int, int):
     interest = loan.amount * loan.apr * (timestamp - loan.accrual_start_time) // (365 * DAY * BPS)
     protocol_settlement_fee = interest * loan.protocol_settlement_fee // BPS
-    outanding_debt = loan.amount + interest
-    new_principal = outanding_debt if principal == 0 else principal
+    outstanding_debt = loan.amount + interest
+    new_principal = outstanding_debt if principal == 0 else principal
     origination_fee_amount = offer.origination_fee_bps * new_principal // BPS
     protocol_fee_amount = contract.protocol_upfront_fee() * new_principal // BPS
 
-    delta_borrower = new_principal - outanding_debt - origination_fee_amount
-    delta_lender = outanding_debt - protocol_settlement_fee
+    max_interest_delta = _max_interest_delta(loan, offer, new_principal, timestamp)
+    borrower_compensation = max(0, max_interest_delta + new_principal - outstanding_debt - origination_fee_amount)
+    borrower_compensation = max(max_interest_delta, origination_fee_amount - new_principal + outstanding_debt)
+
+    delta_borrower = new_principal - outstanding_debt - origination_fee_amount + borrower_compensation
+    delta_lender = outstanding_debt - protocol_settlement_fee - borrower_compensation
     delta_new_lender = origination_fee_amount - new_principal - protocol_fee_amount
     delta_protocol = protocol_settlement_fee + protocol_fee_amount
 
-    if delta_borrower < 0:
-        delta_lender += delta_borrower
-        delta_borrower = 0
-
+    print(
+        f"_calc_deltas {max_interest_delta=}, {borrower_compensation=} {delta_borrower=}, {delta_lender=}, {delta_new_lender=}, {delta_protocol=}"  # noqa: E501
+    )  # noqa: E501
     return delta_borrower, delta_lender, delta_new_lender, delta_protocol
 
 
