@@ -52,13 +52,20 @@
                 "rate": "234216332997344"
             },
             "properties_addresses": {}
+        },
+        "refinance_impl": {
+            "abi_key": "fb649955b227f9b13c2fc2f1c87589d5b8b560af",
+            "address": "0xCeac0EB0A510Fe43C4538AA3F544Bbb0B34848Be",
+            "contract": "RefinanceImpl",
+            "properties": {},
+            "properties_addresses": {}
         }
     },
     "configs": {},
     "p2p": {
         "usdc_cbbtc": {
-            "abi_key": "18c300a224b635ad0e481b8226805c8a76f800f7",
-            "address": "0x491257D2A03F283b9129e86220fa7906e8105a29",
+            "abi_key": "6227d6178f7b21287e81e39e03959760b3e94a31",
+            "address": "0xD28CE18f2f8B1E2c68c0fd3b774A3b72045a8C64",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: cbBTC / USD",
             "properties": {
@@ -72,20 +79,22 @@
                 "protocol_settlement_fee": 0,
                 "protocol_upfront_fee": 0,
                 "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "refinance_impl_key": "common.refinance_impl",
                 "soft_liquidation_fee": 1000
             },
             "properties_addresses": {
                 "collateral_token": "0x1a7E47Ca5143d661619dF68a028eEb65bd5b642F",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "oracle": "0xe3680b612343EE64f011a7d8fF1b9C375F8Cc980",
-                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883"
+                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
+                "refinance_impl": "0xCeac0EB0A510Fe43C4538AA3F544Bbb0B34848Be"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_wbtc": {
-            "abi_key": "18c300a224b635ad0e481b8226805c8a76f800f7",
-            "address": "0x7D9aD20e98aF0fF66D8b2b21363e661068cb4c70",
+            "abi_key": "6227d6178f7b21287e81e39e03959760b3e94a31",
+            "address": "0x11C9D2C1fD3A0e8A5e3008A0D7aeBE4D9Dff94E4",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: BTC/USD",
             "properties": {
@@ -99,20 +108,22 @@
                 "protocol_settlement_fee": 0,
                 "protocol_upfront_fee": 0,
                 "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "refinance_impl_key": "common.refinance_impl",
                 "soft_liquidation_fee": 1000
             },
             "properties_addresses": {
                 "collateral_token": "0x4aF802216a2Fd654C1275DC62f48DfC7fB5B2B7a",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "oracle": "0x4F7A42F426897a46A2a30CEC315773140F1fb104",
-                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883"
+                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
+                "refinance_impl": "0xCeac0EB0A510Fe43C4538AA3F544Bbb0B34848Be"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_weth": {
-            "abi_key": "18c300a224b635ad0e481b8226805c8a76f800f7",
-            "address": "0x15B4C40a0938B0bF7765928ebF2E7C8d79BEFB95",
+            "abi_key": "6227d6178f7b21287e81e39e03959760b3e94a31",
+            "address": "0x8d794390E7c1003309688711f5D955Eed6f8fAeD",
             "contract": "P2PLendingErc20",
             "oracle_name": "Chainlink Feed: USDC / ETH",
             "properties": {
@@ -126,13 +137,15 @@
                 "protocol_settlement_fee": 0,
                 "protocol_upfront_fee": 0,
                 "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "refinance_impl_key": "common.refinance_impl",
                 "soft_liquidation_fee": 1000
             },
             "properties_addresses": {
                 "collateral_token": "0xEba85304439c77C74Fb471D302fba836ab3248b4",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "oracle": "0x40c5Fcd5906f1D5978E1A72FD55D69825367EAB6",
-                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883"
+                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
+                "refinance_impl": "0xCeac0EB0A510Fe43C4538AA3F544Bbb0B34848Be"
             },
             "token_symbol": "USDC",
             "version": "1"
