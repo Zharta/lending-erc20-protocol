@@ -48,6 +48,7 @@ class P2PLendingErc20(ContractConfig):
         oracle_key: str,
         oracle_reverse: bool = False,
         kyc_validator_key: str | None = None,
+        refinance_impl_key: str | None = None,
         protocol_upfront_fee: int,
         protocol_settlement_fee: int,
         protocol_wallet: str,
@@ -62,7 +63,7 @@ class P2PLendingErc20(ContractConfig):
             project.P2PLendingErc20,
             version=version,
             abi_key=abi_key,
-            deployment_deps={payment_token_key, collateral_token_key, oracle_key, kyc_validator_key},
+            deployment_deps={payment_token_key, collateral_token_key, oracle_key, kyc_validator_key, refinance_impl_key},
             deployment_args=[
                 payment_token_key,
                 collateral_token_key,
@@ -75,7 +76,31 @@ class P2PLendingErc20(ContractConfig):
                 max_protocol_upfront_fee,
                 max_protocol_settlement_fee,
                 soft_liquidation_fee,
+                refinance_impl_key or ZERO_ADDRESS,
             ],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class RefinanceImpl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingRefinance,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
         )
         if address:
             self.load_contract(address)
@@ -99,7 +124,7 @@ class Oracle(ContractConfig):
             project.OracleMock,
             version=version,
             abi_key=abi_key,
-            token=True,
+            token=False,
             deployment_args=[decimals, int(rate) if rate else None],
         )
         if address:
@@ -123,7 +148,7 @@ class KYCValidator(ContractConfig):
             project.KYCValidator,
             version=version,
             abi_key=abi_key,
-            token=True,
+            token=False,
             deployment_args=[validator],
         )
         if address:
