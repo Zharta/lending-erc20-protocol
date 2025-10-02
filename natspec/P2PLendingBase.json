@@ -1,0 +1,2 @@
+{"notice": "This contract facilitates peer-to-peer lending using ERC20s as collateral."}
+{"title": "P2PLendingBase", "author": "[Zharta](https://zharta.io/)", "details": "Keep all state here so that the storage layout is consistent across contracts"}
