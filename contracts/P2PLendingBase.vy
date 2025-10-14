@@ -34,6 +34,8 @@ interface KYCValidator:
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
+MALLEABILITY_THRESHOLD: constant(uint256) = 57896044618658097711785492504343953926418782139537452191302581570759080747168
+
 struct WalletValidation:
     wallet: address
     expiration_time: uint256
@@ -216,6 +218,8 @@ def _loan_state_hash(loan: Loan) -> bytes32:
 
 @internal
 def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separator: bytes32) -> bool:
+    assert signed_offer.signature.s <= MALLEABILITY_THRESHOLD, "invalid signature"
+
     return ecrecover(
         keccak256(
             concat(

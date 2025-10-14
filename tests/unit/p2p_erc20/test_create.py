@@ -14,6 +14,7 @@ from ...conftest_base import (
     compute_signed_offer_id,
     get_events,
     get_last_event,
+    manipulate_signature,
     replace_namedtuple_field,
     sign_kyc,
     sign_offer,
@@ -124,6 +125,10 @@ def test_create_loan_reverts_if_offer_has_invalid_signature(
             p2p_usdc_weth.create_loan(
                 SignedOffer(invalid_offer, signed_offer.signature), 1000, 1, kyc_borrower, kyc_lender, sender=borrower
             )
+
+    with boa.reverts("invalid signature"):
+        manipulated_sig_offer = replace_namedtuple_field(signed_offer, signature=manipulate_signature(signed_offer.signature))
+        p2p_usdc_weth.create_loan(manipulated_sig_offer, 1000, 1, kyc_borrower, kyc_lender, sender=borrower)
 
 
 def test_create_loan_reverts_if_offer_expired(
