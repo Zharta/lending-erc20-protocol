@@ -9,6 +9,7 @@ from ...conftest_base import (
     Loan,
     Offer,
     calc_ltv,
+    compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
@@ -199,16 +200,17 @@ def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     assert usdc.balanceOf(p2p_usdc_weth.address) == 0
 
 
-def test_settle_loan_decreases_offer_count(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
+def test_settle_loan_updates_commited_liquidity(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
     interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
     amount_to_settle = loan.amount + interest
 
-    offer_liquidity_before = p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id)
+    liquidity_key = compute_liquidity_key(loan.lender, loan.offer_tracing_id)
+    offer_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity_key)
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
     p2p_usdc_weth.settle_loan(loan, sender=loan.borrower)
 
-    assert p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id) == offer_liquidity_before - loan.amount
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == offer_liquidity_before - loan.amount
 
 
 def test_settle_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):

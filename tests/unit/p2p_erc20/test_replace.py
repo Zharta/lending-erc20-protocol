@@ -10,6 +10,7 @@ from ...conftest_base import (
     Offer,
     SignedOffer,
     calc_ltv,
+    compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
@@ -529,8 +530,10 @@ def test_replace_loan_updates_commited_liquidity(
     offer = offer_usdc_weth2.offer
     delta_borrower, _, delta_new_lender, _ = _calc_deltas(loan, offer, 0, now, p2p_usdc_weth)
 
-    offer1_liquidity_before = p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id)
-    offer2_liquidity_before = p2p_usdc_weth.commited_liquidity(offer.tracing_id)
+    liquidity_key_1 = compute_liquidity_key(loan.lender, loan.offer_tracing_id)
+    liquidity_key_2 = compute_liquidity_key(lender2, offer.tracing_id)
+    offer1_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity_key_1)
+    offer2_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity_key_2)
 
     if delta_borrower < 0:
         usdc.approve(p2p_usdc_weth.address, -delta_borrower, sender=loan.borrower)
@@ -538,8 +541,8 @@ def test_replace_loan_updates_commited_liquidity(
         usdc.approve(p2p_usdc_weth.address, -delta_new_lender, sender=lender2)
 
     p2p_usdc_weth.replace_loan(loan, offer_usdc_weth2, 0, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
-    assert p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id) == offer1_liquidity_before - loan.amount
-    assert p2p_usdc_weth.commited_liquidity(offer.tracing_id) == offer2_liquidity_before + loan.amount
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key_1) == offer1_liquidity_before - loan.amount
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key_2) == offer2_liquidity_before + loan.amount
 
 
 @pytest.mark.skip(reason="boa doesnt catch 'unused' events and fails")

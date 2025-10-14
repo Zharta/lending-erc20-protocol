@@ -10,6 +10,7 @@ from ...conftest_base import (
     Offer,
     SignedOffer,
     calc_ltv,
+    compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
     get_events,
@@ -30,6 +31,11 @@ def lender_funds(lender, usdc):
 @pytest.fixture(autouse=True)
 def kyc_lender(lender, kyc_for, kyc_validator_contract):
     return kyc_for(lender, kyc_validator_contract.address)
+
+
+@pytest.fixture(autouse=True)
+def kyc_lender2(lender2, kyc_for, kyc_validator_contract):
+    return kyc_for(lender2, kyc_validator_contract.address)
 
 
 @pytest.fixture(autouse=True)
@@ -600,7 +606,7 @@ def test_create_loan_transfers_origination_fee_to_lender(
     assert usdc.balanceOf(lender) == lender_balance_before - principal + origination_fee
 
 
-def test_create_loan_updates_offer_usage_count(
+def test_create_loan_updates_commited_liquidity(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
 ):
     principal = 1000
@@ -624,7 +630,8 @@ def test_create_loan_updates_offer_usage_count(
 
     p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
-    assert p2p_usdc_weth.commited_liquidity(offer.tracing_id) == principal
+    liquidity_key = compute_liquidity_key(offer.lender, offer.tracing_id)
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == principal
 
 
 def test_create_loan_for_token_offer_revokes_normal_offer(
@@ -687,3 +694,40 @@ def test_create_loan_for_token_offer_doesnt_revoke_open_offer(
 
     assert len(get_events(p2p_usdc_weth, "OfferRevoked")) == 0
     assert not p2p_usdc_weth.revoked_offers(offer_id)
+
+
+def test_create_loan_for_different_lenders_track_liquidity_separately(
+    p2p_usdc_weth, borrower, now, lender, lender_key, lender2, lender2_key, kyc_borrower, kyc_lender, kyc_lender2, weth, usdc
+):
+    principal = 1000
+    collateral_amount = int(1e18)
+    offer1 = Offer(
+        principal=principal,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+    )
+    offer2 = replace_namedtuple_field(offer1, lender=lender2)
+    signed_offer1 = sign_offer(offer1, lender_key, p2p_usdc_weth.address)
+    signed_offer2 = sign_offer(offer2, lender2_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=2 * collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.address, 2 * collateral_amount, sender=borrower)
+    usdc.deposit(value=principal, sender=lender)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+    usdc.deposit(value=principal, sender=lender2)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender2)
+
+    p2p_usdc_weth.create_loan(signed_offer1, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+    p2p_usdc_weth.create_loan(signed_offer2, principal, collateral_amount, kyc_borrower, kyc_lender2, sender=borrower)
+
+    liquidity_key1 = compute_liquidity_key(offer1.lender, offer1.tracing_id)
+    liquidity_key2 = compute_liquidity_key(offer2.lender, offer2.tracing_id)
+    assert liquidity_key1 != liquidity_key2
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key1) == principal
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key2) == principal
