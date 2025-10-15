@@ -396,6 +396,22 @@ def test_replace_loan_lender_reverts_if_min_collateral_and_max_iltv_are_zero(
         p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
 
 
+def test_replace_loan_lender_reverts_if_lowers_soft_liquidation_ltv(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, lender2_key, now, offer_usdc_weth2, kyc_lender2
+):
+    loan = ongoing_loan_usdc_weth
+    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    amount_to_settle = loan.amount + interest
+
+    invalid_offer = replace_namedtuple_field(offer_usdc_weth2.offer, soft_liquidation_ltv=loan.soft_liquidation_ltv - 1)
+    signed_invalid_offer = sign_offer(invalid_offer, lender2_key, p2p_usdc_weth.address)
+
+    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
+
+    with boa.reverts("liquidation ltv lt old loan"):
+        p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
+
+
 def test_replace_loan_lender_reverts_if_offer_is_revoked(
     p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now, offer_usdc_weth2, kyc_lender2
 ):
