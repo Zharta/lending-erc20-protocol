@@ -565,6 +565,7 @@ def soft_liquidate_loan(loan: base.Loan):
     convertion_rate: base.UInt256Rational = self._get_oracle_rate()
     current_ltv: uint256 = self._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate)
 
+    assert loan.soft_liquidation_ltv > 0, "soft liquidation disabled"
     assert current_ltv >= loan.soft_liquidation_ltv, "ltv lt liquidation ltv"
 
     principal_written_off: uint256 = 0
