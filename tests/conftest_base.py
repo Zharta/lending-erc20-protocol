@@ -277,6 +277,12 @@ def get_loan_mutations(loan):
     yield replace_namedtuple_field(loan, lender=random_address)
 
 
+def manipulate_signature(sig: Signature):
+    new_v = (sig.v + 1) if sig.v % 2 else (sig.v - 1)
+    new_s = int("0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16) - sig.s
+    return Signature(new_v, sig.r, new_s)
+
+
 def calc_ltv(principal, collateral_amount, principal_token, collateral_token, oracle, *, oracle_reverse=False):
     latest_round_data = AggregatorV3LatestRoundData(*oracle.latestRoundData())
     rate = latest_round_data.answer
