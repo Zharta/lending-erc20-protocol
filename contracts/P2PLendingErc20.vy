@@ -553,8 +553,8 @@ def claim_defaulted_loan_collateral(loan: base.Loan):
 def soft_liquidate_loan(loan: base.Loan):
 
     """
-    @notice Settle a loan.
-    @param loan The loan to be settled.
+    @notice Soft liquidates a loan if the LTV exceeds the soft_liquidation_ltv, resulting in a write-off of part of the debt and transfer of part of the collateral to the lender. The loan remains active. Can be called by anyone.
+    @param loan The loan to be soft liquidated.
     """
 
     assert base._is_loan_valid(loan), "invalid loan"
