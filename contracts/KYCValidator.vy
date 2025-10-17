@@ -40,7 +40,7 @@ proposed_owner: public(address)
 
 validator: public(address)
 
-VERSION: public(constant(String[30])) = "KYCValidator.20250915"
+VERSION: public(constant(String[30])) = "KYCValidator.20251017"
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"

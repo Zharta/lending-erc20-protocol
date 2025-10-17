@@ -189,7 +189,7 @@ event LoanReplacedByLender:
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
-VERSION: public(constant(String[30])) = "P2PLendingErc20.20251001"
+VERSION: public(constant(String[30])) = "P2PLendingErc20.20251017"
 
 payment_token: public(immutable(address))
 collateral_token: public(immutable(address))

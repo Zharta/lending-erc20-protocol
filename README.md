@@ -47,9 +47,10 @@ The current status of the protocol follows certain assumptions:
 
 Below are the smart contract audits performed for the protocol so far:
 
-| **Auditor**  | **Version**      | **Status** | **PDF** |
-| :----------: | :--------------: | :--------: | ------- |
-| Hexens       | v1               | Pending    |         |
+| **Auditor**  | **Version**      | **Status** | **PDF**                                                                                                             |
+| :----------: | :--------------: | :--------: | -------                                                                                                             |
+| Hexens       | v1               | Done       | [hexen-zharta-oct-25-final.pdf](https://github.com/Zharta/lending-erc20-protocol/blob/main/audit/hexen-zharta-oct-25-final.pdf) |
+
 
 ## Architecture
 
