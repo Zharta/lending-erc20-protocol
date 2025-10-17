@@ -151,7 +151,8 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
     kyc_lender,
     oracle,
 ):
-    offer = offer_usdc_weth.offer
+    offer = replace_namedtuple_field(offer_usdc_weth.offer, soft_liquidation_ltv=0)
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
     principal = offer.principal
     collateral_amount = int(1e18)
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
@@ -161,13 +162,11 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
-    loan_id = p2p_usdc_weth.create_loan(
-        offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
-    )
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
     loan = Loan(
         id=loan_id,
-        offer_id=compute_signed_offer_id(offer_usdc_weth),
+        offer_id=compute_signed_offer_id(signed_offer),
         offer_tracing_id=offer.tracing_id,
         initial_amount=principal,
         amount=principal,
@@ -211,7 +210,7 @@ def test_soft_liquidate_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan
 def test_soft_liquidate_loan_reverts_if_soft_liquidation_disabled(
     p2p_usdc_weth, ongoing_loan_usdc_weth_without_soft_liquidation, lender
 ):
-    with boa.reverts("ltv lt liquidation ltv"):
+    with boa.reverts("soft liquidation disabled"):
         p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth_without_soft_liquidation, sender=lender)
 
 
