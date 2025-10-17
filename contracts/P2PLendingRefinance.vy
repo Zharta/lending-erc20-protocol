@@ -182,7 +182,7 @@ def replace_loan(
     assert base.loans[new_loan.id] == empty(bytes32), "loan already exists"
 
     base.loans[loan.id] = empty(bytes32)
-    base._reduce_commited_liquidity(loan.offer_tracing_id, loan.amount)
+    base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)
 
     base._check_and_update_offer_state(offer, new_principal)
     base.loans[new_loan.id] = base._loan_state_hash(new_loan)
@@ -351,7 +351,7 @@ def replace_loan_lender(
         assert initial_ltv <= current_ltv, "initial ltv gt old loan"
 
     base.loans[loan.id] = empty(bytes32)
-    base._reduce_commited_liquidity(loan.offer_tracing_id, loan.amount)
+    base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)
 
     base._check_and_update_offer_state(offer, new_principal)
     base.loans[new_loan.id] = base._loan_state_hash(new_loan)

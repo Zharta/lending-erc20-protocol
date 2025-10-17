@@ -162,6 +162,18 @@ def compute_signed_offer_id(offer: SignedOffer):
     )
 
 
+def compute_liquidity_key(lender: str, offer_tracing_id: bytes):
+    return boa.eval(
+        dedent(
+            f"""keccak256(
+            concat(
+                convert({lender}, bytes32),
+                convert({offer_tracing_id}, bytes32),
+            ))"""
+        )
+    )
+
+
 def sign_offer(offer: Offer, lender_key: str, verifying_contract: str) -> SignedOffer:
     typed_data = {
         "types": {

@@ -501,7 +501,7 @@ def settle_loan(loan: base.Loan):
     protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
 
     base.loans[loan.id] = empty(bytes32)
-    base._reduce_commited_liquidity(loan.offer_tracing_id, loan.amount)
+    base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)
 
     self._receive_funds(loan.borrower, loan.amount + interest)
 

@@ -183,9 +183,10 @@ def _check_and_update_offer_state(offer: SignedOffer, amount: uint256):
     offer_id: bytes32 = self._compute_signed_offer_id(offer)
     assert not self.revoked_offers[offer_id], "offer revoked"
 
-    commited_liquidity: uint256 = self.commited_liquidity[offer.offer.tracing_id]
+    liquidity_key: bytes32 = self._commited_liquidity_key(offer.offer.lender, offer.offer.tracing_id)
+    commited_liquidity: uint256 = self.commited_liquidity[liquidity_key]
     assert commited_liquidity + amount <= offer.offer.available_liquidity, "offer fully utilized"
-    self.commited_liquidity[offer.offer.tracing_id] = commited_liquidity + amount
+    self.commited_liquidity[liquidity_key] = commited_liquidity + amount
 
     if offer.offer.borrower != empty(address):
         # offer has borrower => normal offer
@@ -201,9 +202,15 @@ def _revoke_offer(offer_id: bytes32, offer: SignedOffer):
 
 
 @internal
-def _reduce_commited_liquidity(tracing_id: bytes32, amount: uint256):
-    commited_liquidity: uint256 = self.commited_liquidity[tracing_id]
-    self.commited_liquidity[tracing_id] = 0 if amount > commited_liquidity else commited_liquidity - amount
+def _reduce_commited_liquidity(lender: address, tracing_id: bytes32, amount: uint256):
+    liquidity_key: bytes32 = self._commited_liquidity_key(lender, tracing_id)
+    commited_liquidity: uint256 = self.commited_liquidity[liquidity_key]
+    self.commited_liquidity[liquidity_key] = 0 if amount > commited_liquidity else commited_liquidity - amount
+
+@pure
+@internal
+def _commited_liquidity_key(lender: address, tracing_id: bytes32) -> bytes32:
+    return keccak256(concat(convert(lender, bytes32), tracing_id))
 
 @view
 @internal
