@@ -9,6 +9,7 @@ from ..conftest_base import (
     Loan,
     Offer,
     calc_ltv,
+    compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
@@ -142,11 +143,12 @@ def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
     protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
     amount_to_receive = loan.amount + interest - protocol_fee_amount
     initial_lender_balance = usdc.balanceOf(loan.lender)
+    liquidity_key = compute_liquidity_key(loan.lender, ongoing_loan_usdc_weth.offer_tracing_id)
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
 
     initial_borrower_balance = usdc.balanceOf(ongoing_loan_usdc_weth.borrower)
-    offer_liquidity_before = p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id)
+    offer_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity_key)
     borrower_balance_before = weth.balanceOf(loan.borrower)
     initial_protocol_wallet_balance = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
 
@@ -164,7 +166,7 @@ def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
     assert event.origination_fee_amount == loan.origination_fee_amount
     assert event.protocol_upfront_fee_amount == loan.protocol_upfront_fee_amount
     assert event.protocol_settlement_fee_amount == protocol_fee_amount
-    assert p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id) == offer_liquidity_before - loan.amount
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == offer_liquidity_before - loan.amount
 
     assert usdc.balanceOf(p2p_usdc_weth.address) == 0
     assert usdc.balanceOf(ongoing_loan_usdc_weth.borrower) == initial_borrower_balance - amount_to_settle

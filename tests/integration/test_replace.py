@@ -10,6 +10,7 @@ from ..conftest_base import (
     Offer,
     SignedOffer,
     calc_ltv,
+    compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
@@ -204,8 +205,10 @@ def test_replace_loan(
         weth.deposit(value=new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
         weth.approve(p2p_usdc_weth.address, new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
 
-    offer1_liquidity_before = p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id)
-    offer2_liquidity_before = p2p_usdc_weth.commited_liquidity(offer.tracing_id)
+    liquidity1_key = compute_liquidity_key(ongoing_loan_usdc_weth.lender, ongoing_loan_usdc_weth.offer_tracing_id)
+    liquidity2_key = compute_liquidity_key(offer.lender, offer.tracing_id)
+    offer1_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity1_key)
+    offer2_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity2_key)
     initial_borrower_collateral = weth.balanceOf(loan.borrower)
     initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.address)
     initial_borrower_balance = usdc.balanceOf(loan.borrower)
@@ -248,8 +251,8 @@ def test_replace_loan(
     # assert event.paid_interest == interest
     # assert event.paid_protocol_settlement_fee_amount == interest * loan.protocol_settlement_fee // 10000
 
-    assert p2p_usdc_weth.commited_liquidity(ongoing_loan_usdc_weth.offer_tracing_id) == offer1_liquidity_before - loan.amount
-    assert p2p_usdc_weth.commited_liquidity(offer.tracing_id) == offer2_liquidity_before + offer.principal
+    assert p2p_usdc_weth.commited_liquidity(liquidity1_key) == offer1_liquidity_before - loan.amount
+    assert p2p_usdc_weth.commited_liquidity(liquidity2_key) == offer2_liquidity_before + offer.principal
 
     assert (
         weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral + new_collateral_amount - loan.collateral_amount
