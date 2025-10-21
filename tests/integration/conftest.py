@@ -36,7 +36,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 23318930
+        blkid = 23628063
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 
@@ -184,6 +184,11 @@ def oracle_usdc_eth(oracle_contract_def, owner):
 
 
 @pytest.fixture(scope="session")
+def p2p_lending_securitize_contract_def():
+    return boa.load_partial("contracts/P2PLendingSecuritize.vy")
+
+
+@pytest.fixture(scope="session")
 def p2p_lending_erc20_contract_def():
     return boa.load_partial("contracts/P2PLendingErc20.vy")
 
@@ -242,14 +247,3 @@ def empty_contract_def():
      """
         )
     )
-
-
-# @boa.precompile("def debug_bytes(data: Bytes[1024])")
-# def debug_bytes(data: bytes):
-#     print(f"DEBUG: {data.hex()} {data.decode()}")
-
-
-# @pytest.fixture(scope="session")
-# def debug_precompile(boa_env):
-#     register_raw_precompile("0x0000000000000000000000000000000000011111", debug_bytes)
-#     yield
