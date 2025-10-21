@@ -1,7 +1,9 @@
+import os
 from textwrap import dedent
 
 import boa
 import pytest
+from boa.environment import Env
 
 from ..conftest_base import (
     ZERO_ADDRESS,
@@ -16,6 +18,7 @@ from ..conftest_base import (
     get_events,
     get_last_event,
     replace_namedtuple_field,
+    sign_kyc,
     sign_offer,
 )
 
@@ -24,13 +27,7 @@ BPS = 10000
 
 @pytest.fixture
 def acred(owner, accounts, erc20_contract_def):
-    erc20 = erc20_contract_def.at("0x17418038ecF73BA4026c4f428547BF099706F27B")
-    holder = "0xa0759A0DFdE5395a1892aEd90eB5665698CFaa05"
-    with boa.env.prank(holder):
-        for account in accounts:
-            erc20.transfer(account, 10**9, sender=holder)
-    erc20.transfer(owner, 10**9, sender=holder)
-    return erc20
+    return erc20_contract_def.at("0x17418038ecF73BA4026c4f428547BF099706F27B")
 
 
 @pytest.fixture(autouse=True)
@@ -39,8 +36,8 @@ def lender_funds(lender, usdc, owner):
 
 
 @pytest.fixture(autouse=True)
-def kyc_lender(lender, kyc_for, kyc_validator_contract):
-    return kyc_for(lender, kyc_validator_contract.address)
+def kyc_lender(lender, kyc_for, kyc_validator_contract, now):
+    return kyc_for(lender, kyc_validator_contract.address, expiration=now + 86400)
 
 
 @pytest.fixture(autouse=True)
@@ -60,9 +57,16 @@ def oracle_acred_usd(oracle_contract_def, owner):
 
 @pytest.fixture
 def p2p_usdc_acred(
-    p2p_lending_erc20_contract_def, p2p_refinance, usdc, acred, oracle_acred_usd, kyc_validator_contract, sec_borrower, owner
+    p2p_lending_securitize_contract_def,
+    p2p_refinance,
+    usdc,
+    acred,
+    oracle_acred_usd,
+    kyc_validator_contract,
+    sec_borrower,
+    owner,
 ):
-    return p2p_lending_erc20_contract_def.deploy(
+    return p2p_lending_securitize_contract_def.deploy(
         usdc,
         acred,
         oracle_acred_usd,
@@ -78,12 +82,47 @@ def p2p_usdc_acred(
     )
 
 
+@pytest.fixture
+def securitize_registry(p2p_usdc_acred, now):
+    contract_def = boa.load_abi("contracts/auxiliary/SecuritizeRegistryService_abi.json")
+    owner = "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
+    contract = contract_def.at("0x3A8E9CD2E17E1F2904b7f745Da29C9cA765Cc319")
+    investor_id = "test_zharta"
+    assert contract.registerInvestor(investor_id, "", sender=owner)
+    # contract.addWallet(p2p_usdc_acred.address, investor_id, sender=owner)
+    ACCREDITED = 2
+    APPROVED = 1
+    contract.updateInvestor(
+        investor_id,
+        "",
+        "PT",
+        [p2p_usdc_acred.address],
+        [ACCREDITED],
+        [APPROVED],
+        [now + 86400 * 365],
+        sender=owner,
+    )
+    return contract
+
+
 def test_create_loan(
-    p2p_usdc_acred, sec_borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc, oracle_usdc_eth
+    p2p_usdc_acred,
+    sec_borrower,
+    lender,
+    lender_key,
+    kyc_borrower,
+    kyc_lender,
+    kyc_validator_contract,
+    kyc_validator_key,
+    usdc,
+    acred,
+    oracle_acred_usd,
+    securitize_registry,
 ):
     borrower = sec_borrower
     principal = 1000 * int(1e9)
-    collateral_amount = int(1e9)
+    collateral_amount = 95 * int(1e6)
+    now = boa.eval("block.timestamp")
     offer = Offer(
         principal=principal,
         payment_token=p2p_usdc_acred.payment_token(),
@@ -96,18 +135,23 @@ def test_create_loan(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
 
-    weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_acred.address, collateral_amount, sender=borrower)
+    acred.approve(p2p_usdc_acred.address, collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
 
-    borrower_collateral_balance_before = weth.balanceOf(borrower)
+    borrower_collateral_balance_before = acred.balanceOf(borrower)
     borrower_balance_before = usdc.balanceOf(borrower)
+
+    now = boa.eval("block.timestamp")
+    boa.vm.py_evm.register_raw_precompile(
+        "0x0000000000000000000000000000000000011111", lambda computation: print("0x" + computation.msg.data.hex())
+    )
+
     origination_fee = offer.origination_fee_bps * principal // BPS
     lender_balance_before = usdc.balanceOf(lender)
 
     loan_id = p2p_usdc_acred.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     event = get_last_event(p2p_usdc_acred, "LoanCreated")
-    initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, weth, oracle_usdc_eth, oracle_reverse=True)
+    initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, acred, oracle_acred_usd, oracle_reverse=False)
 
     loan = Loan(
         id=loan_id,
@@ -128,7 +172,7 @@ def test_create_loan(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_acred.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_acred.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_acred.soft_liquidation_fee(),
+        soft_liquidation_fee=0,
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         soft_liquidation_ltv=offer.soft_liquidation_ltv,
@@ -161,8 +205,8 @@ def test_create_loan(
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
 
-    assert weth.balanceOf(p2p_usdc_acred.address) == collateral_amount
-    assert weth.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
+    assert acred.balanceOf(p2p_usdc_acred.address) == collateral_amount
+    assert acred.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
 
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee
     assert usdc.balanceOf(lender) == lender_balance_before - principal + origination_fee
