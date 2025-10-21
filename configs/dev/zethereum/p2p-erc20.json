@@ -75,7 +75,7 @@
     "p2p": {
         "usdc_acred": {
             "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
-            "address": "0x824afC3E4e25a9554584b13a09AB9416385f3826",
+            "address": "",
             "contract": "P2PLendingSecuritize",
             "oracle_name": "RedStone Price Feed for ACRED_FUNDAMENTAL",
             "properties": {
