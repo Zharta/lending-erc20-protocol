@@ -54,7 +54,7 @@
         "usdc_acred": {
             "address": "",
             "contract": "P2PLendingSecuritize",
-            "oracle_name": "RedStone Price Feed for ACRED_FUNDAMENTAL",
+            "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
                 "collateral_token_key": "common.acred",
                 "kyc_validator_key": "common.kyc",
