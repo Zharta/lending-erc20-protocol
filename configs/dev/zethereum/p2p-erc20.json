@@ -75,9 +75,9 @@
     "p2p": {
         "usdc_acred": {
             "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
-            "address": "",
+            "address": "0xb4158fb74227f9Cb1B69E493d0401556c9bC8625",
             "contract": "P2PLendingSecuritize",
-            "oracle_name": "RedStone Price Feed for ACRED_FUNDAMENTAL",
+            "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
                 "borrower": "0x52C5599257A5c9FE268d27BAAD9C1f2B220D5F25",
                 "collateral_token_key": "common.acred",
@@ -93,7 +93,7 @@
                 "refinance_impl_key": "common.refinance_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0xD7A396A5E83d840aC80c13a048a0eD4f6c6cbCFe",
+                "collateral_token": "0x29f52C105ade90F928Caf22D1355801AA4D0202c",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "oracle": "0x036611CaA5aDBF21C0699C9A30C5715adB2DC3BE",
                 "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
