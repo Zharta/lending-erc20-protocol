@@ -47,15 +47,24 @@
                 "rate": "0"
             },
             "properties_addresses": {}
+        },
+        "refinance_impl": {
+            "abi_key": "fb649955b227f9b13c2fc2f1c87589d5b8b560af",
+            "address": "0x0C07266B7B9a22C2F678eD8BBC39ce325d663690",
+            "contract": "RefinanceImpl",
+            "properties": {},
+            "properties_addresses": {}
         }
     },
     "configs": {},
     "p2p": {
         "usdc_acred": {
-            "address": "",
+            "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
+            "address": "0x12c1c1aeCa59d19230E7E86f8455C4aE97d7b23D",
             "contract": "P2PLendingSecuritize",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
+                "borrower": "0x81aF1E160c290E8Fff6381CCF67981f012Cf1009",
                 "collateral_token_key": "common.acred",
                 "kyc_validator_key": "common.kyc",
                 "max_protocol_settlement_fee": 5000,
@@ -66,10 +75,14 @@
                 "protocol_settlement_fee": 0,
                 "protocol_upfront_fee": 0,
                 "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
-                "refinance_impl_key": "common.refinance_impl",
-                "borrower": "0x81aF1E160c290E8Fff6381CCF67981f012Cf1009"
+                "refinance_impl_key": "common.refinance_impl"
             },
             "properties_addresses": {
+                "collateral_token": "0x17418038ecF73BA4026c4f428547BF099706F27B",
+                "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
+                "oracle": "0xD6BcbbC87bFb6c8964dDc73DC3EaE6d08865d51C",
+                "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "refinance_impl": "0x0C07266B7B9a22C2F678eD8BBC39ce325d663690"
             },
             "token_symbol": "USDC",
             "version": "1"
