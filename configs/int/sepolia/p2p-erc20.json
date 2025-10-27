@@ -87,6 +87,87 @@
             },
             "token_symbol": "USDC",
             "version": "1"
+        },
+        "usdc_cbbtc": {
+            "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
+            "address": "0x1ABB8Bd7AFAdD6BccE7Ef0e8Dc70c294760fEdeF",
+            "contract": "P2PLendingErc20",
+            "oracle_name": "Chainlink Feed: cbBTC / USD",
+            "properties": {
+                "collateral_token_key": "common.cbbtc",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_cbbtc_usd",
+                "oracle_reverse": false,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "soft_liquidation_fee": 1000
+            },
+            "properties_addresses": {
+                "collateral_token": "0xf7249d03cB1742B42437934583AAa8956a7A6cDD",
+                "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
+                "oracle": "0xc01B9c013617E9AA0aBc863D797Cc484f609BF7F",
+                "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_wbtc": {
+            "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
+            "address": "0x6571FaB8a225bB6C20C14b49BB0bD050c3148381",
+            "contract": "P2PLendingErc20",
+            "oracle_name": "Chainlink Feed: BTC/USD",
+            "properties": {
+                "collateral_token_key": "common.wbtc",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_btc_usd",
+                "oracle_reverse": false,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "soft_liquidation_fee": 1000
+            },
+            "properties_addresses": {
+                "collateral_token": "0x930937403B4c341b1fBb78A152188BdEB49a95E2",
+                "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
+                "oracle": "0x7Fc7B58Ca79D79349E3330448825E5ccafbE9c3a",
+                "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_weth": {
+            "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
+            "address": "0x3c489C4dc49D926c78C9bcAaD8bF51579FB04f6E",
+            "contract": "P2PLendingErc20",
+            "oracle_name": "Chainlink Feed: USDC / ETH",
+            "properties": {
+                "collateral_token_key": "common.weth",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_usdc_eth",
+                "oracle_reverse": true,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "soft_liquidation_fee": 1000
+            },
+            "properties_addresses": {
+                "collateral_token": "0xB7603602860a4816154F2A3bA4d6aBDDd8937b84",
+                "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
+                "oracle": "0x878a0f68CFBe7CCA1dF9D9071Ca8D9bF47782204",
+                "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
         }
     }
 }
