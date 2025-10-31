@@ -94,7 +94,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -234,10 +234,11 @@ def test_remove_collateral_from_loan_transfers_collateral(p2p_usdc_weth, ongoing
     collateral_amount = ongoing_loan_usdc_weth.collateral_amount
     removed_collateral = 1000
 
-    borrower_balance_before = weth.balanceOf(ongoing_loan_usdc_weth.borrower)
+    borrower = ongoing_loan_usdc_weth.borrower
+    borrower_balance_before = weth.balanceOf(borrower)
     p2p_usdc_weth.remove_collateral_from_loan(
         ongoing_loan_usdc_weth, removed_collateral, sender=ongoing_loan_usdc_weth.borrower
     )
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == collateral_amount - removed_collateral
-    assert weth.balanceOf(ongoing_loan_usdc_weth.borrower) == borrower_balance_before + removed_collateral
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(borrower)) == collateral_amount - removed_collateral
+    assert weth.balanceOf(borrower) == borrower_balance_before + removed_collateral

@@ -96,7 +96,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -288,6 +288,7 @@ def test_settle_loan_pays_protocol_fees(p2p_usdc_weth, ongoing_loan_usdc_weth, u
 def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
+    vault_impl,
     weth,
     owner,
     borrower,
@@ -318,7 +319,19 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     erc20 = boa.loads(failing_erc20_code)
     p2p_erc20_weth = p2p_lending_erc20_contract_def.deploy(
-        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0, p2p_refinance.address
+        erc20,
+        weth,
+        oracle,
+        False,
+        kyc_validator_contract,
+        0,
+        0,
+        owner,
+        10000,
+        10000,
+        0,
+        p2p_refinance.address,
+        vault_impl.address,
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -337,7 +350,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     collateral_amount = int(1e18)
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_erc20_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_erc20_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
 
     loan_id = p2p_erc20_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     loan = Loan(

@@ -13,6 +13,7 @@
 from ethereum.ercs import IERC721
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
+from contracts import P2PLendingVault as vault
 
 struct AggregatorV3LatestRoundData:
     roundId: uint80
@@ -29,12 +30,18 @@ interface KYCValidator:
     def check_validation(validation: SignedWalletValidation) -> bool: view
     def check_validations_pair(validation1: SignedWalletValidation, validation2: SignedWalletValidation) -> bool: view
 
+
 # Structs
 
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
 MALLEABILITY_THRESHOLD: constant(uint256) = 57896044618658097711785492504343953926418782139537452191302581570759080747168
+
+_COLLISION_OFFSET: constant(bytes1) = 0xFF
+_DEPLOYMENT_CODE: constant(bytes9) = 0x602D3D8160093D39F3
+_PRE: constant(bytes10) = 0x363d3d373d3d3d363d73
+_POST: constant(bytes15) = 0x5af43d82803e903d91602b57fd5bf3
 
 struct WalletValidation:
     wallet: address
@@ -277,13 +284,13 @@ def _transfer_funds(_from: address, _to: address, _amount: uint256, payment_toke
 
 
 @internal
-def _send_collateral(wallet: address, _amount: uint256, collateral_token: address):
-    assert extcall IERC20(collateral_token).transfer(wallet, _amount), "transfer failed"
+def _send_collateral(wallet: address, _amount: uint256, _vault: vault.Vault):
+    extcall _vault.withdraw(_amount, wallet)
 
 
 @internal
-def _receive_collateral(_from: address, _amount: uint256, collateral_token: address):
-    assert extcall IERC20(collateral_token).transferFrom(_from, self, _amount), "transferFrom failed"
+def _receive_collateral(_from: address, _amount: uint256, _vault: vault.Vault):
+    extcall _vault.deposit(_amount, _from)
 
 
 @internal
@@ -357,3 +364,47 @@ def _is_loan_defaulted(loan: Loan) -> bool:
     if loan.call_time > 0:
         return block.timestamp > loan.call_time + loan.call_window
     return False
+
+
+@internal
+def _get_vault(wallet: address, vault_impl_addr: address) -> vault.Vault:
+    _vault: address = self._wallet_to_vault(wallet, vault_impl_addr)
+    assert _vault.is_contract, "no vault exists for wallet"
+    return vault.Vault(_vault)
+
+@internal
+def _create_vault_if_needed(wallet: address, vault_impl_addr: address, payment_token: address) -> vault.Vault:
+    # only creates a vault if needed
+    _vault: address = self._wallet_to_vault(wallet, vault_impl_addr)
+    if not _vault.is_contract:
+        _vault = create_minimal_proxy_to(vault_impl_addr, salt=convert(wallet, bytes32))
+        extcall vault.Vault(_vault).initialise(wallet, payment_token)
+
+    return vault.Vault(_vault)
+
+
+@view
+@internal
+def _wallet_to_vault(wallet: address, vault_impl_addr: address) -> address:
+    return self._compute_address(
+        convert(wallet, bytes32),
+        keccak256(concat(
+            _DEPLOYMENT_CODE,
+            _PRE,
+            convert(vault_impl_addr, bytes20),
+            _POST
+        )),
+        self
+    )
+
+@pure
+@internal
+def _compute_address(salt: bytes32, bytecode_hash: bytes32, deployer: address) -> address:
+    data: bytes32 = keccak256(concat(_COLLISION_OFFSET, convert(deployer, bytes20), salt, bytecode_hash))
+    return self._convert_keccak256_2_address(data)
+
+
+@pure
+@internal
+def _convert_keccak256_2_address(digest: bytes32) -> address:
+    return convert(convert(digest, uint256) & convert(max_value(uint160), uint256), address)

@@ -17,6 +17,7 @@ exports: base.__interface__
 from ethereum.ercs import IERC721
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
+from contracts import P2PLendingVault as vault
 
 
 # Structs
@@ -105,6 +106,7 @@ def replace_loan(
     collateral_token_decimals: uint256,
     payment_token_decimals: uint256,
     offer_sig_domain_separator: bytes32,
+    vault_impl_addr: address,
 ) -> bytes32:
 
     """
@@ -187,10 +189,11 @@ def replace_loan(
     base._check_and_update_offer_state(offer, new_principal)
     base.loans[new_loan.id] = base._loan_state_hash(new_loan)
 
+    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
     if collateral_amount > loan.collateral_amount:
-        base._receive_collateral(loan.borrower, collateral_amount - loan.collateral_amount, collateral_token)
+        base._receive_collateral(loan.borrower, collateral_amount - loan.collateral_amount, _vault)
     elif collateral_amount < loan.collateral_amount:
-        base._send_collateral(loan.borrower, loan.collateral_amount - collateral_amount, collateral_token)
+        base._send_collateral(loan.borrower, loan.collateral_amount - collateral_amount, _vault)
 
 
     borrower_delta: int256 = convert(new_principal, int256) - convert(outstanding_debt + new_loan.origination_fee_amount, int256)

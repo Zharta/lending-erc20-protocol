@@ -17,6 +17,7 @@ exports: base.__interface__
 from ethereum.ercs import IERC721
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
+from contracts import P2PLendingVault as vault
 
 event LoanCreated:
     id: bytes32
@@ -206,6 +207,7 @@ collateral_token_decimals: public(immutable(uint256))
 offer_sig_domain_separator: immutable(bytes32)
 
 refinance_addr: public(immutable(address))
+vault_impl_addr: public(immutable(address))
 borrower: public(immutable(address))
 
 @deploy
@@ -221,6 +223,7 @@ def __init__(
     _max_protocol_upfront_fee: uint256,
     _max_protocol_settlement_fee: uint256,
     _refinance_addr: address,
+    _vault_impl_addr: address,
     _borrower: address
 ):
 
@@ -249,6 +252,7 @@ def __init__(
     max_protocol_upfront_fee = _max_protocol_upfront_fee
     max_protocol_settlement_fee = _max_protocol_settlement_fee
     refinance_addr = _refinance_addr
+    vault_impl_addr = _vault_impl_addr
     collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
     borrower = _borrower
@@ -438,7 +442,9 @@ def create_loan(
     base._check_and_update_offer_state(offer, principal)
     base.loans[loan.id] = base._loan_state_hash(loan)
 
-    self._receive_collateral(loan.borrower, loan.collateral_amount)
+
+    _vault: vault.Vault = base._create_vault_if_needed(loan.borrower, vault_impl_addr, collateral_token)
+    base._receive_collateral(loan.borrower, loan.collateral_amount, _vault)
     self._transfer_funds(loan.lender, loan.borrower, loan.amount - loan.origination_fee_amount)
 
     if loan.protocol_upfront_fee_amount > 0:
@@ -495,7 +501,8 @@ def settle_loan(loan: base.Loan):
     if protocol_settlement_fee > 0:
         self._send_funds(base.protocol_wallet, protocol_settlement_fee)
 
-    self._send_collateral(loan.borrower, loan.collateral_amount)
+    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
+    base._send_collateral(loan.borrower, loan.collateral_amount, _vault)
 
     log LoanPaid(
         id=loan.id,
@@ -524,7 +531,8 @@ def claim_defaulted_loan_collateral(loan: base.Loan):
 
     base.loans[loan.id] = empty(bytes32)
 
-    self._send_collateral(loan.lender, loan.collateral_amount)
+    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
+    base._send_collateral(loan.lender, loan.collateral_amount, _vault)
 
     log LoanCollateralClaimed(
         id=loan.id,
@@ -606,7 +614,8 @@ def add_collateral_to_loan(loan: base.Loan, collateral_amount: uint256):
     old_ltv: uint256 = self._compute_ltv(loan.collateral_amount, outstanding_debt, convertion_rate)
     new_ltv: uint256 = self._compute_ltv(loan.collateral_amount + collateral_amount, outstanding_debt, convertion_rate)
 
-    self._receive_collateral(loan.borrower, collateral_amount)
+    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
+    base._receive_collateral(loan.borrower, collateral_amount, _vault)
 
     updated_loan: base.Loan = base.Loan(
         id=loan.id,
@@ -699,7 +708,8 @@ def remove_collateral_from_loan(loan: base.Loan, collateral_amount: uint256):
     )
     base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)
 
-    self._send_collateral(loan.borrower, collateral_amount)
+    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
+    base._send_collateral(loan.borrower, collateral_amount, _vault)
 
     log LoanCollateralRemoved(
         id=loan.id,
@@ -806,7 +816,8 @@ def replace_loan(
             collateral_token_decimals,
             payment_token_decimals,
             offer_sig_domain_separator,
-            method_id=method_id("replace_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32)"),
+            vault_impl_addr,
+            method_id=method_id("replace_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         max_outsize=32,
         is_delegate_call=True
@@ -852,6 +863,19 @@ def replace_loan_lender(
         is_delegate_call=True
     ), bytes32)
 
+
+@view
+@external
+def wallet_to_vault(wallet: address) -> address:
+
+    """
+    @notice Get the vault address for a given wallet
+    @param wallet The wallet address
+    @return The vault address for the given wallet
+    """
+
+    return base._wallet_to_vault(wallet, vault_impl_addr)
+
 # Internal functions
 
 @internal
@@ -888,16 +912,6 @@ def _receive_funds(_from: address, _amount: uint256):
 @internal
 def _transfer_funds(_from: address, _to: address, _amount: uint256):
     base._transfer_funds(_from, _to, _amount, payment_token)
-
-
-@internal
-def _send_collateral(wallet: address, _amount: uint256):
-    base._send_collateral(wallet, _amount, collateral_token)
-
-
-@internal
-def _receive_collateral(_from: address, _amount: uint256):
-    base._receive_collateral(_from, _amount, collateral_token)
 
 
 @view

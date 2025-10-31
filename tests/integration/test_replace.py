@@ -130,7 +130,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
     loan_id = p2p_usdc_weth.create_loan(
@@ -203,14 +203,16 @@ def test_replace_loan(
         usdc.approve(p2p_usdc_weth.address, -delta_new_lender, sender=lender2)
     if new_collateral_amount > loan.collateral_amount:
         weth.deposit(value=new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
-        weth.approve(p2p_usdc_weth.address, new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
+        weth.approve(
+            p2p_usdc_weth.wallet_to_vault(loan.borrower), new_collateral_amount - loan.collateral_amount, sender=loan.borrower
+        )
 
     liquidity1_key = compute_liquidity_key(ongoing_loan_usdc_weth.lender, ongoing_loan_usdc_weth.offer_tracing_id)
     liquidity2_key = compute_liquidity_key(offer.lender, offer.tracing_id)
     offer1_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity1_key)
     offer2_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity2_key)
     initial_borrower_collateral = weth.balanceOf(loan.borrower)
-    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.address)
+    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
     initial_borrower_balance = usdc.balanceOf(loan.borrower)
     initial_lender_balance = usdc.balanceOf(loan.lender)
     initial_new_lender_balance = usdc.balanceOf(lender2)
@@ -255,7 +257,8 @@ def test_replace_loan(
     assert p2p_usdc_weth.commited_liquidity(liquidity2_key) == offer2_liquidity_before + offer.principal
 
     assert (
-        weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral + new_collateral_amount - loan.collateral_amount
+        weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
+        == initial_protocol_collateral + new_collateral_amount - loan.collateral_amount
     )
     assert weth.balanceOf(loan.borrower) == initial_borrower_collateral - new_collateral_amount + loan.collateral_amount
 

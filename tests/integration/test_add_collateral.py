@@ -93,7 +93,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
     loan_id = p2p_usdc_weth.create_loan(
@@ -137,7 +137,7 @@ def test_add_collateral_to_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, usd
     borrower = ongoing_loan_usdc_weth.borrower
 
     weth.deposit(value=additional_collateral, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, additional_collateral, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), additional_collateral, sender=borrower)
     borrower_balance_before = weth.balanceOf(ongoing_loan_usdc_weth.borrower)
 
     p2p_usdc_weth.add_collateral_to_loan(ongoing_loan_usdc_weth, additional_collateral, sender=borrower)
@@ -173,5 +173,5 @@ def test_add_collateral_to_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, usd
     assert event.old_ltv == old_ltv
     assert event.new_ltv == new_ltv
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == collateral_amount + additional_collateral
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(borrower)) == collateral_amount + additional_collateral
     assert weth.balanceOf(borrower) == borrower_balance_before - additional_collateral

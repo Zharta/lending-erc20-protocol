@@ -1,0 +1,712 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "contractAdmin_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "trustedForwarder_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "tokenContract_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "interestPayment_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "paymentToken_",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_AdminFeeWalletNotSet",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_CanceledPurchaseWalletNotSet",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_DecimalPrecisionMismatch",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_InterestPaymentNotConfigured",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_InvalidAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_InvalidPaymentToken",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_InvalidTokenContract",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_InvalidTotalAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_InvalidZeroAddress",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_OnlyAutomationAdmin",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_OriginatorPaymentWalletNotSet",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_PayerAmlKycNotPassed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_PurchaseIdAlreadyUsed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_PurchaseIdNotUsed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_RemainderNotZero",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_TokenRecipientAmlKycNotPassed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "PurchaseContract_TransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "SafeERC20FailedOperation",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldWallet",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newWallet",
+        "type": "address"
+      }
+    ],
+    "name": "AdminFeeWalletUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldAdmin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newAdmin",
+        "type": "address"
+      }
+    ],
+    "name": "AutomationAdminUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldWallet",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newWallet",
+        "type": "address"
+      }
+    ],
+    "name": "CanceledPurchaseWalletUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldWallet",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newWallet",
+        "type": "address"
+      }
+    ],
+    "name": "OriginatorPaymentWalletUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "authorityAddress",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "paymentTokenAddress",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "canceledPurchaseWallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "PurchaseCanceled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "string",
+        "name": "purchaseId",
+        "type": "string"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "payerAddress",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "tokenRecipientAddress",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "authorityAddress",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "originatorPurchaseAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "prefundedInterestAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "adminFeeExcludingPrefundedInterestAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "mintAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "originatorAddress",
+        "type": "address"
+      }
+    ],
+    "name": "PurchaseExecuted",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "adminFeeWallet",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "automationAdmin",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "paymentTokenAddress_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      }
+    ],
+    "name": "cancelPurchase",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "canceledPurchaseWallet",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "string",
+            "name": "purchaseId",
+            "type": "string"
+          },
+          {
+            "internalType": "address",
+            "name": "payerAddress",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "tokenRecipientAddress",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "originatorPurchaseAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "mintAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "adminFeeAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalAmount",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct PurchaseContract.PurchaseParams",
+        "name": "params",
+        "type": "tuple"
+      }
+    ],
+    "name": "executePurchase",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "string",
+            "name": "purchaseId",
+            "type": "string"
+          },
+          {
+            "internalType": "address",
+            "name": "payerAddress",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "tokenRecipientAddress",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "mintAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "originatorPurchaseAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "prefundedInterestAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "adminFeeExcludingPrefundedInterestAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalAmount",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct PurchaseContract.PurchaseParamsWithInterest",
+        "name": "params",
+        "type": "tuple"
+      }
+    ],
+    "name": "executePurchaseWithInterest",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "interestPayment",
+    "outputs": [
+      {
+        "internalType": "contract IInterestPayment",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "purchaseId_",
+        "type": "string"
+      }
+    ],
+    "name": "isPurchaseIdUsed",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "forwarder",
+        "type": "address"
+      }
+    ],
+    "name": "isTrustedForwarder",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "originatorPaymentWallet",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "paymentToken",
+    "outputs": [
+      {
+        "internalType": "contract IERC20",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "tokenContract",
+    "outputs": [
+      {
+        "internalType": "contract RestrictedLockupToken",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "trustedForwarder",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newAdminFeeWallet_",
+        "type": "address"
+      }
+    ],
+    "name": "updateAdminFeeWallet",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newAutomationAdmin_",
+        "type": "address"
+      }
+    ],
+    "name": "updateAutomationAdmin",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newCanceledPurchaseWallet_",
+        "type": "address"
+      }
+    ],
+    "name": "updateCanceledPurchaseWallet",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newOriginatorPaymentWallet_",
+        "type": "address"
+      }
+    ],
+    "name": "updateOriginatorPaymentWallet",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "name": "usedPurchaseIds",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

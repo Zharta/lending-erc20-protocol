@@ -35,8 +35,9 @@ def pytest_collection_modifyitems(config, items):
 def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
-        fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 23628063
+        # fork_uri = os.environ["BOA_SEPOLIA_FORK_RPC_URL"]
+        fork_uri = os.environ["BOA_FUJI_FORK_RPC_URL"]
+        blkid = 47222291
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 
@@ -162,15 +163,15 @@ def weth(weth9_contract_def, owner, accounts):
     return weth
 
 
-@pytest.fixture
-def usdc(owner, accounts, erc20_contract_def):
-    erc20 = erc20_contract_def.at("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
-    holder = "0x99C9fc46f92E8a1c0deC1b1747d010903E884bE1"
-    with boa.env.prank(holder):
-        for account in accounts:
-            erc20.transfer(account, 10**12, sender=holder)
-    erc20.transfer(owner, 10**12, sender=holder)
-    return erc20
+# @pytest.fixture
+# def usdc(owner, accounts, erc20_contract_def):
+#     erc20 = erc20_contract_def.at("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+#     holder = "0x99C9fc46f92E8a1c0deC1b1747d010903E884bE1"
+#     with boa.env.prank(holder):
+#         for account in accounts:
+#             erc20.transfer(account, 10**12, sender=holder)
+#     erc20.transfer(owner, 10**12, sender=holder)
+#     return erc20
 
 
 @pytest.fixture(scope="session")
@@ -199,11 +200,6 @@ def p2p_lending_refinance_contract_def():
 
 
 @pytest.fixture(scope="session")
-def vault_contract_def():
-    return boa.load_partial("contracts/P2PLendingVault.vy")
-
-
-@pytest.fixture(scope="session")
 def kyc_validator_contract_def():
     return boa.load_partial("contracts/KYCValidator.vy")
 
@@ -211,6 +207,11 @@ def kyc_validator_contract_def():
 @pytest.fixture(scope="session")
 def p2p_lending_erc20_proxy_contract_def():
     return boa.load_partial("tests/stubs/P2PErc20Proxy.vy")
+
+
+@pytest.fixture(scope="session")
+def vault_contract_def():
+    return boa.load_partial("contracts/P2PLendingVault.vy")
 
 
 @pytest.fixture
@@ -234,32 +235,6 @@ def kyc_validator_contract(kyc_validator_contract_def, kyc_validator):
 @pytest.fixture
 def p2p_refinance(p2p_lending_refinance_contract_def):
     return p2p_lending_refinance_contract_def.deploy()
-
-
-@pytest.fixture
-def vault_impl(vault_contract_def):
-    return vault_contract_def.deploy()
-
-
-@pytest.fixture
-def p2p_usdc_weth(
-    p2p_lending_erc20_contract_def, p2p_refinance, vault_impl, usdc, weth, oracle_usdc_eth, kyc_validator_contract, owner
-):
-    return p2p_lending_erc20_contract_def.deploy(
-        usdc,
-        weth,
-        oracle_usdc_eth,
-        True,
-        kyc_validator_contract,
-        0,
-        0,
-        owner,
-        10000,
-        10000,
-        0,
-        p2p_refinance.address,
-        vault_impl.address,
-    )
 
 
 @pytest.fixture

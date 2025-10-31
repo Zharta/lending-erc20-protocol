@@ -44,6 +44,9 @@ unit-tests:
 integration-tests:
 	${VENV}/bin/pytest tests/integration
 
+profitr:
+	${VENV}/bin/pytest tests/profitr
+
 gas:
 	${VENV}/bin/pytest tests/unit --gas-profile
 

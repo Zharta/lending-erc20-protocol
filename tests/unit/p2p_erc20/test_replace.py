@@ -131,7 +131,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -601,12 +601,12 @@ def test_replace_loan_adds_collateral_to_escrow(
 
     weth.mint(loan.borrower, loan.collateral_amount)
     initial_borrower_collateral = weth.balanceOf(loan.borrower)
-    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.address)
+    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
 
-    weth.approve(p2p_usdc_weth.address, loan.collateral_amount, sender=loan.borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(loan.borrower), loan.collateral_amount, sender=loan.borrower)
     p2p_usdc_weth.replace_loan(loan, offer_usdc_weth2, 0, loan.collateral_amount * 2, kyc_lender2, sender=loan.borrower)
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral + loan.collateral_amount
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower)) == initial_protocol_collateral + loan.collateral_amount
     assert weth.balanceOf(loan.borrower) == initial_borrower_collateral - loan.collateral_amount
 
 
@@ -624,13 +624,13 @@ def test_replace_loan_returns_collateral_to_borrower(
         usdc.approve(p2p_usdc_weth.address, -delta_new_lender, sender=lender2)
 
     initial_borrower_collateral = weth.balanceOf(loan.borrower)
-    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.address)
+    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
 
     p2p_usdc_weth.replace_loan(
         loan, offer_usdc_weth2, 0, loan.collateral_amount - collateral_diff, kyc_lender2, sender=loan.borrower
     )
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral - collateral_diff
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower)) == initial_protocol_collateral - collateral_diff
     assert weth.balanceOf(loan.borrower) == initial_borrower_collateral + collateral_diff
 
 
@@ -713,6 +713,7 @@ def test_replace_loan_pays_protocol_fees(
 def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
+    vault_impl,
     weth,
     owner,
     borrower,
@@ -747,7 +748,19 @@ def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     erc20 = boa.loads(failing_erc20_code)
     p2p_erc20_weth = p2p_lending_erc20_contract_def.deploy(
-        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0, p2p_refinance.address
+        erc20,
+        weth,
+        oracle,
+        False,
+        kyc_validator_contract,
+        0,
+        0,
+        owner,
+        10000,
+        10000,
+        0,
+        p2p_refinance.address,
+        vault_impl.address,
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -766,7 +779,7 @@ def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     collateral_amount = int(1e18)
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_erc20_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_erc20_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
 
     loan_id = p2p_erc20_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     loan = Loan(

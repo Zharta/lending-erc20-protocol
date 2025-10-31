@@ -59,6 +59,7 @@ def oracle_acred_usd(oracle_contract_def, owner):
 def p2p_usdc_acred(
     p2p_lending_securitize_contract_def,
     p2p_refinance,
+    vault_impl,
     usdc,
     acred,
     oracle_acred_usd,
@@ -78,12 +79,13 @@ def p2p_usdc_acred(
         10000,
         10000,
         p2p_refinance.address,
+        vault_impl.address,
         sec_borrower,
     )
 
 
 @pytest.fixture
-def securitize_registry(p2p_usdc_acred, now):
+def securitize_registry(p2p_usdc_acred, now, sec_borrower):
     contract_def = boa.load_abi("contracts/auxiliary/SecuritizeRegistryService_abi.json")
     owner = "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
     contract = contract_def.at("0x3A8E9CD2E17E1F2904b7f745Da29C9cA765Cc319")
@@ -96,7 +98,7 @@ def securitize_registry(p2p_usdc_acred, now):
         investor_id,
         "",
         "PT",
-        [p2p_usdc_acred.address],
+        [p2p_usdc_acred.wallet_to_vault(sec_borrower)],
         [ACCREDITED],
         [APPROVED],
         [now + 86400 * 365],
@@ -135,7 +137,7 @@ def test_create_loan(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
 
-    acred.approve(p2p_usdc_acred.address, collateral_amount, sender=borrower)
+    acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
 
     borrower_collateral_balance_before = acred.balanceOf(borrower)
@@ -205,7 +207,7 @@ def test_create_loan(
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
 
-    assert acred.balanceOf(p2p_usdc_acred.address) == collateral_amount
+    assert acred.balanceOf(p2p_usdc_acred.wallet_to_vault(borrower)) == collateral_amount
     assert acred.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
 
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee

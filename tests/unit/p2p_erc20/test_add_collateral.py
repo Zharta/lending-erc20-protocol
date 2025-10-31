@@ -93,7 +93,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -161,8 +161,9 @@ def test_add_collateral_to_loan_reverts_if_collateral_not_approved(
     p2p_usdc_weth, borrower, now, lender, weth, ongoing_loan_usdc_weth
 ):
     additional_collateral = 1000
+    borrower = ongoing_loan_usdc_weth.borrower
     weth.deposit(value=additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
-    weth.approve(p2p_usdc_weth.address, additional_collateral - 1, sender=ongoing_loan_usdc_weth.borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), additional_collateral - 1, sender=borrower)
     with boa.reverts():
         p2p_usdc_weth.add_collateral_to_loan(
             ongoing_loan_usdc_weth, additional_collateral, sender=ongoing_loan_usdc_weth.borrower
@@ -173,8 +174,9 @@ def test_add_collateral_to_loan_works_with_proxy(p2p_usdc_weth, ongoing_loan_usd
     p2p_usdc_weth.set_proxy_authorization(p2p_erc20_proxy, True, sender=p2p_usdc_weth.owner())
     additional_collateral = 1000
 
+    borrower = ongoing_loan_usdc_weth.borrower
     weth.deposit(value=additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
-    weth.approve(p2p_usdc_weth.address, additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), additional_collateral, sender=borrower)
     p2p_erc20_proxy.add_collateral_to_loan(
         ongoing_loan_usdc_weth, additional_collateral, sender=ongoing_loan_usdc_weth.borrower
     )
@@ -189,7 +191,7 @@ def test_add_collateral_to_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_u
     borrower = ongoing_loan_usdc_weth.borrower
 
     weth.deposit(value=additional_collateral, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, additional_collateral, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), additional_collateral, sender=borrower)
     p2p_usdc_weth.add_collateral_to_loan(ongoing_loan_usdc_weth, additional_collateral, sender=borrower)
 
     updated_loan = replace_namedtuple_field(
@@ -204,7 +206,7 @@ def test_add_collateral_to_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth
     borrower = ongoing_loan_usdc_weth.borrower
 
     weth.deposit(value=additional_collateral, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, additional_collateral, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), additional_collateral, sender=borrower)
     p2p_usdc_weth.add_collateral_to_loan(ongoing_loan_usdc_weth, additional_collateral, sender=borrower)
 
     event = get_last_event(p2p_usdc_weth, "LoanCollateralAdded")
@@ -224,9 +226,10 @@ def test_add_collateral_to_loan_transfers_collateral(p2p_usdc_weth, ongoing_loan
     collateral_amount = ongoing_loan_usdc_weth.collateral_amount
     additional_collateral = 1000
 
+    borrower = ongoing_loan_usdc_weth.borrower
     weth.deposit(value=additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
-    weth.approve(p2p_usdc_weth.address, additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), additional_collateral, sender=borrower)
 
     p2p_usdc_weth.add_collateral_to_loan(ongoing_loan_usdc_weth, additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == collateral_amount + additional_collateral
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(borrower)) == collateral_amount + additional_collateral

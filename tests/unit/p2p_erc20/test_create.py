@@ -353,7 +353,7 @@ def test_create_loan_reverts_if_lender_funds_not_approved(
 
     collateral_amount = int(1e18)
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
 
     with boa.reverts():
         p2p_usdc_weth.create_loan(signed_offer, offer.principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
@@ -435,7 +435,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
 
@@ -491,7 +491,7 @@ def test_create_loan_logs_event(
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
 
@@ -540,14 +540,14 @@ def test_create_loan_transfers_collateral_to_escrow(
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
     borrower_collateral_balance_before = weth.balanceOf(borrower)
 
     p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == collateral_amount
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(borrower)) == collateral_amount
     assert weth.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
 
 
@@ -570,7 +570,7 @@ def test_create_loan_transfers_principal_to_borrower(
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
     borrower_balance_before = usdc.balanceOf(borrower)
@@ -600,7 +600,7 @@ def test_create_loan_transfers_origination_fee_to_lender(
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
     lender_balance_before = usdc.balanceOf(lender)
@@ -629,7 +629,7 @@ def test_create_loan_updates_commited_liquidity(
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
 
@@ -659,7 +659,7 @@ def test_create_loan_for_token_offer_revokes_normal_offer(
     offer_id = compute_signed_offer_id(signed_offer)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
 
@@ -691,7 +691,7 @@ def test_create_loan_for_token_offer_doesnt_revoke_open_offer(
     offer_id = compute_signed_offer_id(signed_offer)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
 
@@ -722,7 +722,7 @@ def test_create_loan_for_different_lenders_track_liquidity_separately(
     signed_offer2 = sign_offer(offer2, lender2_key, p2p_usdc_weth.address)
 
     weth.deposit(value=2 * collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, 2 * collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), 2 * collateral_amount, sender=borrower)
     usdc.deposit(value=principal, sender=lender)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
     usdc.deposit(value=principal, sender=lender2)

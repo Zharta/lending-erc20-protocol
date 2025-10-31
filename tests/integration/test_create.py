@@ -53,7 +53,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
 
     borrower_collateral_balance_before = weth.balanceOf(borrower)
@@ -117,7 +117,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == collateral_amount
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(borrower)) == collateral_amount
     assert weth.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
 
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee

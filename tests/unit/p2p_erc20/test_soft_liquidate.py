@@ -97,7 +97,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -158,7 +158,7 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -317,12 +317,12 @@ def test_soft_liquidate_loan_transfers_collateral(p2p_usdc_weth, ongoing_loan_us
     assert current_ltv > loan.soft_liquidation_ltv
 
     lender_balance_before = weth.balanceOf(loan.lender)
-    protocol_balance_before = weth.balanceOf(p2p_usdc_weth.address)
+    protocol_balance_before = weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
 
     _, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
     p2p_usdc_weth.soft_liquidate_loan(loan, sender=liquidator)
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == protocol_balance_before - collateral_claimed
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower)) == protocol_balance_before - collateral_claimed
     assert weth.balanceOf(loan.lender) == lender_balance_before + collateral_claimed - liquidation_fee
 
 

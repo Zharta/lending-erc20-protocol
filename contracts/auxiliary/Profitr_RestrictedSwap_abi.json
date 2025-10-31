@@ -1,0 +1,656 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "restrictedLockupTokenAddress_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "trustedForwarder_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "accessControl_",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveContractOrTransferAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EnforcedPause",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ExpectedPause",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_AlreadyCanceled",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_AlreadyCompleted",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_DoesNotSupportIERC1404",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InconsistentQuoteTokenAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InconsistentRestrictedTokenAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InsufficientQuoteTokenAllowance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InsufficientQuoteTokenAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InsufficientRestrictedTokenAllowance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InsufficientRestrictedTokenAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidAccessControl",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidCanceler",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidQuoteToken",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidQuoteTokenAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidQuoteTokenSender",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidRestrictedLockupToken",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidRestrictedTokenAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidRestrictedTokenSender",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidSwapRecord",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidSwapStatus",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidTokenSender",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_InvalidTrustedForwarder",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedSwap_SwapNotConfigured",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "SafeERC20FailedOperation",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "Paused",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "swapNumber",
+        "type": "uint256"
+      }
+    ],
+    "name": "SwapCanceled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "swapNumber",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "restrictedTokenSender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "restrictedTokenAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "quoteTokenSender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "quoteToken",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "quoteTokenAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "SwapComplete",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "swapNumber",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "restrictedTokenSender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "restrictedTokenAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "quoteToken",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "quoteTokenSender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "quoteTokenAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "SwapConfigured",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isPausedSwaps",
+        "type": "bool"
+      }
+    ],
+    "name": "SwapPausedState",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "Unpaused",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "INTERFACE_ID",
+    "outputs": [
+      {
+        "internalType": "bytes4",
+        "name": "",
+        "type": "bytes4"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "_swapNumber",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "accessControl",
+    "outputs": [
+      {
+        "internalType": "contract IAccessControl",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "swapNumber_",
+        "type": "uint256"
+      }
+    ],
+    "name": "cancelSwap",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "swapNumber_",
+        "type": "uint256"
+      }
+    ],
+    "name": "completeSwapWithQuoteToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "swapNumber_",
+        "type": "uint256"
+      }
+    ],
+    "name": "completeSwapWithRestrictedToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "restrictedTokenAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "restrictedTokenSender",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "quoteToken",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "quoteTokenAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "configureBuy",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "restrictedTokenAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "quoteToken",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "quoteTokenSender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "quoteTokenAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "configureSell",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "forwarder",
+        "type": "address"
+      }
+    ],
+    "name": "isTrustedForwarder",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bool",
+        "name": "isPaused_",
+        "type": "bool"
+      }
+    ],
+    "name": "pause",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "paused",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "pendingBuys",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "pendingSells",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "requiredAllowance",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "requiredAllowanceCounterparty",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "restrictedLockupToken",
+    "outputs": [
+      {
+        "internalType": "contract RestrictedLockupToken",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes4",
+        "name": "interfaceId",
+        "type": "bytes4"
+      }
+    ],
+    "name": "supportsInterface",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "swapNumber",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "swapNumber_",
+        "type": "uint256"
+      }
+    ],
+    "name": "swapStatus",
+    "outputs": [
+      {
+        "internalType": "enum IRestrictedSwap.SwapStatus",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "trustedForwarder",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
