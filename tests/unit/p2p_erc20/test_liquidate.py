@@ -218,24 +218,27 @@ def test_liquidate_loan_reverts_if_loan_not_defaulted(p2p_usdc_weth, ongoing_loa
         p2p_usdc_weth.liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.lender)
 
 
-# def test_liquidate_loan_with_shortfall_reverts_if_not_approved(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower):
-#     loan = ongoing_loan_usdc_weth
-#     liquidation_time = loan.maturity + 1
-#     boa.env.time_travel(seconds=liquidation_time - now)
+def test_liquidate_loan_with_shortfall_reverts_if_not_approved(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower
+):
+    loan = ongoing_loan_usdc_weth
+    liquidation_time = loan.maturity + 1
+    boa.env.time_travel(seconds=liquidation_time - now)
 
-#     oracle.set_rate(oracle.rate() // 100, sender=oracle.owner())
+    oracle.set_rate(oracle.rate() // 100, sender=oracle.owner())
 
-#     liquidator = boa.env.generate_address("liquidator")
-#     usdc.mint(liquidator, loan.amount * 2)
-#     usdc.approve(p2p_usdc_weth.address, loan.amount * 2, sender=liquidator)
+    liquidator = boa.env.generate_address("liquidator")
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    usdc.mint(liquidator, liquidation.receive_from_liquidator)
+    usdc.approve(p2p_usdc_weth.address, liquidation.receive_from_liquidator - 1, sender=liquidator)
 
-#     # Calculate expected values with helper
-#     liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
-#     assert liquidation.shortfall > 0
-#     assert liquidation.receive_from_liquidator > 0
+    # Calculate expected values with helper
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    assert liquidation.shortfall > 0
+    assert liquidation.receive_from_liquidator > 0
 
-#     with boa.reverts("insufficient allowance"):
-#         p2p_usdc_weth.liquidate_loan(loan, sender=liquidator)
+    with boa.reverts():
+        p2p_usdc_weth.liquidate_loan(loan, sender=liquidator)
 
 
 def test_liquidate_loan_deletes_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
