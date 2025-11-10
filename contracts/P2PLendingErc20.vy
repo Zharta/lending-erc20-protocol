@@ -105,7 +105,13 @@ event LoanLiquidated:
     id: bytes32
     borrower: address
     lender: address
+    liquidator: address
     outstanding_debt: uint256
+    collateral_for_debt: uint256
+    remaining_collateral: uint256
+    remaining_collateral_value: uint256
+    shortfall: uint256
+    liquidation_fee: uint256
     protocol_settlement_fee_amount: uint256
 
 event LoanCalled:
@@ -719,14 +725,15 @@ def liquidate_loan(loan: base.Loan):
     outstanding_debt: uint256 = loan.amount + current_interest
     rate: base.UInt256Rational = self._get_oracle_rate()
 
-    liquidation_fee_collateral: uint256 = outstanding_debt * base.full_liquidation_fee * rate.denominator * collateral_token_decimals // (BPS * rate.numerator * payment_token_decimals)
+    liquidation_fee_collateral: uint256 = min(loan.collateral_amount, outstanding_debt * base.full_liquidation_fee * rate.denominator * collateral_token_decimals // (BPS * rate.numerator * payment_token_decimals))
+    collateral_for_debt: uint256 = outstanding_debt * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals)
     remaining_collateral: uint256 = loan.collateral_amount - liquidation_fee_collateral
     remaining_collateral_value: uint256 = remaining_collateral * rate.numerator * payment_token_decimals // (rate.denominator * collateral_token_decimals)
-    protocol_settlement_fee_amount: uint256 = loan.protocol_settlement_fee * current_interest // BPS
+    protocol_settlement_fee_amount: uint256 = min(loan.protocol_settlement_fee * current_interest // BPS, remaining_collateral_value)
+    shortfall: uint256 = outstanding_debt - remaining_collateral_value if remaining_collateral_value < outstanding_debt else 0
     _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
 
     if remaining_collateral_value >= outstanding_debt:
-        collateral_for_debt: uint256 = outstanding_debt * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals)
         self._receive_funds(liquidator, outstanding_debt)
         base._send_collateral(liquidator, collateral_for_debt + liquidation_fee_collateral, _vault)
         if remaining_collateral > collateral_for_debt:
@@ -735,12 +742,10 @@ def liquidate_loan(loan: base.Loan):
         self._send_funds(base.protocol_wallet, protocol_settlement_fee_amount)
 
     else:
-        actual_protocol_fee: uint256 = min(protocol_settlement_fee_amount, remaining_collateral_value)
-        shortfall: uint256 = outstanding_debt - remaining_collateral_value
-        self._receive_funds(liquidator, remaining_collateral_value - shortfall)
+        self._receive_funds(liquidator, remaining_collateral_value)
         base._send_collateral(liquidator, loan.collateral_amount, _vault)
-        self._send_funds(loan.lender, remaining_collateral_value - actual_protocol_fee)
-        self._send_funds(base.protocol_wallet, actual_protocol_fee)
+        self._send_funds(loan.lender, remaining_collateral_value - protocol_settlement_fee_amount)
+        self._send_funds(base.protocol_wallet, protocol_settlement_fee_amount)
 
     base.loans[loan.id] = empty(bytes32)
 
@@ -748,8 +753,14 @@ def liquidate_loan(loan: base.Loan):
         id=loan.id,
         borrower=loan.borrower,
         lender=loan.lender,
+        liquidator=liquidator,
         outstanding_debt=outstanding_debt,
-        protocol_settlement_fee_amount=protocol_settlement_fee_amount,
+        collateral_for_debt=collateral_for_debt,
+        remaining_collateral=remaining_collateral,
+        remaining_collateral_value=remaining_collateral_value,
+        shortfall=shortfall,
+        liquidation_fee=liquidation_fee_collateral,
+        protocol_settlement_fee_amount=protocol_settlement_fee_amount
     )
 
 
@@ -1062,7 +1073,7 @@ def replace_loan(
             payment_token_decimals,
             offer_sig_domain_separator,
             vault_impl_addr,
-            method_id=method_id("replace_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+            method_id=method_id("replace_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         max_outsize=32,
         is_delegate_call=True
@@ -1102,7 +1113,7 @@ def replace_loan_lender(
             collateral_token_decimals,
             payment_token_decimals,
             offer_sig_domain_separator,
-            method_id=method_id("replace_loan_lender((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32)"),
+            method_id=method_id("replace_loan_lender((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32)"),
         ),
         max_outsize=32,
         is_delegate_call=True

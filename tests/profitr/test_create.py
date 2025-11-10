@@ -31,13 +31,23 @@ def profitr_owner(owner):
 
 
 @pytest.fixture
+def transfer_agent(profitr_owner):
+    return profitr_owner
+
+
+@pytest.fixture
 def fee_wallet(owner):
     return boa.env.generate_address("fee_wallet")
 
 
 @pytest.fixture
-def profitr_vault_impl():
-    return boa.load("contracts/P2PLendingVaultProfitr.vy").deploy()
+def profitr_vault_contract_def():
+    return boa.load_partial("contracts/P2PLendingVaultProfitr.vy")
+
+
+@pytest.fixture
+def profitr_vault_impl(profitr_vault_contract_def):
+    return profitr_vault_contract_def.deploy()
 
 
 @pytest.fixture
@@ -272,7 +282,7 @@ def test_transfer(
     wallet_2,
 ):
     mint_value = 10000
-    payment_token_value = mint_value * int(1e6)
+    # payment_token_value = mint_value * int(1e6)
     profitr_token.mint(wallet_1, mint_value, sender=profitr_owner)
     assert profitr_token.balanceOf(wallet_1) == mint_value
 
@@ -323,7 +333,7 @@ def test_claim_interest(
     assert interest_payment.interestAccrualEndTimestamp() > period_end
     assert interest_payment.interestRatePeriodSeconds() == 1
 
-    # createPaymentPeriod(uint256 startTimestamp, uint256 endTimestamp, uint256 interestRate_, uint256 interestRatePeriodDuration)
+    # createPaymentPeriod(uint256 startTimestamp, uint256 endTimestamp, uint256 interestRate_, uint256 interestRatePeriodDuration)  # noqa: E501
     interest_payment.createPaymentPeriod(period_start, period_end, 500, 10, sender=profitr_owner)
 
     boa.env.time_travel(10)
@@ -456,7 +466,7 @@ def test_create_and_settle_loan(
     access_control,
     identity_registry,
     automation_admin,
-    vault_contract_def,
+    profitr_vault_contract_def,
 ):
     borrower = wallet_1
     principal = 1000 * int(1e6)
@@ -590,5 +600,7 @@ def test_create_and_settle_loan(
     assert interest_payment.accruedInterest(wallet_1_vault) == 100000
 
     assert usdc.balanceOf(borrower) == borrower_balance_before - interest
-    vault_contract_def.at(wallet_1_vault).claimInterest(interest_payment.address, usdc.address, 100000, sender=borrower)
+    profitr_vault_contract_def.at(wallet_1_vault).claimInterest(
+        interest_payment.address, usdc.address, 100000, sender=borrower
+    )
     assert usdc.balanceOf(borrower) == borrower_balance_before - interest + 100000

@@ -248,7 +248,15 @@ def vault_impl(vault_contract_def):
 
 @pytest.fixture
 def p2p_usdc_weth(
-    p2p_lending_erc20_contract_def, p2p_refinance, vault_impl, usdc, weth, oracle_usdc_eth, kyc_validator_contract, owner
+    p2p_lending_erc20_contract_def,
+    p2p_refinance,
+    vault_impl,
+    usdc,
+    weth,
+    oracle_usdc_eth,
+    kyc_validator_contract,
+    owner,
+    transfer_agent,
 ):
     return p2p_lending_erc20_contract_def.deploy(
         usdc,
@@ -265,6 +273,7 @@ def p2p_usdc_weth(
         0,
         p2p_refinance.address,
         vault_impl.address,
+        transfer_agent,
     )
 
 

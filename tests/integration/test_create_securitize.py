@@ -78,6 +78,8 @@ def p2p_usdc_acred(
         owner,
         10000,
         10000,
+        0,
+        0,
         p2p_refinance.address,
         vault_impl.address,
         sec_borrower,
