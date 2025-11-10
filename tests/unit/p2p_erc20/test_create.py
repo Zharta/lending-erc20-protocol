@@ -96,7 +96,7 @@ def test_create_loan_reverts_if_offer_has_invalid_signature(
         available_liquidity=1000,
         call_eligibility=0,
         call_window=0,
-        soft_liquidation_ltv=0,
+        liquidation_ltv=0,
         oracle_addr=oracle.address,
         expiration=now + 100,
         lender=lender,
@@ -117,7 +117,7 @@ def test_create_loan_reverts_if_offer_has_invalid_signature(
         replace_namedtuple_field(offer, available_liquidity=offer.available_liquidity + 1),
         replace_namedtuple_field(offer, call_eligibility=offer.call_eligibility + 1),
         replace_namedtuple_field(offer, call_window=offer.call_window + 1),
-        replace_namedtuple_field(offer, soft_liquidation_ltv=offer.soft_liquidation_ltv + 1),
+        replace_namedtuple_field(offer, liquidation_ltv=offer.liquidation_ltv + 1),
         replace_namedtuple_field(offer, oracle_addr=boa.env.generate_address("random")),
         replace_namedtuple_field(offer, expiration=offer.expiration + 1),
         replace_namedtuple_field(offer, lender=boa.env.generate_address("random")),
@@ -461,10 +461,10 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=p2p_usdc_weth.oracle_addr(),
         initial_ltv=initial_ltv,
         call_time=0,
@@ -511,13 +511,13 @@ def test_create_loan_logs_event(
     assert event.collateral_amount == collateral_amount
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
-    assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
+    assert event.liquidation_ltv == offer.liquidation_ltv
     assert event.oracle_addr == p2p_usdc_weth.oracle_addr()
     assert event.initial_ltv == initial_ltv
     assert event.origination_fee_amount == offer.origination_fee_bps * principal // BPS
     assert event.protocol_upfront_fee_amount == p2p_usdc_weth.protocol_upfront_fee()
     assert event.protocol_settlement_fee == p2p_usdc_weth.protocol_settlement_fee()
-    assert event.soft_liquidation_fee == p2p_usdc_weth.soft_liquidation_fee()
+    assert event.partial_liquidation_fee == p2p_usdc_weth.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
 

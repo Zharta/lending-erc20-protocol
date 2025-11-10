@@ -65,7 +65,7 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         available_liquidity=principal,
         call_eligibility=10,
         call_window=10,
-        soft_liquidation_ltv=0,
+        liquidation_ltv=0,
         oracle_addr=oracle.address,
         expiration=now + 100,
         lender=lender,
@@ -123,10 +123,10 @@ def ongoing_loan_usdc_weth(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
@@ -299,6 +299,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     kyc_borrower,
     kyc_lender,
     now,
+    transfer_agent,
 ):
     failing_erc20_code = dedent("""
 
@@ -330,8 +331,10 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         10000,
         10000,
         0,
+        0,
         p2p_refinance.address,
         vault_impl.address,
+        transfer_agent,
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -371,10 +374,10 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_erc20_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_erc20_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_erc20_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_erc20_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=p2p_erc20_weth.oracle_addr(),
         initial_ltv=offer.max_iltv,
         call_time=0,

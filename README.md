@@ -39,7 +39,7 @@ The current status of the protocol follows certain assumptions:
 5. Loan terms are part of the lender offers, which are signed and kept off-chain.
 6. Offers have an expiration timestamp and can be revoked on-chain.
 7. Loans can be callable by the lender after a specified `call_eligibility` period, starting a `call_window` for repayment before default.
-8. Loans can be soft liquidated if the LTV exceeds a `soft_liquidation_ltv` threshold.
+8. Loans can be soft liquidated if the LTV exceeds a `liquidation_ltv` threshold.
 9. Dynamic collateral management (add/remove ERC20 collateral) is supported.
 10. Additional fees are supported both for the protocol (upfront and settlement) and for the lender (origination).
 
@@ -83,7 +83,7 @@ Loans are created based on the borrower acceptance of offers from lenders, which
     - `available_liquidity`: The total principal amount the lender has allocated to this offer.
     - `call_eligibility`: Time in seconds after loan start when the lender can call the loan (0 if not callable).
     - `call_window`: Time in seconds after a loan is called for the borrower to repay before default (0 if not callable).
-    - `soft_liquidation_ltv`: LTV threshold (in basis points) for soft liquidation (0 if not applicable).
+    - `liquidation_ltv`: LTV threshold (in basis points) for soft liquidation (0 if not applicable).
     - `oracle_addr`: Address of the oracle contract for collateral valuation.
     - `expiration`: Expiration timestamp of the offer.
     - `lender`: Address of the lender.
@@ -114,8 +114,8 @@ As offers are kept off-chain, to prevent abusive usage, several on-chain validat
 3.  **Defaulted Loan Collateral Claim (`claim_defaulted_loan_collateral`)**:
     If a loan defaults (either by reaching `maturity` or failing to repay within `call_window` after a `call_loan`), the lender can claim the ERC20 collateral. The collateral is transferred to the lender without any fund transfers.
 
-4.  **Soft Liquidation (`soft_liquidate_loan`)**:
-    If the current Loan-to-Value (LTV) ratio of an active loan exceeds the `soft_liquidation_ltv` threshold defined in the offer, any address can trigger a soft liquidation. In this process:
+4.  **Soft Liquidation (`partially_liquidate_loan`)**:
+    If the current Loan-to-Value (LTV) ratio of an active loan exceeds the `liquidation_ltv` threshold defined in the offer, any address can trigger a soft liquidation. In this process:
     *   A portion of the outstanding debt is "written off" (reduced).
     *   A corresponding amount of collateral is claimed from the loan.
     *   A `soft_liquidation_fee` (in collateral tokens) is applied and sent to the liquidator. The remaining claimed collateral (if any) is sent to the lender.
@@ -157,7 +157,7 @@ The protocol defines the following key roles:
 *   `Owner`: The privileged address that can update protocol-wide parameters (e.g., protocol fees, soft liquidation fees), manage authorized proxies, and propose/claim ownership.
 *   `Borrower`: The recipient of the loan, identified by `loan.borrower`. Can settle loans, add/remove collateral, and initiate loan replacements.
 *   `Lender`: The provider of the loan, identified by `loan.lender`. Can initiate loan replacements and claim collateral for defaulted loans, and call loans.
-*   `Liquidator`: Any address that can trigger a `soft_liquidate_loan` if the LTV conditions are met. Receives the `soft_liquidation_fee` for performing this action.
+*   `Liquidator`: Any address that can trigger a `partially_liquidate_loan` if the LTV conditions are met. Receives the `soft_liquidation_fee` for performing this action.
 *   `KYC Validator`: An external address registered in the `KYCValidator` contract that signs wallet attestations, ensuring compliance.
 
 ## Development
@@ -229,7 +229,7 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 |                           | `available_liquidity`    | `uint256`     | Total principal amount available for this offer                                                                                                                                                                            |
 |                           | `call_eligibility`       | `uint256`     | Time in seconds after loan start when the loan becomes callable (0 if not callable)                                                                                                                                        |
 |                           | `call_window`            | `uint256`     | Time in seconds after a loan is called for repayment before default                                                                                                                                                        |
-|                           | `soft_liquidation_ltv`   | `uint256`     | LTV threshold (in BPS) for soft liquidation                                                                                                                                                                                |
+|                           | `liquidation_ltv`   | `uint256`     | LTV threshold (in BPS) for soft liquidation                                                                                                                                                                                |
 |                           | `oracle_addr`            | `address`     | Address of the oracle for collateral valuation                                                                                                                                                                             |
 |                           | `expiration`             | `uint256`     | Offer expiration timestamp                                                                                                                                                                                                 |
 |                           | `lender`                 | `address`     | Lender's address                                                                                                                                                                                                           |
@@ -258,13 +258,13 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 |                           | `soft_liquidation_fee`   | `uint256`     | Soft liquidation fee percentage (in BPS)                                                                                                                                                                                   |
 |                           | `call_eligibility`       | `uint256`     | Time in seconds after loan start when the loan becomes callable                                                                                                                                                            |
 |                           | `call_window`            | `uint256`     | Time in seconds after a loan is called for repayment before default                                                                                                                                                        |
-|                           | `soft_liquidation_ltv`   | `uint256`     | LTV threshold (in BPS) for soft liquidation                                                                                                                                                                                |
+|                           | `liquidation_ltv`   | `uint256`     | LTV threshold (in BPS) for soft liquidation                                                                                                                                                                                |
 |                           | `oracle_addr`            | `address`     | Address of the oracle for collateral valuation                                                                                                                                                                             |
 |                           | `initial_ltv`            | `uint256`     | Initial LTV of the loan (in BPS)                                                                                                                                                                                           |
 |                           | `call_time`              | `uint256`     | Timestamp when the loan was called (0 if not called)                                                                                                                                                                       |
 | `UInt256Rational`         | `numerator`              | `uint256`     | Numerator of a rational number                                                                                                                                                                                             |
 |                           | `denominator`            | `uint256`     | Denominator of a rational number                                                                                                                                                                                           |
-| `SoftLiquidationResult`   | `collateral_claimed`     | `uint256`     | Amount of collateral claimed in a soft liquidation simulation                                                                                                                                                              |
+| `PartialLiquidationResult`   | `collateral_claimed`     | `uint256`     | Amount of collateral claimed in a soft liquidation simulation                                                                                                                                                              |
 |                           | `liquidation_fee`        | `uint256`     | Liquidation fee in a soft liquidation simulation                                                                                                                                                                           |
 |                           | `debt_written_off`       | `uint256`     | Amount of debt written off in a soft liquidation simulation                                                                                                                                                                |
 |                           | `updated_ltv`            | `uint256`     | Calculated LTV after a soft liquidation simulation                                                                                                                                                                         |
@@ -276,7 +276,7 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | `create_loan`                    | Any (caller is borrower)   | Nonpayable   | Creates a new loan based on a signed offer and ERC20 collateral                |
 | `settle_loan`                    | Borrower                   | Payable      | Settles an existing loan                                                       |
 | `claim_defaulted_loan_collateral`| Lender                     | Nonpayable   | Claims collateral for a defaulted loan                                         |
-| `soft_liquidate_loan`            | Any (Liquidator)           | Nonpayable   | Performs a soft liquidation on a loan if LTV conditions are met                |
+| `partially_liquidate_loan`            | Any (Liquidator)           | Nonpayable   | Performs a soft liquidation on a loan if LTV conditions are met                |
 | `call_loan`                      | Lender                     | Nonpayable   | Calls an eligible loan, starting the repayment window                          |
 | `add_collateral_to_loan`         | Borrower                   | Nonpayable   | Adds ERC20 collateral to an existing loan                                      |
 | `remove_collateral_from_loan`    | Borrower                   | Nonpayable   | Removes ERC20 collateral from an existing loan, subject to LTV checks          |
@@ -433,7 +433,7 @@ The protocol allows borrowers to actively manage their collateral positions:
 
 Unlike traditional hard liquidations, the protocol implements a soft liquidation mechanism:
 
-- **Trigger**: When LTV exceeds the `soft_liquidation_ltv` threshold
+- **Trigger**: When LTV exceeds the `liquidation_ltv` threshold
 - **Process**: A portion of debt is written off and corresponding collateral is claimed
 - **Goal**: Bring the LTV back to the initial level, effectively "healing" the loan
 - **Incentive**: Liquidators receive a fee for performing this service

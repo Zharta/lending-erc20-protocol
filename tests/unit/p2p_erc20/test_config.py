@@ -27,7 +27,7 @@ def test_initial_state(
     assert p2p_usdc_weth.protocol_settlement_fee() == 0
     assert p2p_usdc_weth.protocol_wallet() == owner
     assert p2p_usdc_weth.max_protocol_settlement_fee() == 10000
-    assert p2p_usdc_weth.soft_liquidation_fee() == 0
+    assert p2p_usdc_weth.partial_liquidation_fee() == 0
 
     assert kyc_validator_contract.owner() == owner
     assert kyc_validator_contract.validator() == kyc_validator
@@ -237,28 +237,28 @@ def test_kyc_validator_claim_ownership_logs_event(kyc_validator_contract, owner)
     assert event.new_owner == new_owner
 
 
-def test_set_soft_liquidation_fee_reverts_if_not_owner(p2p_usdc_weth):
+def test_set_partial_liquidation_fee_reverts_if_not_owner(p2p_usdc_weth):
     with boa.reverts():
-        p2p_usdc_weth.set_soft_liquidation_fee(1, sender=boa.env.generate_address("random"))
+        p2p_usdc_weth.set_partial_liquidation_fee(1, sender=boa.env.generate_address("random"))
 
 
-def test_set_soft_liquidation_fee_reverts_if_gt_max(p2p_usdc_weth, owner):
-    with boa.reverts("soft liquidation fee exceeds BPS"):
-        p2p_usdc_weth.set_soft_liquidation_fee(BPS + 1, sender=owner)
+def test_set_partial_liquidation_fee_reverts_if_gt_max(p2p_usdc_weth, owner):
+    with boa.reverts("fee exceeds BPS"):
+        p2p_usdc_weth.set_partial_liquidation_fee(BPS + 1, sender=owner)
 
 
-def test_set_soft_liquidation_fee(p2p_usdc_weth, owner):
-    new_soft_liquidation_fee = 1234
-    p2p_usdc_weth.set_soft_liquidation_fee(new_soft_liquidation_fee, sender=owner)
-    assert p2p_usdc_weth.soft_liquidation_fee() == new_soft_liquidation_fee
+def test_set_partial_liquidation_fee(p2p_usdc_weth, owner):
+    new_partial_liquidation_fee = 1234
+    p2p_usdc_weth.set_partial_liquidation_fee(new_partial_liquidation_fee, sender=owner)
+    assert p2p_usdc_weth.partial_liquidation_fee() == new_partial_liquidation_fee
 
 
-def test_set_soft_liquidation_fee_logs_event(p2p_usdc_weth, owner):
-    old_soft_liquidation_fee = p2p_usdc_weth.soft_liquidation_fee()
-    new_soft_liquidation_fee = old_soft_liquidation_fee + 1
+def test_set_partial_liquidation_fee_logs_event(p2p_usdc_weth, owner):
+    old_partial_liquidation_fee = p2p_usdc_weth.partial_liquidation_fee()
+    new_partial_liquidation_fee = old_partial_liquidation_fee + 1
 
-    p2p_usdc_weth.set_soft_liquidation_fee(new_soft_liquidation_fee, sender=owner)
-    event = get_last_event(p2p_usdc_weth, "SoftLiquidationFeeSet")
+    p2p_usdc_weth.set_partial_liquidation_fee(new_partial_liquidation_fee, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "PartialLiquidationFeeSet")
 
-    assert event.old_fee == old_soft_liquidation_fee
-    assert event.new_fee == new_soft_liquidation_fee
+    assert event.old_fee == old_partial_liquidation_fee
+    assert event.new_fee == new_partial_liquidation_fee

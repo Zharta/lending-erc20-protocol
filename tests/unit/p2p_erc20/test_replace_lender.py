@@ -79,7 +79,7 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         available_liquidity=principal,
         call_eligibility=1 * DAY,
         call_window=1 * DAY,
-        soft_liquidation_ltv=9000,
+        liquidation_ltv=9000,
         oracle_addr=oracle.address,
         expiration=now + 100,
         lender=lender,
@@ -157,10 +157,10 @@ def ongoing_loan_usdc_weth(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
@@ -265,7 +265,7 @@ def test_replace_loan_lender_reverts_if_offer_has_invalid_signature(
         replace_namedtuple_field(offer, available_liquidity=offer.available_liquidity + 1),
         replace_namedtuple_field(offer, call_eligibility=offer.call_eligibility + 1),
         replace_namedtuple_field(offer, call_window=offer.call_window + 1),
-        replace_namedtuple_field(offer, soft_liquidation_ltv=offer.soft_liquidation_ltv + 1),
+        replace_namedtuple_field(offer, liquidation_ltv=offer.liquidation_ltv + 1),
         replace_namedtuple_field(offer, oracle_addr=boa.env.generate_address("random")),
         replace_namedtuple_field(offer, expiration=offer.expiration + 1),
         replace_namedtuple_field(offer, lender=boa.env.generate_address("random")),
@@ -593,12 +593,12 @@ def test_replace_loan_lender_logs_event(
     assert event.min_collateral_amount == offer.min_collateral_amount
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
-    assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
+    assert event.liquidation_ltv == offer.liquidation_ltv
     assert event.initial_ltv == loan.initial_ltv
     assert event.origination_fee_amount == offer.origination_fee_bps * loan.amount // BPS
     assert event.protocol_upfront_fee_amount == p2p_usdc_weth.protocol_upfront_fee() * loan.amount // BPS
     assert event.protocol_settlement_fee == p2p_usdc_weth.protocol_settlement_fee()
-    assert event.soft_liquidation_fee == p2p_usdc_weth.soft_liquidation_fee()
+    assert event.partial_liquidation_fee == p2p_usdc_weth.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(offer_usdc_weth2)
     assert event.offer_tracing_id == offer.tracing_id
     assert event.original_loan_id == loan.id
@@ -706,6 +706,7 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
     kyc_lender2,
     lender2,
     lender2_key,
+    transfer_agent,
 ):
     failing_erc20_code = dedent("""
 
@@ -737,8 +738,10 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
         10000,
         10000,
         0,
+        0,
         p2p_refinance.address,
         vault_impl.address,
+        transfer_agent,
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -778,10 +781,10 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_erc20_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_erc20_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_erc20_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_erc20_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=p2p_erc20_weth.oracle_addr(),
         initial_ltv=offer.max_iltv,
         call_time=0,

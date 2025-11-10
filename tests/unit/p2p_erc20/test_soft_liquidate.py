@@ -6,7 +6,7 @@ from ...conftest_base import (
     ZERO_BYTES32,
     Loan,
     Offer,
-    SoftLiquidationResult,
+    PartialLiquidationResult,
     calc_collateral_from_ltv,
     calc_ltv,
     calc_soft_liquidation,
@@ -38,6 +38,8 @@ def protocol_fees(p2p_usdc_weth):
     upfront_fee = 11
     p2p_usdc_weth.set_protocol_fee(upfront_fee, settlement_fee, sender=p2p_usdc_weth.owner())
     p2p_usdc_weth.change_protocol_wallet(p2p_usdc_weth.owner(), sender=p2p_usdc_weth.owner())
+    p2p_usdc_weth.set_partial_liquidation_fee(500, sender=p2p_usdc_weth.owner())
+    p2p_usdc_weth.set_full_liquidation_fee(300, sender=p2p_usdc_weth.owner())
     return settlement_fee
 
 
@@ -66,7 +68,7 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         available_liquidity=principal,
         call_eligibility=1 * DAY,
         call_window=1 * DAY,
-        soft_liquidation_ltv=6000,
+        liquidation_ltv=6000,
         oracle_addr=oracle.address,
         expiration=now + 100,
         lender=lender,
@@ -124,10 +126,10 @@ def ongoing_loan_usdc_weth(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
@@ -151,7 +153,7 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
     kyc_lender,
     oracle,
 ):
-    offer = replace_namedtuple_field(offer_usdc_weth.offer, soft_liquidation_ltv=0)
+    offer = replace_namedtuple_field(offer_usdc_weth.offer, liquidation_ltv=0)
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
     principal = offer.principal
     collateral_amount = int(1e18)
@@ -183,10 +185,10 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
@@ -200,34 +202,34 @@ def p2p_erc20_proxy(p2p_usdc_weth, p2p_lending_erc20_proxy_contract_def):
     return p2p_lending_erc20_proxy_contract_def.deploy(p2p_usdc_weth.address)
 
 
-def test_soft_liquidate_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth):
+def test_partially_liquidate_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth):
     for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
-            p2p_usdc_weth.soft_liquidate_loan(loan, sender=ongoing_loan_usdc_weth.borrower)
+            p2p_usdc_weth.partially_liquidate_loan(loan, sender=ongoing_loan_usdc_weth.borrower)
 
 
-def test_soft_liquidate_loan_reverts_if_soft_liquidation_disabled(
+def test_partially_liquidate_loan_reverts_if_soft_liquidation_disabled(
     p2p_usdc_weth, ongoing_loan_usdc_weth_without_soft_liquidation, lender
 ):
     with boa.reverts("soft liquidation disabled"):
-        p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth_without_soft_liquidation, sender=lender)
+        p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth_without_soft_liquidation, sender=lender)
 
 
-def test_soft_liquidate_loan_reverts_if_loan_defaulted(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
+def test_partially_liquidate_loan_reverts_if_loan_defaulted(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
     time_to_default = ongoing_loan_usdc_weth.maturity - now
     boa.env.time_travel(seconds=time_to_default + 1)
 
     with boa.reverts("loan defaulted"):
-        p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
+        p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
 
 
-def test_soft_liquidate_loan_reverts_if_debt_written_off_ge_debt(
+def test_partially_liquidate_loan_reverts_if_debt_written_off_ge_debt(
     p2p_usdc_weth, borrower, now, lender, weth, ongoing_loan_usdc_weth, oracle
 ):
     oracle.set_rate(oracle.rate() // 10, sender=oracle.owner())
     with boa.reverts("written off ge debt"):
-        p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
+        p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
 
 
 def test_simulate_soft_liquidation_loan_reverts_if_debt_written_off_ge_debt(
@@ -238,62 +240,109 @@ def test_simulate_soft_liquidation_loan_reverts_if_debt_written_off_ge_debt(
         p2p_usdc_weth.simulate_soft_liquidation(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
 
 
-def test_soft_liquidate_loan_reverts_if_above_liquidation_ltv(
+def test_partially_liquidate_loan_reverts_if_above_liquidation_ltv(
     p2p_usdc_weth, borrower, now, lender, usdc, weth, ongoing_loan_usdc_weth, oracle
 ):
     loan = ongoing_loan_usdc_weth
     current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
-    assert current_ltv < loan.soft_liquidation_ltv
+    assert current_ltv < loan.liquidation_ltv
 
     with boa.reverts("ltv lt liquidation ltv"):
-        p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
+        p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
 
 
-def test_soft_liquidate_loan_works_with_proxy(p2p_usdc_weth, ongoing_loan_usdc_weth, p2p_erc20_proxy, weth, usdc, oracle):
+def test_partially_liquidate_loan_reverts_if_debt_written_off_not_approved(
+    p2p_usdc_weth, borrower, now, lender, usdc, weth, ongoing_loan_usdc_weth, oracle
+):
     loan = ongoing_loan_usdc_weth
+    liquidator = boa.env.generate_address("liquidator")
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    principal_written_off, _, _ = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    usdc.mint(liquidator, principal_written_off)
+
+    with boa.reverts():
+        p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
+
+
+def test_partially_liquidate_loan_works_with_proxy(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, p2p_erc20_proxy, weth, usdc, oracle, now
+):
+    loan = ongoing_loan_usdc_weth
+    liquidator = boa.env.generate_address("liquidator")
     p2p_usdc_weth.set_proxy_authorization(p2p_erc20_proxy, True, sender=p2p_usdc_weth.owner())
     oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
     current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
-    assert current_ltv > loan.soft_liquidation_ltv
+    assert current_ltv > loan.liquidation_ltv
 
-    p2p_erc20_proxy.soft_liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.borrower)
+    principal_written_off, _, _ = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    usdc.mint(liquidator, principal_written_off)
+    usdc.approve(p2p_usdc_weth, principal_written_off, sender=liquidator)
 
-    event = get_last_event(p2p_erc20_proxy, "LoanSoftLiquidated")
+    p2p_erc20_proxy.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
+
+    event = get_last_event(p2p_erc20_proxy, "LoanPartiallyLiquidated")
     assert event.id == ongoing_loan_usdc_weth.id
 
 
-def test_soft_liquidate_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
-    liquidator = boa.env.generate_address("liquidator")
+def test_soft_liquidate_works_when_liquidator_is_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
     loan = ongoing_loan_usdc_weth
+    liquidator = loan.lender
     oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
     current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
-    assert current_ltv > loan.soft_liquidation_ltv
+    assert current_ltv > loan.liquidation_ltv
 
-    principal_written_off, collateral_claimed, _ = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    principal_written_off, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
 
-    p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
+    p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
 
     updated_loan = replace_namedtuple_field(
         ongoing_loan_usdc_weth,
-        collateral_amount=loan.collateral_amount - collateral_claimed,
+        collateral_amount=loan.collateral_amount - collateral_claimed - liquidation_fee,
         amount=loan.amount + loan.get_interest(now) - principal_written_off,
         accrual_start_time=now,
     )
     assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
 
 
-def test_soft_liquidate_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
+def test_partially_liquidate_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
     liquidator = boa.env.generate_address("liquidator")
     loan = ongoing_loan_usdc_weth
     oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
     current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
-    assert current_ltv > loan.soft_liquidation_ltv
+    assert current_ltv > loan.liquidation_ltv
 
     principal_written_off, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    usdc.mint(liquidator, principal_written_off)
+    usdc.approve(p2p_usdc_weth, principal_written_off, sender=liquidator)
 
-    p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
+    p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
 
-    event = get_last_event(p2p_usdc_weth, "LoanSoftLiquidated")
+    updated_loan = replace_namedtuple_field(
+        ongoing_loan_usdc_weth,
+        collateral_amount=loan.collateral_amount - collateral_claimed - liquidation_fee,
+        amount=loan.amount + loan.get_interest(now) - principal_written_off,
+        accrual_start_time=now,
+    )
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+
+
+def test_partially_liquidate_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
+    liquidator = boa.env.generate_address("liquidator")
+    loan = ongoing_loan_usdc_weth
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    principal_written_off, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    usdc.mint(liquidator, principal_written_off)
+    usdc.approve(p2p_usdc_weth, principal_written_off, sender=liquidator)
+
+    p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
+
+    event = get_last_event(p2p_usdc_weth, "LoanPartiallyLiquidated")
     assert event.id == loan.id
     assert event.borrower == loan.borrower
     assert event.lender == loan.lender
@@ -301,62 +350,99 @@ def test_soft_liquidate_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, u
     assert event.collateral_claimed == collateral_claimed
     assert event.liquidation_fee == liquidation_fee
     assert event.updated_amount == loan.amount + loan.get_interest(now) - principal_written_off
-    assert event.updated_collateral_amount == loan.collateral_amount - collateral_claimed
+    assert event.updated_collateral_amount == loan.collateral_amount - collateral_claimed - liquidation_fee
     assert event.updated_accrual_start_time == now
     assert event.liquidator == liquidator
     assert event.old_ltv == current_ltv
     assert event.new_ltv == calc_ltv(event.updated_amount, event.updated_collateral_amount, usdc, weth, oracle)
 
 
-def test_soft_liquidate_loan_transfers_collateral(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
+def test_partially_liquidate_loan_transfers_collateral(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
     liquidator = boa.env.generate_address("liquidator")
     loan = ongoing_loan_usdc_weth
 
     oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
     current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
-    assert current_ltv > loan.soft_liquidation_ltv
+    assert current_ltv > loan.liquidation_ltv
 
     lender_balance_before = weth.balanceOf(loan.lender)
-    protocol_balance_before = weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
-
-    _, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
-    p2p_usdc_weth.soft_liquidate_loan(loan, sender=liquidator)
-
-    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower)) == protocol_balance_before - collateral_claimed
-    assert weth.balanceOf(loan.lender) == lender_balance_before + collateral_claimed - liquidation_fee
-
-
-def test_soft_liquidate_loan_pays_liquidation_fee(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
-    liquidator = boa.env.generate_address("liquidator")
-    loan = ongoing_loan_usdc_weth
-
-    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
-    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
-    assert current_ltv > loan.soft_liquidation_ltv
-
-    liquidator_fee_before = weth.balanceOf(ongoing_loan_usdc_weth.borrower)
-
-    _, _, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
-    p2p_usdc_weth.soft_liquidate_loan(loan, sender=liquidator)
-
-    assert weth.balanceOf(liquidator) == liquidator_fee_before + liquidation_fee
-
-
-def test_soft_liquidate_loan_consistent_with_simulation(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
-    liquidator = boa.env.generate_address("liquidator")
-    loan = ongoing_loan_usdc_weth
-    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
-    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
-    assert current_ltv > loan.soft_liquidation_ltv
+    borrower_collateral_before = weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
 
     principal_written_off, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    usdc.mint(liquidator, principal_written_off)
+    usdc.approve(p2p_usdc_weth, principal_written_off, sender=liquidator)
+
+    p2p_usdc_weth.partially_liquidate_loan(loan, sender=liquidator)
+
+    assert (
+        weth.balanceOf(p2p_usdc_weth.wallet_to_vault(loan.borrower))
+        == borrower_collateral_before - collateral_claimed - liquidation_fee
+    )
+    assert weth.balanceOf(loan.lender) == lender_balance_before
+    assert weth.balanceOf(liquidator) == collateral_claimed + liquidation_fee
+
+
+def test_partially_liquidate_loan_pays_written_off_principal_to_lender(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now
+):
+    liquidator = boa.env.generate_address("liquidator")
+    loan = ongoing_loan_usdc_weth
+
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    principal_written_off, _, _ = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    usdc.mint(liquidator, principal_written_off)
+    usdc.approve(p2p_usdc_weth, principal_written_off, sender=liquidator)
+
+    lender_balance_before = usdc.balanceOf(loan.lender)
+    liquidator_balance_before = usdc.balanceOf(liquidator)
+
+    p2p_usdc_weth.partially_liquidate_loan(loan, sender=liquidator)
+
+    assert usdc.balanceOf(loan.lender) == lender_balance_before + principal_written_off
+    assert usdc.balanceOf(liquidator) == liquidator_balance_before - principal_written_off
+
+
+def test_partially_liquidate_loan_pays_liquidation_fee(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
+    liquidator = boa.env.generate_address("liquidator")
+    loan = ongoing_loan_usdc_weth
+
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    liquidator_collateral_before = weth.balanceOf(liquidator)
+
+    principal_written_off, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    assert liquidation_fee > 0
+
+    usdc.mint(liquidator, principal_written_off)
+    usdc.approve(p2p_usdc_weth, principal_written_off, sender=liquidator)
+
+    p2p_usdc_weth.partially_liquidate_loan(loan, sender=liquidator)
+
+    assert weth.balanceOf(liquidator) == liquidator_collateral_before + collateral_claimed + liquidation_fee
+
+
+def test_partially_liquidate_loan_consistent_with_simulation(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
+    liquidator = boa.env.generate_address("liquidator")
+    loan = ongoing_loan_usdc_weth
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    principal_written_off, collateral_claimed, liquidation_fee = calc_soft_liquidation(loan, usdc, weth, oracle, now)
+    usdc.mint(liquidator, principal_written_off)
+    usdc.approve(p2p_usdc_weth, principal_written_off, sender=liquidator)
 
     soft_liquidation_result = p2p_usdc_weth.simulate_soft_liquidation(ongoing_loan_usdc_weth)
-    p2p_usdc_weth.soft_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
+    p2p_usdc_weth.partially_liquidate_loan(ongoing_loan_usdc_weth, sender=liquidator)
 
     updated_loan = replace_namedtuple_field(
         ongoing_loan_usdc_weth,
-        collateral_amount=loan.collateral_amount - collateral_claimed,
+        collateral_amount=loan.collateral_amount - collateral_claimed - liquidation_fee,
         amount=loan.amount + loan.get_interest(now) - principal_written_off,
         accrual_start_time=now,
     )

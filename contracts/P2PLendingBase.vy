@@ -64,7 +64,7 @@ struct Offer:
     available_liquidity: uint256 # amount of the principal token allocated to the offer
     call_eligibility: uint256 # when the loan starts to be callable, 0 if not callable
     call_window: uint256 # time after the loan is called where the borrower can repay the loan or the loan defaults entirely
-    soft_liquidation_ltv: uint256 # optional, used if > 0
+    liquidation_ltv: uint256 # optional, used if > 0
     oracle_addr: address # optional, must match the oracle used for collateral valuation if defined
 
     expiration: uint256
@@ -101,10 +101,11 @@ struct Loan:
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee: uint256
-    soft_liquidation_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
     call_eligibility: uint256 # amount of seconds after the start of the loan when the loan starts to be callable, 0 if not callable
     call_window: uint256 # amount of seconds after the loan is called where the borrower can repay the loan or the loan defaults entirely, optional and needs to be set if loan is callable
-    soft_liquidation_ltv: uint256 # needs to be higher than the initial ltv, optional and used if > 0
+    liquidation_ltv: uint256 # needs to be higher than the initial ltv, optional and used if > 0
     oracle_addr: address # optional, needs to be set if soft_liquidaiton is defined
     initial_ltv: uint256 # initial ltv, needs to be set if soft_liquidation is defined
     call_time: uint256 # the time when the loan was called, 0 if not called
@@ -114,7 +115,7 @@ struct UInt256Rational:
     denominator: uint256
 
 
-struct SoftLiquidationResult:
+struct PartialLiquidationResult:
     collateral_claimed: uint256
     liquidation_fee: uint256
     debt_written_off: uint256
@@ -134,12 +135,15 @@ event TransferFailed:
 
 owner: public(address)
 proposed_owner: public(address)
+transfer_agent: public(address)
+
 
 loans: public(HashMap[bytes32, bytes32])
 
 protocol_wallet: public(address)
 protocol_upfront_fee: public(uint256)
-soft_liquidation_fee: public(uint256)
+partial_liquidation_fee: public(uint256)
+full_liquidation_fee: public(uint256)
 protocol_settlement_fee: public(uint256)
 
 commited_liquidity: public(HashMap[bytes32, uint256])
@@ -154,7 +158,7 @@ ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
 DOMAIN_TYPE_HASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
 OFFER_TYPE_DEF: constant(String[370]) = "Offer(uint256 principal,uint256 apr,address payment_token,address collateral_token,uint256 duration," \
                                         "uint256 origination_fee_bps,uint256 min_collateral_amount,uint256 max_iltv,uint256 available_liquidity," \
-                                        "uint256 call_eligibility,uint256 call_window,uint256 soft_liquidation_ltv,address oracle_addr," \
+                                        "uint256 call_eligibility,uint256 call_window,uint256 liquidation_ltv,address oracle_addr," \
                                         "uint256 expiration,address lender,address borrower,bytes32 tracing_id)"
 OFFER_TYPE_HASH: constant(bytes32) = keccak256(OFFER_TYPE_DEF)
 
@@ -333,11 +337,11 @@ def _compute_ltv(collateral_amount: uint256, amount: uint256, convertion_rate: U
 
 @view
 @internal
-def _compute_soft_liquidation(
+def _compute_partial_liquidation(
     collateral_amount: uint256,
     outstanding_debt: uint256,
     initial_ltv: uint256,
-    soft_liquidation_fee: uint256,
+    partial_liquidation_fee: uint256,
     convertion_rate: UInt256Rational,
     payment_token_decimals: uint256,
     collateral_token_decimals: uint256
@@ -349,9 +353,9 @@ def _compute_soft_liquidation(
         liquidation_fee: uint256 - the liquidation fee
     """
     collateral_value: uint256 = collateral_amount * convertion_rate.numerator * payment_token_decimals // (convertion_rate.denominator * collateral_token_decimals)
-    principal_written_off: uint256 = (outstanding_debt * BPS - collateral_value * initial_ltv)  * BPS // (BPS * BPS - (BPS + soft_liquidation_fee) * initial_ltv)
+    principal_written_off: uint256 = (outstanding_debt * BPS - collateral_value * initial_ltv)  * BPS // (BPS * BPS - (BPS + partial_liquidation_fee) * initial_ltv)
     collateral_claimed: uint256 = principal_written_off * convertion_rate.denominator * collateral_token_decimals // (convertion_rate.numerator * payment_token_decimals)
-    liquidation_fee: uint256 = collateral_claimed * soft_liquidation_fee // BPS
+    liquidation_fee: uint256 = collateral_claimed * partial_liquidation_fee // BPS
 
     return principal_written_off, collateral_claimed, liquidation_fee
 

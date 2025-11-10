@@ -36,8 +36,8 @@ def fee_wallet(owner):
 
 
 @pytest.fixture
-def vault_contrct_def():
-    return boa.load("contracts/P2P_Lending_Vault.vy")
+def profitr_vault_impl():
+    return boa.load("contracts/P2PLendingVaultProfitr.vy").deploy()
 
 
 @pytest.fixture
@@ -205,12 +205,13 @@ def vault_impl(vault_contract_def):
 def p2p_usdc_profitr(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
-    vault_impl,
+    profitr_vault_impl,
     usdc,
     profitr_token,
     oracle_profitr_usd,
     kyc_validator_contract,
     owner,
+    transfer_agent,
 ):
     return p2p_lending_erc20_contract_def.deploy(
         usdc,
@@ -224,8 +225,10 @@ def p2p_usdc_profitr(
         10000,
         10000,
         0,
+        0,
         p2p_refinance.address,
-        vault_impl.address,
+        profitr_vault_impl.address,
+        transfer_agent,
     )
 
 
@@ -530,10 +533,10 @@ def test_create_and_settle_loan(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_profitr.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_profitr.protocol_settlement_fee(),
-        soft_liquidation_fee=0,
+        partial_liquidation_fee=0,
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=p2p_usdc_profitr.oracle_addr(),
         initial_ltv=initial_ltv,
         call_time=0,
@@ -553,13 +556,13 @@ def test_create_and_settle_loan(
     assert event.collateral_amount == collateral_amount
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
-    assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
+    assert event.liquidation_ltv == offer.liquidation_ltv
     assert event.oracle_addr == p2p_usdc_profitr.oracle_addr()
     assert event.initial_ltv == initial_ltv
     assert event.origination_fee_amount == offer.origination_fee_bps * principal // BPS
     assert event.protocol_upfront_fee_amount == p2p_usdc_profitr.protocol_upfront_fee()
     assert event.protocol_settlement_fee == p2p_usdc_profitr.protocol_settlement_fee()
-    assert event.soft_liquidation_fee == p2p_usdc_profitr.soft_liquidation_fee()
+    assert event.partial_liquidation_fee == p2p_usdc_profitr.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
 

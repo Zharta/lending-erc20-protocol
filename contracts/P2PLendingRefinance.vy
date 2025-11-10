@@ -34,12 +34,13 @@ event LoanReplaced:
     min_collateral_amount: uint256
     call_eligibility: uint256
     call_window: uint256
-    soft_liquidation_ltv: uint256
+    liquidation_ltv: uint256
     initial_ltv: uint256
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee: uint256
-    soft_liquidation_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
     offer_id: bytes32
     offer_tracing_id: bytes32
     original_loan_id: bytes32
@@ -59,12 +60,13 @@ event LoanReplacedByLender:
     min_collateral_amount: uint256
     call_eligibility: uint256
     call_window: uint256
-    soft_liquidation_ltv: uint256
+    liquidation_ltv: uint256
     initial_ltv: uint256
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee: uint256
-    soft_liquidation_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
     offer_id: bytes32
     offer_tracing_id: bytes32
     original_loan_id: bytes32
@@ -147,10 +149,10 @@ def replace_loan(
     initial_ltv: uint256 = base._compute_ltv(collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
     assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 
-    if offer.offer.soft_liquidation_ltv > 0:
-        assert offer.offer.soft_liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
+    if offer.offer.liquidation_ltv > 0:
+        assert offer.offer.liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
         # required for soft liquidation: (1 + f) * iltv < 1
-        assert (BPS + base.soft_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
+        assert (BPS + base.partial_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
 
     offer_id: bytes32 = base._compute_signed_offer_id(offer)
     new_loan: base.Loan = base.Loan(
@@ -172,10 +174,11 @@ def replace_loan(
         origination_fee_amount=offer.offer.origination_fee_bps * new_principal // BPS,
         protocol_upfront_fee_amount=base.protocol_upfront_fee * new_principal // BPS,
         protocol_settlement_fee=base.protocol_settlement_fee,
-        soft_liquidation_fee=base.soft_liquidation_fee,
+        partial_liquidation_fee=base.partial_liquidation_fee,
+        full_liquidation_fee=base.full_liquidation_fee,
         call_eligibility=offer.offer.call_eligibility,
         call_window=offer.offer.call_window,
-        soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.offer.liquidation_ltv,
         oracle_addr=oracle_addr,
         initial_ltv=max_initial_ltv,
         call_time=0,
@@ -233,12 +236,13 @@ def replace_loan(
         min_collateral_amount=new_loan.min_collateral_amount,
         call_eligibility=new_loan.call_eligibility,
         call_window=new_loan.call_window,
-        soft_liquidation_ltv=new_loan.soft_liquidation_ltv,
+        liquidation_ltv=new_loan.liquidation_ltv,
         initial_ltv=new_loan.initial_ltv,
         origination_fee_amount=new_loan.origination_fee_amount,
         protocol_upfront_fee_amount=new_loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=new_loan.protocol_settlement_fee,
-        soft_liquidation_fee=new_loan.soft_liquidation_fee,
+        partial_liquidation_fee=new_loan.partial_liquidation_fee,
+        full_liquidation_fee=new_loan.full_liquidation_fee,
         offer_id=new_loan.offer_id,
         offer_tracing_id=new_loan.offer_tracing_id,
         original_loan_id=loan.id,
@@ -305,10 +309,10 @@ def replace_loan_lender(
     initial_ltv: uint256 = base._compute_ltv(loan.collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
     assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 
-    if offer.offer.soft_liquidation_ltv > 0:
-        assert offer.offer.soft_liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
+    if offer.offer.liquidation_ltv > 0:
+        assert offer.offer.liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
         # required for soft liquidation: (1 + f) * iltv < 1
-        assert (BPS + base.soft_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
+        assert (BPS + base.partial_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
 
     offer_id: bytes32 = base._compute_signed_offer_id(offer)
     new_loan: base.Loan = base.Loan(
@@ -330,10 +334,11 @@ def replace_loan_lender(
         origination_fee_amount=offer.offer.origination_fee_bps * new_principal // BPS,
         protocol_upfront_fee_amount=base.protocol_upfront_fee * new_principal // BPS,
         protocol_settlement_fee=base.protocol_settlement_fee,
-        soft_liquidation_fee=base.soft_liquidation_fee,
+        partial_liquidation_fee=base.partial_liquidation_fee,
+        full_liquidation_fee=base.full_liquidation_fee,
         call_eligibility=offer.offer.call_eligibility,
         call_window=offer.offer.call_window,
-        soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.offer.liquidation_ltv,
         oracle_addr=oracle_addr,
         initial_ltv=max_initial_ltv,
         call_time=0,
@@ -345,12 +350,12 @@ def replace_loan_lender(
     repayment_time_new_loan: uint256 = self._get_repayment_time(new_loan)
     assert repayment_time_new_loan >= repayment_time_old_loan, "repayment time lt old loan"
     assert repayment_time_new_loan * new_loan.apr * new_loan.amount <= repayment_time_old_loan * loan.apr * loan.amount, "repayment amount gt old loan"
-    if new_loan.soft_liquidation_ltv > 0:
-        assert new_loan.soft_liquidation_ltv >= loan.soft_liquidation_ltv, "liquidation ltv lt old loan"
+    if new_loan.liquidation_ltv > 0:
+        assert new_loan.liquidation_ltv >= loan.liquidation_ltv, "liquidation ltv lt old loan"
     if loan.call_eligibility > 0 and new_loan.call_eligibility > 0:
         assert new_loan.call_window >= loan.call_window, "call window lt old loan"
     assert new_loan.initial_ltv >= loan.initial_ltv, "max iltv lt old loan"
-    if new_loan.soft_liquidation_ltv > 0:
+    if new_loan.liquidation_ltv > 0:
         assert initial_ltv <= current_ltv, "initial ltv gt old loan"
 
     base.loans[loan.id] = empty(bytes32)
@@ -401,12 +406,13 @@ def replace_loan_lender(
         min_collateral_amount=new_loan.min_collateral_amount,
         call_eligibility=new_loan.call_eligibility,
         call_window=new_loan.call_window,
-        soft_liquidation_ltv=new_loan.soft_liquidation_ltv,
+        liquidation_ltv=new_loan.liquidation_ltv,
         initial_ltv=new_loan.initial_ltv,
         origination_fee_amount=new_loan.origination_fee_amount,
         protocol_upfront_fee_amount=new_loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=new_loan.protocol_settlement_fee,
-        soft_liquidation_fee=new_loan.soft_liquidation_fee,
+        partial_liquidation_fee=new_loan.partial_liquidation_fee,
+        full_liquidation_fee=new_loan.full_liquidation_fee,
         offer_id=new_loan.offer_id,
         offer_tracing_id=new_loan.offer_tracing_id,
         original_loan_id=loan.id,

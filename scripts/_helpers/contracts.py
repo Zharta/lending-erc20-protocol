@@ -54,7 +54,7 @@ class P2PLendingErc20(ContractConfig):
         protocol_wallet: str,
         max_protocol_upfront_fee: int,
         max_protocol_settlement_fee: int,
-        soft_liquidation_fee: int,
+        partial_liquidation_fee: int,
         address: str | None = None,
     ):
         super().__init__(
@@ -75,7 +75,7 @@ class P2PLendingErc20(ContractConfig):
                 protocol_wallet,
                 max_protocol_upfront_fee,
                 max_protocol_settlement_fee,
-                soft_liquidation_fee,
+                partial_liquidation_fee,
                 refinance_impl_key or ZERO_ADDRESS,
             ],
         )

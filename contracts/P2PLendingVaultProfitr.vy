@@ -19,6 +19,9 @@ interface Vault:
     def withdraw(amount: uint256, wallet: address): nonpayable
 
 
+interface ProfitInterestPayment:
+    def claimInterest(_amount: uint256): nonpayable
+
 implements: Vault
 
 
@@ -88,3 +91,10 @@ def withdraw(amount: uint256, wallet: address):
     assert msg.sender == self.caller, "unauthorized"
     assert extcall IERC20(self.token).transfer(wallet, amount), "transfer failed"
     log Withdraw(wallet=wallet, amount=amount)
+
+@external
+def claimInterest(interest_payment: address, payment_token: address, amount: uint256):
+    balance_before: uint256 = staticcall IERC20(payment_token).balanceOf(self)
+    extcall ProfitInterestPayment(interest_payment).claimInterest(amount)
+    assert (staticcall IERC20(payment_token).balanceOf(self)) - balance_before == amount, "incorrect interest amount"
+    assert extcall IERC20(payment_token).transfer(self.owner, amount), "transfer failed"

@@ -88,7 +88,7 @@ class Offer(NamedTuple):
     available_liquidity: int = 0
     call_eligibility: int = 0
     call_window: int = 0
-    soft_liquidation_ltv: int = 0
+    liquidation_ltv: int = 0
     oracle_addr: str = ZERO_ADDRESS
     expiration: int = 0
     lender: str = ZERO_ADDRESS
@@ -126,10 +126,10 @@ class Loan(NamedTuple):
     origination_fee_amount: int = 0
     protocol_upfront_fee_amount: int = 0
     protocol_settlement_fee: int = 0
-    soft_liquidation_fee: int = 0
+    partial_liquidation_fee: int = 0
     call_eligibility: int = 0
     call_window: int = 0
-    soft_liquidation_ltv: int = 0
+    liquidation_ltv: int = 0
     oracle_addr: str = ZERO_ADDRESS
     initial_ltv: int = 0
     call_time: int = 0
@@ -182,7 +182,7 @@ def sign_offer(offer: Offer, lender: Account, verifying_contract: str) -> Signed
                 {"name": "available_liquidity", "type": "uint256"},
                 {"name": "call_eligibility", "type": "uint256"},
                 {"name": "call_window", "type": "uint256"},
-                {"name": "soft_liquidation_ltv", "type": "uint256"},
+                {"name": "liquidation_ltv", "type": "uint256"},
                 {"name": "oracle_addr", "type": "address"},
                 {"name": "expiration", "type": "uint256"},
                 {"name": "lender", "type": "address"},
@@ -358,7 +358,7 @@ def _create_offer_backend(signer: Account, **offer):
         "available_liquidity": str(_offer.available_liquidity),
         "call_eligibility": _offer.call_eligibility,
         "call_window": _offer.call_window,
-        "soft_liquidation_ltv": _offer.soft_liquidation_ltv,
+        "liquidation_ltv": _offer.liquidation_ltv,
         "oracle_addr": _offer.oracle_addr,
         "expiration": _offer.expiration,
         "lender": _offer.lender,
@@ -408,7 +408,7 @@ def _parse_offer_data(offer_data) -> SignedOffer:
         available_liquidity=int(offer_data["available_liquidity"]),
         call_eligibility=int(offer_data["call_eligibility"]),
         call_window=int(offer_data["call_window"]),
-        soft_liquidation_ltv=int(offer_data["soft_liquidation_ltv"]),
+        liquidation_ltv=int(offer_data["liquidation_ltv"]),
         oracle_addr=offer_data["oracle_addr"],
         expiration=int(offer_data.get("expiration") or 0),
         lender=offer_data["lender"],
@@ -440,10 +440,10 @@ def _parse_loan_data(loan_data: dict) -> Loan:
         origination_fee_amount=int(loan_data["origination_fee_amount"]),
         protocol_upfront_fee_amount=int(loan_data["protocol_upfront_fee_amount"]),
         protocol_settlement_fee=int(loan_data["protocol_settlement_fee"]),
-        soft_liquidation_fee=int(loan_data["soft_liquidation_fee"]),
+        partial_liquidation_fee=int(loan_data["partial_liquidation_fee"]),
         call_eligibility=int(loan_data["call_eligibility"]),
         call_window=int(loan_data["call_window"]),
-        soft_liquidation_ltv=int(loan_data["soft_liquidation_ltv"]),
+        liquidation_ltv=int(loan_data["liquidation_ltv"]),
         oracle_addr=loan_data["oracle_addr"],
         initial_ltv=int(loan_data["initial_ltv"]),
         call_time=int(loan_data.get("call_time") or 0),

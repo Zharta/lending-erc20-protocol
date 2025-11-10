@@ -127,6 +127,11 @@ def protocol_wallet(accounts):
 
 
 @pytest.fixture(scope="session")
+def transfer_agent():
+    return boa.env.generate_address("transfer_agent")
+
+
+@pytest.fixture(scope="session")
 def erc721_contract_def(boa_env):
     return boa.load_partial("contracts/auxiliary/ERC721.vy")
 

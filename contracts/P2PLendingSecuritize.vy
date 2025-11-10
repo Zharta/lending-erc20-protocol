@@ -33,13 +33,14 @@ event LoanCreated:
     min_collateral_amount: uint256
     call_eligibility: uint256
     call_window: uint256
-    soft_liquidation_ltv: uint256
+    liquidation_ltv: uint256
     oracle_addr: address
     initial_ltv: uint256
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee: uint256
-    soft_liquidation_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
     offer_id: bytes32
     offer_tracing_id: bytes32
 
@@ -85,7 +86,7 @@ event LoanCollateralRemoved:
     new_ltv: uint256
 
 
-event LoanSoftLiquidated:
+event LoanPartiallyLiquidated:
     id: bytes32
     borrower: address
     lender: address
@@ -147,12 +148,13 @@ event LoanReplaced:
     min_collateral_amount: uint256
     call_eligibility: uint256
     call_window: uint256
-    soft_liquidation_ltv: uint256
+    liquidation_ltv: uint256
     initial_ltv: uint256
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee: uint256
-    soft_liquidation_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
     offer_id: bytes32
     offer_tracing_id: bytes32
     original_loan_id: bytes32
@@ -172,12 +174,13 @@ event LoanReplacedByLender:
     min_collateral_amount: uint256
     call_eligibility: uint256
     call_window: uint256
-    soft_liquidation_ltv: uint256
+    liquidation_ltv: uint256
     initial_ltv: uint256
     origination_fee_amount: uint256
     protocol_upfront_fee_amount: uint256
     protocol_settlement_fee: uint256
-    soft_liquidation_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
     offer_id: bytes32
     offer_tracing_id: bytes32
     original_loan_id: bytes32
@@ -222,6 +225,8 @@ def __init__(
     _protocol_wallet: address,
     _max_protocol_upfront_fee: uint256,
     _max_protocol_settlement_fee: uint256,
+    _partial_liquidation_fee: uint256,
+    _full_liquidation_fee: uint256,
     _refinance_addr: address,
     _vault_impl_addr: address,
     _borrower: address
@@ -257,6 +262,9 @@ def __init__(
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
     borrower = _borrower
     base.protocol_wallet = _protocol_wallet
+    base.partial_liquidation_fee = _partial_liquidation_fee
+    base.full_liquidation_fee = _full_liquidation_fee
+
     offer_sig_domain_separator = keccak256(
         abi_encode(
             base.DOMAIN_TYPE_HASH,
@@ -403,10 +411,10 @@ def create_loan(
     initial_ltv: uint256 = self._compute_ltv(collateral_amount, principal, convertion_rate)
     assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 
-    if offer.offer.soft_liquidation_ltv > 0:
-        assert offer.offer.soft_liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
+    if offer.offer.liquidation_ltv > 0:
+        assert offer.offer.liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
         # required for soft liquidation: (1 + f) * iltv < 1
-        assert (BPS + base.soft_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
+        assert (BPS + base.partial_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
 
     offer_id: bytes32 = base._compute_signed_offer_id(offer)
     loan: base.Loan = base.Loan(
@@ -428,10 +436,11 @@ def create_loan(
         origination_fee_amount=offer.offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=base.protocol_upfront_fee * principal // BPS,
         protocol_settlement_fee=base.protocol_settlement_fee,
-        soft_liquidation_fee=base.soft_liquidation_fee,
+        partial_liquidation_fee=base.partial_liquidation_fee,
+        full_liquidation_fee=base.full_liquidation_fee,
         call_eligibility=offer.offer.call_eligibility,
         call_window=offer.offer.call_window,
-        soft_liquidation_ltv=offer.offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.offer.liquidation_ltv,
         oracle_addr=oracle_addr,
         initial_ltv=max_initial_ltv,
         call_time=0,
@@ -464,13 +473,14 @@ def create_loan(
         min_collateral_amount=loan.min_collateral_amount,
         call_eligibility=loan.call_eligibility,
         call_window=loan.call_window,
-        soft_liquidation_ltv=loan.soft_liquidation_ltv,
+        liquidation_ltv=loan.liquidation_ltv,
         oracle_addr=loan.oracle_addr,
         initial_ltv=loan.initial_ltv,
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
-        soft_liquidation_fee=loan.soft_liquidation_fee,
+        partial_liquidation_fee=loan.partial_liquidation_fee,
+        full_liquidation_fee=loan.full_liquidation_fee,
         offer_id=offer_id,
         offer_tracing_id=offer.offer.tracing_id,
     )
@@ -579,10 +589,11 @@ def call_loan(loan: base.Loan):
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
-        soft_liquidation_fee=loan.soft_liquidation_fee,
+        partial_liquidation_fee=loan.partial_liquidation_fee,
+        full_liquidation_fee=loan.full_liquidation_fee,
         call_eligibility=loan.call_eligibility,
         call_window=loan.call_window,
-        soft_liquidation_ltv= loan.soft_liquidation_ltv,
+        liquidation_ltv= loan.liquidation_ltv,
         oracle_addr=loan.oracle_addr,
         initial_ltv= loan.initial_ltv,
         call_time=block.timestamp,
@@ -636,10 +647,11 @@ def add_collateral_to_loan(loan: base.Loan, collateral_amount: uint256):
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
-        soft_liquidation_fee=loan.soft_liquidation_fee,
+        partial_liquidation_fee=loan.partial_liquidation_fee,
+        full_liquidation_fee=loan.full_liquidation_fee,
         call_eligibility=loan.call_eligibility,
         call_window=loan.call_window,
-        soft_liquidation_ltv= loan.soft_liquidation_ltv,
+        liquidation_ltv= loan.liquidation_ltv,
         oracle_addr=loan.oracle_addr,
         initial_ltv= loan.initial_ltv,
         call_time=loan.call_time
@@ -698,10 +710,11 @@ def remove_collateral_from_loan(loan: base.Loan, collateral_amount: uint256):
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
         protocol_settlement_fee=loan.protocol_settlement_fee,
-        soft_liquidation_fee=loan.soft_liquidation_fee,
+        partial_liquidation_fee=loan.partial_liquidation_fee,
+        full_liquidation_fee=loan.full_liquidation_fee,
         call_eligibility=loan.call_eligibility,
         call_window=loan.call_window,
-        soft_liquidation_ltv= loan.soft_liquidation_ltv,
+        liquidation_ltv= loan.liquidation_ltv,
         oracle_addr=loan.oracle_addr,
         initial_ltv= loan.initial_ltv,
         call_time=loan.call_time
@@ -916,18 +929,18 @@ def _transfer_funds(_from: address, _to: address, _amount: uint256):
 
 @view
 @internal
-def _compute_soft_liquidation(
+def _compute_partial_liquidation(
     collateral_amount: uint256,
     outstanding_debt: uint256,
     initial_ltv: uint256,
-    soft_liquidation_fee: uint256,
+    partial_liquidation_fee: uint256,
     convertion_rate: base.UInt256Rational,
 ) -> (uint256, uint256, uint256):
-    return base._compute_soft_liquidation(
+    return base._compute_partial_liquidation(
         collateral_amount,
         outstanding_debt,
         initial_ltv,
-        soft_liquidation_fee,
+        partial_liquidation_fee,
         convertion_rate,
         payment_token_decimals,
         collateral_token_decimals
