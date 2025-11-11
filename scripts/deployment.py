@@ -36,6 +36,6 @@ def cli(network):
     #     "p2p.eth_nfts",
     # }
 
-    dm.deploy(changes, dryrun=True)
+    dm.deploy(changes, dryrun=False)
 
     print("Done")

@@ -132,6 +132,67 @@ class P2PLendingSecuritize(ContractConfig):
 
 
 @dataclass
+class P2PLendingV2Erc20(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str,
+        payment_token_key: str,
+        collateral_token_key: str,
+        oracle_key: str,
+        oracle_reverse: bool = False,
+        kyc_validator_key: str | None = None,
+        refinance_impl_key: str | None = None,
+        vault_impl_key: str | None = None,
+        protocol_upfront_fee: int,
+        protocol_settlement_fee: int,
+        protocol_wallet: str,
+        transfer_agent: str,
+        max_protocol_upfront_fee: int,
+        max_protocol_settlement_fee: int,
+        partial_liquidation_fee: int,
+        full_liquidation_fee: int,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingV2Erc20,
+            version=version,
+            abi_key=abi_key,
+            deployment_deps={
+                payment_token_key,
+                collateral_token_key,
+                oracle_key,
+                kyc_validator_key,
+                refinance_impl_key,
+                vault_impl_key,
+            },
+            deployment_args=[
+                payment_token_key,
+                collateral_token_key,
+                oracle_key,
+                oracle_reverse,
+                kyc_validator_key or ZERO_ADDRESS,
+                protocol_upfront_fee,
+                protocol_settlement_fee,
+                protocol_wallet,
+                max_protocol_upfront_fee,
+                max_protocol_settlement_fee,
+                partial_liquidation_fee,
+                full_liquidation_fee,
+                refinance_impl_key,
+                vault_impl_key,
+                transfer_agent,
+            ],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
 class RefinanceImpl(ContractConfig):
     def __init__(
         self,
@@ -145,6 +206,52 @@ class RefinanceImpl(ContractConfig):
             key,
             None,
             project.P2PLendingRefinance,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class RefinanceV2Impl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingV2Refinance,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class VaultV2Impl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingV2Vault,
             version=version,
             abi_key=abi_key,
             token=False,
