@@ -736,3 +736,37 @@ def test_create_loan_for_different_lenders_track_liquidity_separately(
     assert liquidity_key1 != liquidity_key2
     assert p2p_usdc_weth.commited_liquidity(liquidity_key1) == principal
     assert p2p_usdc_weth.commited_liquidity(liquidity_key2) == principal
+
+
+def test_create_loan_creates_vault_if_needed(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc
+):
+    # Check no vault exists initially for a new borrower
+    borrower_vault = p2p_usdc_weth.wallet_to_vault(borrower)
+    assert not boa.eval(f"{borrower_vault}.is_contract")
+
+    # Create loan for new borrower
+    collateral_amount = 10**18  # 1 WETH
+    principal = 2000 * 10**6  # 2000 USDC
+
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.deposit(value=principal, sender=lender)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    assert boa.eval(f"{borrower_vault}.is_contract")

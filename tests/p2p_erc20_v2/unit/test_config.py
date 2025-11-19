@@ -262,3 +262,66 @@ def test_set_partial_liquidation_fee_logs_event(p2p_usdc_weth, owner):
 
     assert event.old_fee == old_partial_liquidation_fee
     assert event.new_fee == new_partial_liquidation_fee
+
+
+def test_set_full_liquidation_fee_reverts_if_not_owner(p2p_usdc_weth):
+    random = boa.env.generate_address("random")
+    with boa.reverts():
+        p2p_usdc_weth.set_full_liquidation_fee(100, sender=random)
+
+
+def test_set_full_liquidation_fee_reverts_if_gt_max(p2p_usdc_weth, owner):
+    with boa.reverts("fee exceeds BPS"):
+        p2p_usdc_weth.set_full_liquidation_fee(BPS + 1, sender=owner)
+
+
+def test_set_full_liquidation_fee(p2p_usdc_weth, owner):
+    new_fee = 500
+    p2p_usdc_weth.set_full_liquidation_fee(new_fee, sender=owner)
+    assert p2p_usdc_weth.full_liquidation_fee() == new_fee
+
+
+def test_set_full_liquidation_fee_logs_event(p2p_usdc_weth, owner):
+    old_fee = p2p_usdc_weth.full_liquidation_fee()
+    new_fee = 500
+
+    p2p_usdc_weth.set_full_liquidation_fee(new_fee, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "FullLiquidationFeeSet")
+
+    assert event.old_fee == old_fee
+    assert event.new_fee == new_fee
+
+
+def test_set_transfer_agent_reverts_if_not_owner_or_agent(p2p_usdc_weth, transfer_agent):
+    random = boa.env.generate_address("random")
+    with boa.reverts():
+        p2p_usdc_weth.set_transfer_agent(boa.env.generate_address("new_agent"), sender=random)
+
+
+def test_set_transfer_agent_by_owner(p2p_usdc_weth, owner, transfer_agent):
+    new_agent = boa.env.generate_address("new_agent")
+    p2p_usdc_weth.set_transfer_agent(new_agent, sender=owner)
+    assert p2p_usdc_weth.transfer_agent() == new_agent
+
+
+def test_set_transfer_agent_by_current_agent(p2p_usdc_weth, owner, transfer_agent):
+    # First set a transfer agent
+    initial_agent = boa.env.generate_address("initial_agent")
+    p2p_usdc_weth.set_transfer_agent(initial_agent, sender=owner)
+
+    # Then change it by the current agent
+    new_agent = boa.env.generate_address("new_agent")
+    p2p_usdc_weth.set_transfer_agent(new_agent, sender=initial_agent)
+    assert p2p_usdc_weth.transfer_agent() == new_agent
+
+
+def test_set_transfer_agent_logs_event(p2p_usdc_weth, owner, transfer_agent):
+    new_agent = boa.env.generate_address("new_agent")
+    old_agent = p2p_usdc_weth.transfer_agent()
+
+    p2p_usdc_weth.set_transfer_agent(new_agent, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "TransferAgentChanged")
+
+    assert event.old_agent == old_agent
+    assert event.new_agent == new_agent
+    assert event.by == owner

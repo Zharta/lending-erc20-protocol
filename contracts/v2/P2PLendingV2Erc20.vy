@@ -143,6 +143,10 @@ event PartialLiquidationFeeSet:
     old_fee: uint256
     new_fee: uint256
 
+event FullLiquidationFeeSet:
+    old_fee: uint256
+    new_fee: uint256
+
 event ProtocolWalletChanged:
     old_wallet: address
     new_wallet: address
@@ -332,7 +336,7 @@ def set_full_liquidation_fee(new_full_liquidation_fee: uint256):
     assert msg.sender == base.owner
     assert new_full_liquidation_fee <= BPS, "fee exceeds BPS"
 
-    log PartialLiquidationFeeSet(old_fee=base.full_liquidation_fee, new_fee=new_full_liquidation_fee)
+    log FullLiquidationFeeSet(old_fee=base.full_liquidation_fee, new_fee=new_full_liquidation_fee)
     base.full_liquidation_fee = new_full_liquidation_fee
 
 
