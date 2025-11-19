@@ -179,6 +179,35 @@ def test_kyc_validator_propose_owner_logs_event(kyc_validator_contract, owner):
     assert event.proposed_owner == new_owner
 
 
+def test_kyc_validator_set_validator_reverts_if_wrong_caller(kyc_validator_contract):
+    random = boa.env.generate_address("random")
+    with boa.reverts("not owner"):
+        kyc_validator_contract.set_validator(random, sender=random)
+
+
+def test_kyc_validator_set_validator_reverts_if_zero_address(kyc_validator_contract, owner):
+    with boa.reverts("empty validator"):
+        kyc_validator_contract.set_validator(ZERO_ADDRESS, sender=owner)
+
+
+def test_kyc_validator_set_validator(kyc_validator_contract, owner):
+    new_validator = boa.env.generate_address("new_validator")
+    kyc_validator_contract.set_validator(new_validator, sender=owner)
+
+    assert kyc_validator_contract.validator() == new_validator
+
+
+def test_kyc_validator_set_validator_logs_event(kyc_validator_contract, owner):
+    new_validator = boa.env.generate_address("new_validator")
+    old_validator = kyc_validator_contract.validator()
+
+    kyc_validator_contract.set_validator(new_validator, sender=owner)
+    event = get_last_event(kyc_validator_contract, "ValidatorSet")
+
+    assert event.old_validator == old_validator
+    assert event.new_validator == new_validator
+
+
 def test_claim_ownership_reverts_if_wrong_caller(p2p_usdc_weth, owner):
     new_owner = boa.env.generate_address("new_owner")
     p2p_usdc_weth.propose_owner(new_owner, sender=owner)

@@ -31,7 +31,7 @@ test: ${VENV}
 	${VENV}/bin/pytest tests
 
 coverage:
-	${VENV}/bin/coverage run -m pytest tests/up2p_erc20_v2/nit --runslow
+	${VENV}/bin/coverage run -m pytest tests/p2p_erc20_v2/unit --runslow
 	${VENV}/bin/coverage report
 
 branch-coverage:
