@@ -545,7 +545,6 @@ def test_replace_loan_updates_commited_liquidity(
     assert p2p_usdc_weth.commited_liquidity(liquidity_key_2) == offer2_liquidity_before + loan.amount
 
 
-@pytest.mark.skip(reason="boa doesnt catch 'unused' events and fails")
 def test_replace_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now, offer_usdc_weth2, kyc_lender2, lender2):
     loan = ongoing_loan_usdc_weth
     offer = offer_usdc_weth2.offer
@@ -713,6 +712,7 @@ def test_replace_loan_pays_protocol_fees(
 def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
+    p2p_liquidation,
     vault_impl,
     weth,
     owner,
@@ -762,6 +762,7 @@ def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
         0,
         0,
         p2p_refinance.address,
+        p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
     )

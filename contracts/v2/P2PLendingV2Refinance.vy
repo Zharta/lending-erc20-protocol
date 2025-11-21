@@ -18,61 +18,7 @@ from ethereum.ercs import IERC721
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
 from contracts.v2 import P2PLendingV2Vault as vault
-
-
-# Structs
-
-event LoanReplaced:
-    id: bytes32
-    amount: uint256
-    apr: uint256
-    maturity: uint256
-    start_time: uint256
-    borrower: address
-    lender: address
-    collateral_amount: uint256
-    min_collateral_amount: uint256
-    call_eligibility: uint256
-    call_window: uint256
-    liquidation_ltv: uint256
-    initial_ltv: uint256
-    origination_fee_amount: uint256
-    protocol_upfront_fee_amount: uint256
-    protocol_settlement_fee: uint256
-    partial_liquidation_fee: uint256
-    full_liquidation_fee: uint256
-    offer_id: bytes32
-    offer_tracing_id: bytes32
-    original_loan_id: bytes32
-    paid_principal: uint256
-    paid_interest: uint256
-    paid_protocol_settlement_fee_amount: uint256
-
-event LoanReplacedByLender:
-    id: bytes32
-    amount: uint256
-    apr: uint256
-    maturity: uint256
-    start_time: uint256
-    borrower: address
-    lender: address
-    collateral_amount: uint256
-    min_collateral_amount: uint256
-    call_eligibility: uint256
-    call_window: uint256
-    liquidation_ltv: uint256
-    initial_ltv: uint256
-    origination_fee_amount: uint256
-    protocol_upfront_fee_amount: uint256
-    protocol_settlement_fee: uint256
-    partial_liquidation_fee: uint256
-    full_liquidation_fee: uint256
-    offer_id: bytes32
-    offer_tracing_id: bytes32
-    original_loan_id: bytes32
-    paid_principal: uint256
-    paid_interest: uint256
-    paid_protocol_settlement_fee_amount: uint256
+from contracts.v2 import P2PLendingV2Erc20 as main
 
 
 # Constants
@@ -224,7 +170,7 @@ def replace_loan(
     if protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount > 0:
         base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount, payment_token)
 
-    log LoanReplaced(
+    log main.LoanReplaced(
         id=new_loan.id,
         amount=new_loan.initial_amount,
         apr=new_loan.apr,
@@ -394,7 +340,7 @@ def replace_loan_lender(
     if protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount > 0:
         base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount + new_loan.protocol_upfront_fee_amount, payment_token)
 
-    log LoanReplacedByLender(
+    log main.LoanReplacedByLender(
         id=new_loan.id,
         amount=new_loan.initial_amount,
         apr=new_loan.apr,

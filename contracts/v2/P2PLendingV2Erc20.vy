@@ -65,6 +65,59 @@ event LoanCollateralClaimed:
     collateral_amount: uint256
 
 
+event LoanReplaced:
+    id: bytes32
+    amount: uint256
+    apr: uint256
+    maturity: uint256
+    start_time: uint256
+    borrower: address
+    lender: address
+    collateral_amount: uint256
+    min_collateral_amount: uint256
+    call_eligibility: uint256
+    call_window: uint256
+    liquidation_ltv: uint256
+    initial_ltv: uint256
+    origination_fee_amount: uint256
+    protocol_upfront_fee_amount: uint256
+    protocol_settlement_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
+    offer_id: bytes32
+    offer_tracing_id: bytes32
+    original_loan_id: bytes32
+    paid_principal: uint256
+    paid_interest: uint256
+    paid_protocol_settlement_fee_amount: uint256
+
+event LoanReplacedByLender:
+    id: bytes32
+    amount: uint256
+    apr: uint256
+    maturity: uint256
+    start_time: uint256
+    borrower: address
+    lender: address
+    collateral_amount: uint256
+    min_collateral_amount: uint256
+    call_eligibility: uint256
+    call_window: uint256
+    liquidation_ltv: uint256
+    initial_ltv: uint256
+    origination_fee_amount: uint256
+    protocol_upfront_fee_amount: uint256
+    protocol_settlement_fee: uint256
+    partial_liquidation_fee: uint256
+    full_liquidation_fee: uint256
+    offer_id: bytes32
+    offer_tracing_id: bytes32
+    original_loan_id: bytes32
+    paid_principal: uint256
+    paid_interest: uint256
+    paid_protocol_settlement_fee_amount: uint256
+
+
 event LoanCollateralAdded:
     id: bytes32
     borrower: address
@@ -159,55 +212,6 @@ event PendingTransfersClaimed:
     _to: address
     amount: uint256
 
-event LoanReplaced:
-    id: bytes32
-    amount: uint256
-    apr: uint256
-    maturity: uint256
-    start_time: uint256
-    borrower: address
-    lender: address
-    collateral_amount: uint256
-    min_collateral_amount: uint256
-    call_eligibility: uint256
-    call_window: uint256
-    liquidation_ltv: uint256
-    initial_ltv: uint256
-    origination_fee_amount: uint256
-    protocol_upfront_fee_amount: uint256
-    protocol_settlement_fee: uint256
-    partial_liquidation_fee: uint256
-    offer_id: bytes32
-    offer_tracing_id: bytes32
-    original_loan_id: bytes32
-    paid_principal: uint256
-    paid_interest: uint256
-    paid_protocol_settlement_fee_amount: uint256
-
-event LoanReplacedByLender:
-    id: bytes32
-    amount: uint256
-    apr: uint256
-    maturity: uint256
-    start_time: uint256
-    borrower: address
-    lender: address
-    collateral_amount: uint256
-    min_collateral_amount: uint256
-    call_eligibility: uint256
-    call_window: uint256
-    liquidation_ltv: uint256
-    initial_ltv: uint256
-    origination_fee_amount: uint256
-    protocol_upfront_fee_amount: uint256
-    protocol_settlement_fee: uint256
-    partial_liquidation_fee: uint256
-    offer_id: bytes32
-    offer_tracing_id: bytes32
-    original_loan_id: bytes32
-    paid_principal: uint256
-    paid_interest: uint256
-    paid_protocol_settlement_fee_amount: uint256
 
 event LoanBorrowerTransferred:
     loan_id: bytes32
@@ -237,6 +241,7 @@ collateral_token_decimals: public(immutable(uint256))
 offer_sig_domain_separator: immutable(bytes32)
 
 refinance_addr: public(immutable(address))
+liquidation_addr: public(immutable(address))
 vault_impl_addr: public(immutable(address))
 
 @deploy
@@ -254,6 +259,7 @@ def __init__(
     _partial_liquidation_fee: uint256,
     _full_liquidation_fee: uint256,
     _refinance_addr: address,
+    _liquidation_addr: address,
     _vault_impl_addr: address,
     _transfer_agent: address
 ):
@@ -272,6 +278,7 @@ def __init__(
     @param _partial_liquidation_fee The percentage (bps) of the principal that is charged as a liquidation fee when a loan is partially liquidated.
     @param _full_liquidation_fee The percentage (bps) of the principal that is charged as a liquidation fee when a loan is fully liquidated.
     @param _refinance_addr The address of the facet contract implementing the refinance functionality.
+    @param _liquidation_addr The address of the facet contract implementing the liquidation functionality.
     @param _vault_impl_addr The address of the vault implementation contract.
     @param _transfer_agent The wallet address for the transfer agent role.
     """
@@ -286,6 +293,7 @@ def __init__(
     max_protocol_upfront_fee = _max_protocol_upfront_fee
     max_protocol_settlement_fee = _max_protocol_settlement_fee
     refinance_addr = _refinance_addr
+    liquidation_addr = _liquidation_addr
     vault_impl_addr = _vault_impl_addr
     collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
@@ -635,82 +643,24 @@ def partially_liquidate_loan(loan: base.Loan):
     @notice Partialy liquidates a loan if the LTV exceeds the liquidation_ltv, resulting in a write-off of part of the debt and transfer of part of the collateral to the lender. The loan remains active. Can be called by anyone.
     @param loan The loan to be soft liquidated.
     """
-
-    assert base._is_loan_valid(loan), "invalid loan"
-    assert not base._is_loan_defaulted(loan), "loan defaulted"
-    liquidator: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
-
-    current_interest: uint256 = base._compute_settlement_interest(loan)
-    convertion_rate: base.UInt256Rational = self._get_oracle_rate()
-    current_ltv: uint256 = self._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate)
-
-    assert loan.liquidation_ltv > 0, "soft liquidation disabled"
-    assert current_ltv >= loan.liquidation_ltv, "ltv lt liquidation ltv"
-
-    principal_written_off: uint256 = 0
-    collateral_claimed: uint256 = 0
-    liquidation_fee: uint256 = 0
-    principal_written_off, collateral_claimed, liquidation_fee = self._compute_partial_liquidation(
-        loan.collateral_amount,
-        loan.amount + current_interest,
-        loan.initial_ltv,
-        loan.partial_liquidation_fee,
-        convertion_rate,
+    raw_call(
+        liquidation_addr,
+        abi_encode(
+            loan,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("partially_liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        is_delegate_call=True
     )
 
-    assert principal_written_off < loan.amount + current_interest, "written off ge debt"
-
-    updated_loan: base.Loan = base.Loan(
-        id=loan.id,
-        offer_id=loan.offer_id,
-        offer_tracing_id=loan.offer_tracing_id,
-        initial_amount=loan.initial_amount,
-        amount=loan.amount + current_interest - principal_written_off,
-        apr=loan.apr,
-        payment_token=loan.payment_token,
-        maturity=loan.maturity,
-        start_time=loan.start_time,
-        accrual_start_time=block.timestamp,  # reset accrual start time
-        borrower=loan.borrower,
-        lender=loan.lender,
-        collateral_token=loan.collateral_token,
-        collateral_amount=loan.collateral_amount - collateral_claimed - liquidation_fee,
-        min_collateral_amount=loan.min_collateral_amount,
-        origination_fee_amount=loan.origination_fee_amount,
-        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
-        protocol_settlement_fee=loan.protocol_settlement_fee,
-        partial_liquidation_fee=loan.partial_liquidation_fee,
-        full_liquidation_fee=loan.full_liquidation_fee,
-        call_eligibility=loan.call_eligibility,
-        call_window=loan.call_window,
-        liquidation_ltv= loan.liquidation_ltv,
-        oracle_addr=loan.oracle_addr,
-        initial_ltv= loan.initial_ltv,
-        call_time=loan.call_time,
-    )
-
-    base.loans[loan.id] = base._loan_state_hash(updated_loan)
-
-    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
-    base._send_collateral(liquidator, collateral_claimed + liquidation_fee, _vault)
-    if liquidator != loan.lender:
-        self._transfer_funds(liquidator, loan.lender, principal_written_off)
-        base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, principal_written_off)
-
-    log LoanPartiallyLiquidated(
-        id=loan.id,
-        borrower=loan.borrower,
-        lender=loan.lender,
-        written_off=principal_written_off,
-        collateral_claimed=collateral_claimed,
-        liquidation_fee=liquidation_fee,
-        updated_amount=updated_loan.amount,
-        updated_collateral_amount=updated_loan.collateral_amount,
-        updated_accrual_start_time=updated_loan.accrual_start_time,
-        liquidator=liquidator,
-        old_ltv=current_ltv,
-        new_ltv=self._compute_ltv(updated_loan.collateral_amount, updated_loan.amount, convertion_rate)
-    )
 
 
 @external
@@ -721,52 +671,23 @@ def liquidate_loan(loan: base.Loan):
     @param loan The loan to be soft liquidated.
     """
 
-    assert base._is_loan_valid(loan), "invalid loan"
-    assert base._is_loan_defaulted(loan), "loan not defaulted"
-    liquidator: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
-
-    current_interest: uint256 = base._compute_settlement_interest(loan)
-    outstanding_debt: uint256 = loan.amount + current_interest
-    rate: base.UInt256Rational = self._get_oracle_rate()
-
-    liquidation_fee_collateral: uint256 = min(loan.collateral_amount, outstanding_debt * base.full_liquidation_fee * rate.denominator * collateral_token_decimals // (BPS * rate.numerator * payment_token_decimals))
-    collateral_for_debt: uint256 = outstanding_debt * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals)
-    remaining_collateral: uint256 = loan.collateral_amount - liquidation_fee_collateral
-    remaining_collateral_value: uint256 = remaining_collateral * rate.numerator * payment_token_decimals // (rate.denominator * collateral_token_decimals)
-    protocol_settlement_fee_amount: uint256 = min(loan.protocol_settlement_fee * current_interest // BPS, remaining_collateral_value)
-    shortfall: uint256 = outstanding_debt - remaining_collateral_value if remaining_collateral_value < outstanding_debt else 0
-    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
-
-    if remaining_collateral_value >= outstanding_debt:
-        self._receive_funds(liquidator, outstanding_debt)
-        base._send_collateral(liquidator, collateral_for_debt + liquidation_fee_collateral, _vault)
-        if remaining_collateral > collateral_for_debt:
-            base._send_collateral(loan.borrower, remaining_collateral - collateral_for_debt, _vault)
-        self._send_funds(loan.lender, outstanding_debt - protocol_settlement_fee_amount)
-        self._send_funds(base.protocol_wallet, protocol_settlement_fee_amount)
-
-    else:
-        self._receive_funds(liquidator, remaining_collateral_value)
-        base._send_collateral(liquidator, loan.collateral_amount, _vault)
-        self._send_funds(loan.lender, remaining_collateral_value - protocol_settlement_fee_amount)
-        self._send_funds(base.protocol_wallet, protocol_settlement_fee_amount)
-
-    base.loans[loan.id] = empty(bytes32)
-
-    log LoanLiquidated(
-        id=loan.id,
-        borrower=loan.borrower,
-        lender=loan.lender,
-        liquidator=liquidator,
-        outstanding_debt=outstanding_debt,
-        collateral_for_debt=collateral_for_debt,
-        remaining_collateral=remaining_collateral,
-        remaining_collateral_value=remaining_collateral_value,
-        shortfall=shortfall,
-        liquidation_fee=liquidation_fee_collateral,
-        protocol_settlement_fee_amount=protocol_settlement_fee_amount
+    raw_call(
+        liquidation_addr,
+        abi_encode(
+            loan,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        is_delegate_call=True
     )
-
 
 @external
 def call_loan(loan: base.Loan):

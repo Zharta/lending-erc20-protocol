@@ -215,6 +215,7 @@ def vault_impl(vault_contract_def):
 def p2p_usdc_profitr(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
+    p2p_liquidation,
     profitr_vault_impl,
     usdc,
     profitr_token,
@@ -237,6 +238,7 @@ def p2p_usdc_profitr(
         0,
         0,
         p2p_refinance.address,
+        p2p_liquidation.address,
         profitr_vault_impl.address,
         transfer_agent,
     )

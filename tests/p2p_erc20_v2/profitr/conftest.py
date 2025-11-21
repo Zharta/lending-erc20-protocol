@@ -176,6 +176,11 @@ def p2p_lending_refinance_contract_def():
 
 
 @pytest.fixture(scope="session")
+def p2p_lending_liquidation_contract_def(boa_env):
+    return boa.load_partial("contracts/v2/P2PLendingV2Liquidation.vy")
+
+
+@pytest.fixture(scope="session")
 def kyc_validator_contract_def():
     return boa.load_partial("contracts/KYCValidator.vy")
 
@@ -211,6 +216,11 @@ def kyc_validator_contract(kyc_validator_contract_def, kyc_validator):
 @pytest.fixture
 def p2p_refinance(p2p_lending_refinance_contract_def):
     return p2p_lending_refinance_contract_def.deploy()
+
+
+@pytest.fixture
+def p2p_liquidation(p2p_lending_liquidation_contract_def):
+    return p2p_lending_liquidation_contract_def.deploy()
 
 
 @pytest.fixture

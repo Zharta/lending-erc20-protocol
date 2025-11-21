@@ -288,6 +288,7 @@ def test_settle_loan_pays_protocol_fees(p2p_usdc_weth, ongoing_loan_usdc_weth, u
 def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
+    p2p_liquidation,
     vault_impl,
     weth,
     owner,
@@ -333,6 +334,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         0,
         0,
         p2p_refinance.address,
+        p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
     )

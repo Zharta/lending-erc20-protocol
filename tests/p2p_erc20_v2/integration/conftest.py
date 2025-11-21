@@ -186,6 +186,11 @@ def p2p_lending_refinance_contract_def():
 
 
 @pytest.fixture(scope="session")
+def p2p_lending_liquidation_contract_def(boa_env):
+    return boa.load_partial("contracts/v2/P2PLendingV2Liquidation.vy")
+
+
+@pytest.fixture(scope="session")
 def vault_contract_def():
     return boa.load_partial("contracts/v2/P2PLendingV2Vault.vy")
 
@@ -224,6 +229,11 @@ def p2p_refinance(p2p_lending_refinance_contract_def):
 
 
 @pytest.fixture
+def p2p_liquidation(p2p_lending_liquidation_contract_def):
+    return p2p_lending_liquidation_contract_def.deploy()
+
+
+@pytest.fixture
 def vault_impl(vault_contract_def):
     return vault_contract_def.deploy()
 
@@ -232,6 +242,7 @@ def vault_impl(vault_contract_def):
 def p2p_usdc_weth(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
+    p2p_liquidation,
     vault_impl,
     usdc,
     weth,
@@ -254,6 +265,7 @@ def p2p_usdc_weth(
         0,
         0,
         p2p_refinance.address,
+        p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
     )

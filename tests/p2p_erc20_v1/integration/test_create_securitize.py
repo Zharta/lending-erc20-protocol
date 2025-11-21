@@ -59,6 +59,7 @@ def oracle_acred_usd(oracle_contract_def, owner):
 def p2p_usdc_acred(
     p2p_lending_securitize_contract_def,
     p2p_refinance,
+    p2p_liquidation,
     usdc,
     acred,
     oracle_acred_usd,
@@ -78,6 +79,7 @@ def p2p_usdc_acred(
         10000,
         10000,
         p2p_refinance.address,
+        p2p_liquidation.address,
         sec_borrower,
     )
 
