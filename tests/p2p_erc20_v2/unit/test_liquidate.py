@@ -212,10 +212,51 @@ def test_liquidate_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc
             p2p_usdc_weth.liquidate_loan(corrupted_loan, sender=loan.lender)
 
 
-def test_liquidate_loan_reverts_if_loan_not_defaulted(p2p_usdc_weth, ongoing_loan_usdc_weth):
-    # Loan is not defaulted at start_time
-    with boa.reverts("loan not defaulted"):
+def test_liquidate_loan_reverts_if_loan_not_defaulted_and_partial_disabled(
+    p2p_usdc_weth, ongoing_loan_usdc_weth_without_soft_liquidation
+):
+    with boa.reverts("not defaulted, partial disabled"):
+        p2p_usdc_weth.liquidate_loan(
+            ongoing_loan_usdc_weth_without_soft_liquidation, sender=ongoing_loan_usdc_weth_without_soft_liquidation.lender
+        )
+
+
+def test_liquidate_loan_reverts_if_loan_not_defaulted_and_ltv_lt_partial_ltv(p2p_usdc_weth, ongoing_loan_usdc_weth):
+    with boa.reverts("not defaulted, ltv lt partial"):
         p2p_usdc_weth.liquidate_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.lender)
+
+
+def test_liquidate_loan_reverts_if_loan_not_defaulted_and_partial_liquidation_possible(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower
+):
+    loan = ongoing_loan_usdc_weth
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    liquidator = boa.env.generate_address("liquidator")
+
+    with boa.reverts("not defaulted, partial possible"):
+        p2p_usdc_weth.liquidate_loan(loan, sender=liquidator)
+
+
+def test_liquidate_loan_not_defaulted_works_if_partial_liquidation_not_possible(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower
+):
+    loan = ongoing_loan_usdc_weth
+    oracle.set_rate(int(oracle.rate() / 5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    liquidator = boa.env.generate_address("liquidator")
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, now)
+
+    usdc.mint(liquidator, liquidation.receive_from_liquidator)
+    usdc.approve(p2p_usdc_weth.address, liquidation.receive_from_liquidator, sender=liquidator)
+
+    p2p_usdc_weth.liquidate_loan(loan, sender=liquidator)
+    event = get_last_event(p2p_usdc_weth, "LoanLiquidated")
+    assert event.id == loan.id
 
 
 def test_liquidate_loan_with_shortfall_reverts_if_not_approved(

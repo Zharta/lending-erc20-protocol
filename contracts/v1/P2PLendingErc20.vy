@@ -247,6 +247,7 @@ def __init__(
     kyc_validator_addr = _kyc_validator_addr
     max_protocol_upfront_fee = _max_protocol_upfront_fee
     max_protocol_settlement_fee = _max_protocol_settlement_fee
+    base.soft_liquidation_fee = _soft_liquidation_fee
     refinance_addr = _refinance_addr
     collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
