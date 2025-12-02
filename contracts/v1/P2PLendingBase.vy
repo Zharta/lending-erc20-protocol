@@ -145,6 +145,7 @@ revoked_offers: public(HashMap[bytes32, bool])
 
 authorized_proxies: public(HashMap[address, bool])
 pending_transfers: public(HashMap[address, uint256])
+pending_collateral: public(HashMap[address, uint256])
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
@@ -282,7 +283,20 @@ def _transfer_funds(_from: address, _to: address, _amount: uint256, payment_toke
 
 
 def _send_collateral(wallet: address, _amount: uint256, collateral_token: address):
-    assert extcall IERC20(collateral_token).transfer(wallet, _amount), "transfer failed"
+    success: bool = False
+    response: Bytes[32] = b""
+
+    success, response = raw_call(
+        collateral_token,
+        abi_encode(wallet, _amount, method_id=method_id("transfer(address,uint256)")),
+        max_outsize=32,
+        revert_on_failure=False
+    )
+
+    if not success or not convert(response, bool):
+        log TransferFailed(_to=wallet, amount=_amount)
+        self.pending_collateral[wallet] += _amount
+
 
 @internal
 def _receive_collateral(_from: address, _amount: uint256, collateral_token: address):

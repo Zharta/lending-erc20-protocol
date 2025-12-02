@@ -611,32 +611,6 @@ def settle_loan(loan: base.Loan):
 
 
 @external
-def claim_defaulted_loan_collateral(loan: base.Loan):
-
-    """
-    @notice Claim defaulted loan collateral.
-    @param loan The loan whose collateral is to be claimed. The loan maturity must have been passed.
-    """
-
-    assert base._is_loan_valid(loan), "invalid loan"
-    assert base._is_loan_defaulted(loan), "loan not defaulted"
-    assert base._check_user(loan.lender), "not lender"
-
-    base.loans[loan.id] = empty(bytes32)
-
-    _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
-    base._send_collateral(loan.lender, loan.collateral_amount, _vault)
-
-    log LoanCollateralClaimed(
-        id=loan.id,
-        borrower=loan.borrower,
-        lender=loan.lender,
-        collateral_token=loan.collateral_token,
-        collateral_amount=loan.collateral_amount
-    )
-
-
-@external
 def partially_liquidate_loan(loan: base.Loan):
 
     """

@@ -207,7 +207,11 @@ event ProxyAuthorizationChanged:
     value: bool
 
 event PendingTransfersClaimed:
-    _to: address
+    wallet: address
+    amount: uint256
+
+event PendingCollateralClaimed:
+    wallet: address
     amount: uint256
 
 
@@ -603,31 +607,6 @@ def settle_loan(loan: base.Loan):
 
 
 @external
-def claim_defaulted_loan_collateral(loan: base.Loan):
-
-    """
-    @notice Claim defaulted loan collateral.
-    @param loan The loan whose collateral is to be claimed. The loan maturity must have been passed.
-    """
-
-    assert base._is_loan_valid(loan), "invalid loan"
-    assert base._is_loan_defaulted(loan), "loan not defaulted"
-    assert base._check_user(loan.lender), "not lender"
-
-    base.loans[loan.id] = empty(bytes32)
-
-    self._send_collateral(loan.lender, loan.collateral_amount)
-
-    log LoanCollateralClaimed(
-        id=loan.id,
-        borrower=loan.borrower,
-        lender=loan.lender,
-        collateral_token=loan.collateral_token,
-        collateral_amount=loan.collateral_amount
-    )
-
-
-@external
 def partially_liquidate_loan(loan: base.Loan):
 
     """
@@ -882,8 +861,17 @@ def claim_pending_transfers():
     base.pending_transfers[msg.sender] = 0
 
     assert extcall IERC20(payment_token).transfer(msg.sender, _amount), "error sending funds"
-    log PendingTransfersClaimed(_to=msg.sender, amount=_amount)
+    log PendingTransfersClaimed(wallet=msg.sender, amount=_amount)
 
+
+@external
+def claim_pending_collateral():
+    assert base.pending_collateral[msg.sender] > 0, "no pending collateral"
+    _amount: uint256 = base.pending_collateral[msg.sender]
+    base.pending_collateral[msg.sender] = 0
+
+    assert extcall IERC20(collateral_token).transfer(msg.sender, _amount), "error sending collateral"
+    log PendingCollateralClaimed(wallet=msg.sender, amount=_amount)
 
 
 @view
