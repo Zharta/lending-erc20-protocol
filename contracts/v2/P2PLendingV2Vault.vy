@@ -34,6 +34,13 @@ event Withdraw:
     wallet: address
     amount: uint256
 
+event TransferFailed:
+    wallet: address
+    amount: uint256
+
+event WithdrawPending:
+    wallet: address
+    amount: uint256
 
 # Global variables
 
@@ -41,6 +48,9 @@ event Withdraw:
 owner: public(address)
 caller: public(address)
 token: public(address)
+pending_transfers: public(HashMap[address, uint256])
+pending_transfers_total: public(uint256)
+
 
 @deploy
 def __init__():
@@ -86,5 +96,35 @@ def withdraw(amount: uint256, wallet: address):
     @param wallet The address of the wallet to which tokens will be transferred.
     """
     assert msg.sender == self.caller, "unauthorized"
-    assert extcall IERC20(self.token).transfer(wallet, amount), "transfer failed"
-    log Withdraw(wallet=wallet, amount=amount)
+    assert amount + self.pending_transfers_total <= staticcall IERC20(self.token).balanceOf(self), "insufficient balance"
+
+    success: bool = False
+    response: Bytes[32] = b""
+
+    success, response = raw_call(
+        self.token,
+        abi_encode(wallet, amount, method_id=method_id("transfer(address,uint256)")),
+        max_outsize=32,
+        revert_on_failure=False
+    )
+
+    if not success or not convert(response, bool):
+        log TransferFailed(wallet=wallet, amount=amount)
+        self.pending_transfers[wallet] += amount
+        self.pending_transfers_total += amount
+    else:
+        log Withdraw(wallet=wallet, amount=amount)
+
+
+@external
+def withdraw_pending(amount: uint256):
+    """
+    @notice Withdraw tokens from the vault that are pending transfer to the sender.
+    @dev Transfers tokens from the vault to the sender and emits a WithdrawPending event.
+    @param amount The amount of tokens to withdraw.
+    """
+    assert self.pending_transfers[msg.sender] >= amount, "insufficient pending collateral"
+    self.pending_transfers[msg.sender] -= amount
+    self.pending_transfers_total -= amount
+    assert extcall IERC20(self.token).transfer(msg.sender, amount), "transfer failed"
+    log WithdrawPending(wallet=msg.sender, amount=amount)
