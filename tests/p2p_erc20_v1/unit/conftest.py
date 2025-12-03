@@ -1,9 +1,9 @@
 from hashlib import sha3_256
+from pathlib import Path
 from textwrap import dedent
 
 import boa
 import pytest
-from boa.vm.py_evm import register_raw_precompile
 from eth_account import Account
 
 from ..conftest_base import sign_kyc
@@ -110,6 +110,11 @@ def protocol_wallet(accounts):
 
 
 @pytest.fixture(scope="session")
+def transfer_agent():
+    return boa.env.generate_address("transfer_agent")
+
+
+@pytest.fixture(scope="session")
 def erc721_contract_def(boa_env):
     return boa.load_partial("contracts/auxiliary/ERC721.vy")
 
@@ -135,8 +140,101 @@ def p2p_lending_refinance_contract_def(boa_env):
 
 
 @pytest.fixture(scope="session")
+def p2p_lending_liquidation_contract_def(boa_env):
+    return boa.load_partial("contracts/v1/P2PLendingLiquidation.vy")
+
+
+@pytest.fixture(scope="session")
 def p2p_lending_erc20_contract_def(boa_env):
-    return boa.load_partial("contracts/v1/P2PLendingErc20.vy")
+    # return boa.load_partial("contracts/v1/P2PLendingErc20.vy")
+
+    # workaround: boa doesnt catch 'unused' events and fails, so we inject a dummy function that logs them
+    contents = Path("contracts/v1/P2PLendingErc20.vy").read_text(encoding="utf-8")
+    contents += dedent("""
+        @external
+        def log_stuff():
+            log LoanLiquidated(
+                id=empty(bytes32),
+                borrower=empty(address),
+                lender=empty(address),
+                liquidator=empty(address),
+                outstanding_debt=0,
+                collateral_for_debt=0,
+                remaining_collateral=0,
+                remaining_collateral_value=0,
+                shortfall=0,
+                liquidation_fee=0,
+                protocol_settlement_fee_amount=0
+            )
+            log LoanPartiallyLiquidated(
+                id=empty(bytes32),
+                borrower=empty(address),
+                lender=empty(address),
+                written_off=0,
+                collateral_claimed=0,
+                liquidation_fee=0,
+                updated_amount=0,
+                updated_collateral_amount=0,
+                updated_accrual_start_time=0,
+                liquidator=empty(address),
+                old_ltv=0,
+                new_ltv=0
+            )
+            log LoanReplaced(
+                id=empty(bytes32),
+                amount=0,
+                apr=0,
+                maturity=0,
+                start_time=0,
+                borrower=empty(address),
+                lender=empty(address),
+                collateral_amount=0,
+                min_collateral_amount=0,
+                call_eligibility=0,
+                call_window=0,
+                liquidation_ltv=0,
+                initial_ltv=0,
+                origination_fee_amount=0,
+                protocol_upfront_fee_amount=0,
+                protocol_settlement_fee=0,
+                partial_liquidation_fee=0,
+                full_liquidation_fee=0,
+                offer_id=empty(bytes32),
+                offer_tracing_id=empty(bytes32),
+                original_loan_id=empty(bytes32),
+                paid_principal=0,
+                paid_interest=0,
+                paid_protocol_settlement_fee_amount=0
+            )
+            log LoanReplacedByLender(
+                id=empty(bytes32),
+                amount=0,
+                apr=0,
+                maturity=0,
+                start_time=0,
+                borrower=empty(address),
+                lender=empty(address),
+                collateral_amount=0,
+                min_collateral_amount=0,
+                call_eligibility=0,
+                call_window=0,
+                liquidation_ltv=0,
+                initial_ltv=0,
+                origination_fee_amount=0,
+                protocol_upfront_fee_amount=0,
+                protocol_settlement_fee=0,
+                partial_liquidation_fee=0,
+                full_liquidation_fee=0,
+                offer_id=empty(bytes32),
+                offer_tracing_id=empty(bytes32),
+                original_loan_id=empty(bytes32),
+                paid_principal=0,
+                paid_interest=0,
+                paid_protocol_settlement_fee_amount=0
+            )
+
+    """)
+    return boa.loads_partial(contents, name="P2PLendingErc20")
 
 
 @pytest.fixture(scope="session")
@@ -196,7 +294,74 @@ def p2p_refinance(p2p_lending_refinance_contract_def):
 
 
 @pytest.fixture
-def p2p_usdc_weth(p2p_lending_erc20_contract_def, p2p_refinance, usdc, weth, oracle, kyc_validator_contract, owner):
+def p2p_liquidation(p2p_lending_liquidation_contract_def):
+    return p2p_lending_liquidation_contract_def.deploy()
+
+
+@pytest.fixture
+def p2p_usdc_weth(
+    p2p_lending_erc20_contract_def,
+    p2p_refinance,
+    p2p_liquidation,
+    usdc,
+    weth,
+    oracle,
+    kyc_validator_contract,
+    owner,
+    transfer_agent,
+):
     return p2p_lending_erc20_contract_def.deploy(
-        usdc, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0, p2p_refinance.address
+        usdc,
+        weth,
+        oracle,
+        False,
+        kyc_validator_contract,
+        0,
+        0,
+        owner,
+        10000,
+        10000,
+        0,
+        0,
+        p2p_refinance.address,
+        p2p_liquidation.address,
+        transfer_agent,
     )
+
+
+def inject_events_workaround(filename) -> str:
+    contents = Path(filename).read_text(encoding="utf-8")
+    contents.append(
+        dedent("""
+        @external
+        def log_stuff():
+            log LoanLiquidated(
+                id=empty(bytes32),
+                borrower=empty(address),
+                lender=empty(address),
+                liquidator=empty(address),
+                outstanding_debt=0,
+                collateral_for_debt=0,
+                remaining_collateral=0,
+                remaining_collateral_value=0,
+                shortfall=0,
+                liquidation_fee=0,
+                protocol_settlement_fee_amount=0
+            )
+            log LoanPartiallyLiquidated(
+                id=empty(bytes32),
+                borrower=empty(address),
+                lender=empty(address),
+                written_off=0,
+                collateral_claimed=0,
+                liquidation_fee=0,
+                updated_amount=0,
+                updated_collateral_amount=0,
+                updated_accrual_start_time=0,
+                liquidator=empty(address),
+                old_ltv=0,
+                new_ltv=0
+            )
+    """)
+    )
+    return contents

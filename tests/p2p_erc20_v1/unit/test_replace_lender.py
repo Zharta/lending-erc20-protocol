@@ -79,7 +79,7 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         available_liquidity=principal,
         call_eligibility=1 * DAY,
         call_window=1 * DAY,
-        soft_liquidation_ltv=9000,
+        liquidation_ltv=9000,
         oracle_addr=oracle.address,
         expiration=now + 100,
         lender=lender,
@@ -130,7 +130,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth, collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -157,10 +157,10 @@ def ongoing_loan_usdc_weth(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
@@ -265,7 +265,7 @@ def test_replace_loan_lender_reverts_if_offer_has_invalid_signature(
         replace_namedtuple_field(offer, available_liquidity=offer.available_liquidity + 1),
         replace_namedtuple_field(offer, call_eligibility=offer.call_eligibility + 1),
         replace_namedtuple_field(offer, call_window=offer.call_window + 1),
-        replace_namedtuple_field(offer, soft_liquidation_ltv=offer.soft_liquidation_ltv + 1),
+        replace_namedtuple_field(offer, liquidation_ltv=offer.liquidation_ltv + 1),
         replace_namedtuple_field(offer, oracle_addr=boa.env.generate_address("random")),
         replace_namedtuple_field(offer, expiration=offer.expiration + 1),
         replace_namedtuple_field(offer, lender=boa.env.generate_address("random")),
@@ -566,7 +566,6 @@ def test_replace_loan_lender_updates_commited_liquidity(
     assert p2p_usdc_weth.commited_liquidity(liquidity_key_2) == offer2_liquidity_before + loan.amount
 
 
-@pytest.mark.skip(reason="boa doesnt catch 'unused' events and fails")
 def test_replace_loan_lender_logs_event(
     p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now, offer_usdc_weth2, kyc_lender2, lender2
 ):
@@ -581,7 +580,7 @@ def test_replace_loan_lender_logs_event(
 
     new_loan_id = p2p_usdc_weth.replace_loan_lender(loan, offer_usdc_weth2, 0, kyc_lender2, sender=loan.lender)
 
-    event = get_last_event(p2p_usdc_weth, "LoanReplaced")
+    event = get_last_event(p2p_usdc_weth, "LoanReplacedByLender")
     assert event.id == new_loan_id
     assert event.amount == loan.amount
     assert event.apr == offer.apr
@@ -593,12 +592,12 @@ def test_replace_loan_lender_logs_event(
     assert event.min_collateral_amount == offer.min_collateral_amount
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
-    assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
+    assert event.liquidation_ltv == offer.liquidation_ltv
     assert event.initial_ltv == loan.initial_ltv
     assert event.origination_fee_amount == offer.origination_fee_bps * loan.amount // BPS
     assert event.protocol_upfront_fee_amount == p2p_usdc_weth.protocol_upfront_fee() * loan.amount // BPS
     assert event.protocol_settlement_fee == p2p_usdc_weth.protocol_settlement_fee()
-    assert event.soft_liquidation_fee == p2p_usdc_weth.soft_liquidation_fee()
+    assert event.partial_liquidation_fee == p2p_usdc_weth.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(offer_usdc_weth2)
     assert event.offer_tracing_id == offer.tracing_id
     assert event.original_loan_id == loan.id
@@ -624,7 +623,7 @@ def test_replace_loan_lender_keeps_collateral_in_escrow(
     initial_borrower_collateral = weth.balanceOf(loan.borrower)
     initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.address)
 
-    weth.approve(p2p_usdc_weth.address, loan.collateral_amount, sender=loan.borrower)
+    weth.approve(p2p_usdc_weth, loan.collateral_amount, sender=loan.borrower)
     p2p_usdc_weth.replace_loan_lender(loan, offer_usdc_weth2, 0, kyc_lender2, sender=loan.lender)
 
     assert weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral
@@ -691,6 +690,7 @@ def test_replace_loan_lender_pays_protocol_fees(
 def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
+    p2p_liquidation,
     weth,
     owner,
     borrower,
@@ -705,6 +705,7 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
     kyc_lender2,
     lender2,
     lender2_key,
+    transfer_agent,
 ):
     failing_erc20_code = dedent("""
 
@@ -725,7 +726,21 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
 
     erc20 = boa.loads(failing_erc20_code)
     p2p_erc20_weth = p2p_lending_erc20_contract_def.deploy(
-        erc20, weth, oracle, False, kyc_validator_contract, 0, 0, owner, 10000, 10000, 0, p2p_refinance.address
+        erc20,
+        weth,
+        oracle,
+        False,
+        kyc_validator_contract,
+        0,
+        0,
+        owner,
+        10000,
+        10000,
+        0,
+        0,
+        p2p_refinance.address,
+        p2p_liquidation.address,
+        transfer_agent,
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -744,7 +759,7 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
 
     collateral_amount = int(1e18)
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_erc20_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_erc20_weth, collateral_amount, sender=borrower)
 
     loan_id = p2p_erc20_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     loan = Loan(
@@ -765,10 +780,10 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_erc20_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_erc20_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_erc20_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_erc20_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=p2p_erc20_weth.oracle_addr(),
         initial_ltv=offer.max_iltv,
         call_time=0,

@@ -63,7 +63,7 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         available_liquidity=principal,
         call_eligibility=1,
         call_window=3600,
-        soft_liquidation_ltv=6000,
+        liquidation_ltv=6000,
         oracle_addr=oracle.address,
         expiration=now + 100,
         lender=lender,
@@ -94,7 +94,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth, collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -121,10 +121,10 @@ def ongoing_loan_usdc_weth(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
@@ -234,10 +234,11 @@ def test_remove_collateral_from_loan_transfers_collateral(p2p_usdc_weth, ongoing
     collateral_amount = ongoing_loan_usdc_weth.collateral_amount
     removed_collateral = 1000
 
-    borrower_balance_before = weth.balanceOf(ongoing_loan_usdc_weth.borrower)
+    borrower = ongoing_loan_usdc_weth.borrower
+    borrower_balance_before = weth.balanceOf(borrower)
     p2p_usdc_weth.remove_collateral_from_loan(
         ongoing_loan_usdc_weth, removed_collateral, sender=ongoing_loan_usdc_weth.borrower
     )
 
-    assert weth.balanceOf(p2p_usdc_weth.address) == collateral_amount - removed_collateral
-    assert weth.balanceOf(ongoing_loan_usdc_weth.borrower) == borrower_balance_before + removed_collateral
+    assert weth.balanceOf(p2p_usdc_weth) == collateral_amount - removed_collateral
+    assert weth.balanceOf(borrower) == borrower_balance_before + removed_collateral

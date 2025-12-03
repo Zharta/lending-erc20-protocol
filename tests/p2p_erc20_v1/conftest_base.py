@@ -1,6 +1,6 @@
 import contextlib
 from collections import namedtuple
-from dataclasses import field
+from dataclasses import dataclass, field
 from enum import IntEnum
 from functools import cached_property
 from hashlib import sha3_256
@@ -76,7 +76,7 @@ class Offer(NamedTuple):
     available_liquidity: int = 0
     call_eligibility: int = 0
     call_window: int = 0
-    soft_liquidation_ltv: int = 0
+    liquidation_ltv: int = 0
     oracle_addr: str = ZERO_ADDRESS
     expiration: int = 0
     lender: str = ZERO_ADDRESS
@@ -114,16 +114,17 @@ class Loan(NamedTuple):
     origination_fee_amount: int = 0
     protocol_upfront_fee_amount: int = 0
     protocol_settlement_fee: int = 0
-    soft_liquidation_fee: int = 0
+    partial_liquidation_fee: int = 0
+    full_liquidation_fee: int = 0
     call_eligibility: int = 0
     call_window: int = 0
-    soft_liquidation_ltv: int = 0
+    liquidation_ltv: int = 0
     oracle_addr: str = ZERO_ADDRESS
     initial_ltv: int = 0
     call_time: int = 0
 
     def get_interest(self, timestamp):
-        return self.apr * self.amount * (timestamp - self.accrual_start_time) // (365 * 24 * 3600)
+        return self.apr * self.amount * (timestamp - self.accrual_start_time) // (365 * 24 * 3600 * BPS)
 
 
 AggregatorV3LatestRoundData = namedtuple(
@@ -132,8 +133,8 @@ AggregatorV3LatestRoundData = namedtuple(
     defaults=[0, 0, 0, 0, 0],
 )
 
-SoftLiquidationResult = namedtuple(
-    "SoftLiquidationResult",
+PartialLiquidationResult = namedtuple(
+    "PartialLiquidationResult",
     ["collateral_claimed", "liquidation_fee", "debt_written_off", "updated_ltv"],
     defaults=[0, 0, 0, 0],
 )
@@ -142,7 +143,7 @@ SoftLiquidationResult = namedtuple(
 def compute_loan_hash(loan: Loan):
     encoded = eth_abi.encode(
         [
-            "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256)"
+            "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256)"
         ],
         [loan],
     )
@@ -195,7 +196,7 @@ def sign_offer(offer: Offer, lender_key: str, verifying_contract: str) -> Signed
                 {"name": "available_liquidity", "type": "uint256"},
                 {"name": "call_eligibility", "type": "uint256"},
                 {"name": "call_window", "type": "uint256"},
-                {"name": "soft_liquidation_ltv", "type": "uint256"},
+                {"name": "liquidation_ltv", "type": "uint256"},
                 {"name": "oracle_addr", "type": "address"},
                 {"name": "expiration", "type": "uint256"},
                 {"name": "lender", "type": "address"},
@@ -272,10 +273,11 @@ def get_loan_mutations(loan):
     yield replace_namedtuple_field(loan, origination_fee_amount=loan.origination_fee_amount + 1)
     yield replace_namedtuple_field(loan, protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount + 1)
     yield replace_namedtuple_field(loan, protocol_settlement_fee=loan.protocol_settlement_fee + 1)
-    yield replace_namedtuple_field(loan, soft_liquidation_fee=loan.soft_liquidation_fee + 1)
+    yield replace_namedtuple_field(loan, partial_liquidation_fee=loan.partial_liquidation_fee + 1)
+    yield replace_namedtuple_field(loan, full_liquidation_fee=loan.full_liquidation_fee + 1)
     yield replace_namedtuple_field(loan, call_eligibility=loan.call_eligibility + 1)
     yield replace_namedtuple_field(loan, call_window=loan.call_window + 1)
-    yield replace_namedtuple_field(loan, soft_liquidation_ltv=loan.soft_liquidation_ltv + 1)
+    yield replace_namedtuple_field(loan, liquidation_ltv=loan.liquidation_ltv + 1)
     yield replace_namedtuple_field(loan, oracle_addr=random_address)
     yield replace_namedtuple_field(loan, initial_ltv=loan.initial_ltv + 1)
     yield replace_namedtuple_field(loan, call_time=loan.call_time + 1)
@@ -335,7 +337,7 @@ def calc_soft_liquidation(loan, principal_token, collateral_token, oracle, times
     principal_written_off = (
         (outstanding_debt * BPS - collateral_value * loan.initial_ltv)
         * BPS
-        // (BPS * BPS - (BPS + loan.soft_liquidation_fee) * loan.initial_ltv)
+        // (BPS * BPS - (BPS + loan.partial_liquidation_fee) * loan.initial_ltv)
     )
     collateral_claimed = (
         principal_written_off
@@ -343,6 +345,78 @@ def calc_soft_liquidation(loan, principal_token, collateral_token, oracle, times
         * collateral_token_decimals
         // (convertion_rate_numerator * payment_token_decimals)
     )
-    liquidation_fee = collateral_claimed * loan.soft_liquidation_fee // BPS
+    liquidation_fee = collateral_claimed * loan.partial_liquidation_fee // BPS
 
     return principal_written_off, collateral_claimed, liquidation_fee
+
+
+@dataclass
+class FullLiquidationResult:
+    outstanding_debt: int = field(default=0)
+    liquidation_fee: int = field(default=0)
+    collateral_for_debt: int = field(default=0)
+    remaining_collateral: int = field(default=0)
+    remaining_collateral_value: int = field(default=0)
+    shortfall: int = field(default=0)
+    protocol_settlement_fee_amount: int = field(default=0)
+    receive_from_liquidator: int = field(default=0)
+    send_to_lender: int = field(default=0)
+    send_to_protocol: int = field(default=0)
+    send_to_borrower: int = field(default=0)
+    send_to_liquidator: int = field(default=0)
+
+
+def calc_full_liquidation(loan, principal_token, collateral_token, oracle, timestamp, *, oracle_reverse=False):
+    convertion_rate_numerator = oracle.latestRoundData().answer
+    convertion_rate_denominator = 10 ** oracle.decimals()
+    if oracle_reverse:
+        convertion_rate_numerator, convertion_rate_denominator = convertion_rate_denominator, convertion_rate_numerator
+    payment_token_decimals = 10 ** principal_token.decimals()
+    collateral_token_decimals = 10 ** collateral_token.decimals()
+    current_interest = loan.get_interest(timestamp)
+    outstanding_debt = loan.amount + current_interest
+
+    liquidation_fee = min(
+        loan.collateral_amount,
+        outstanding_debt
+        * loan.full_liquidation_fee
+        * convertion_rate_denominator
+        * collateral_token_decimals
+        // (convertion_rate_numerator * payment_token_decimals * BPS),
+    )
+
+    collateral_for_debt = (outstanding_debt * convertion_rate_denominator * collateral_token_decimals) // (
+        convertion_rate_numerator * payment_token_decimals
+    )
+    remaining_collateral = loan.collateral_amount - liquidation_fee
+    # at this point, collateral_amount = remaining_collateral + liquidation_fee
+    remaining_collateral_value = (
+        remaining_collateral
+        * convertion_rate_numerator
+        * payment_token_decimals
+        // (convertion_rate_denominator * collateral_token_decimals)
+    )
+    shortfall = max(0, outstanding_debt - remaining_collateral_value)
+    protocol_settlement_fee_amount = min(loan.protocol_settlement_fee * current_interest // BPS, remaining_collateral_value)
+
+    receive_from_liquidator = min(remaining_collateral_value, outstanding_debt)
+    send_to_lender = receive_from_liquidator - protocol_settlement_fee_amount
+    send_to_protocol = protocol_settlement_fee_amount
+
+    send_to_liquidator = min(loan.collateral_amount, collateral_for_debt + liquidation_fee)
+    send_to_borrower = loan.collateral_amount - send_to_liquidator
+
+    return FullLiquidationResult(
+        outstanding_debt=outstanding_debt,
+        liquidation_fee=liquidation_fee,
+        collateral_for_debt=collateral_for_debt,
+        remaining_collateral=remaining_collateral,
+        remaining_collateral_value=remaining_collateral_value,
+        shortfall=shortfall,
+        protocol_settlement_fee_amount=protocol_settlement_fee_amount,
+        receive_from_liquidator=receive_from_liquidator,
+        send_to_lender=send_to_lender,
+        send_to_protocol=send_to_protocol,
+        send_to_borrower=send_to_borrower,
+        send_to_liquidator=send_to_liquidator,
+    )

@@ -141,7 +141,7 @@ def test_add_collateral_to_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_l
     for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
-            p2p_usdc_weth.claim_defaulted_loan_collateral(loan, sender=ongoing_loan_usdc_weth.borrower)
+            p2p_usdc_weth.add_collateral_to_loan(loan, 1000, sender=ongoing_loan_usdc_weth.borrower)
 
 
 def test_add_collateral_to_loan_reverts_if_not_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, lender):
