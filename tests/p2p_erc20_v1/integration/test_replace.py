@@ -78,7 +78,7 @@ def offer_usdc_weth(now, borrower, lender, oracle_usdc_eth, lender_key, usdc, we
         available_liquidity=principal,
         call_eligibility=1 * DAY,
         call_window=1 * DAY,
-        soft_liquidation_ltv=9000,
+        liquidation_ltv=9000,
         oracle_addr=oracle_usdc_eth.address,
         expiration=now + 100,
         lender=lender,
@@ -130,7 +130,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth, collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
     loan_id = p2p_usdc_weth.create_loan(
@@ -156,10 +156,10 @@ def ongoing_loan_usdc_weth(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
@@ -203,14 +203,14 @@ def test_replace_loan(
         usdc.approve(p2p_usdc_weth.address, -delta_new_lender, sender=lender2)
     if new_collateral_amount > loan.collateral_amount:
         weth.deposit(value=new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
-        weth.approve(p2p_usdc_weth.address, new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
+        weth.approve(p2p_usdc_weth, new_collateral_amount - loan.collateral_amount, sender=loan.borrower)
 
     liquidity1_key = compute_liquidity_key(ongoing_loan_usdc_weth.lender, ongoing_loan_usdc_weth.offer_tracing_id)
     liquidity2_key = compute_liquidity_key(offer.lender, offer.tracing_id)
     offer1_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity1_key)
     offer2_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity2_key)
     initial_borrower_collateral = weth.balanceOf(loan.borrower)
-    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth.address)
+    initial_protocol_collateral = weth.balanceOf(p2p_usdc_weth)
     initial_borrower_balance = usdc.balanceOf(loan.borrower)
     initial_lender_balance = usdc.balanceOf(loan.lender)
     initial_new_lender_balance = usdc.balanceOf(lender2)
@@ -237,12 +237,12 @@ def test_replace_loan(
     # assert event.min_collateral_amount == offer.min_collateral_amount
     # assert event.call_eligibility == offer.call_eligibility
     # assert event.call_window == offer.call_window
-    # assert event.soft_liquidation_ltv == offer.soft_liquidation_ltv
+    # assert event.liquidation_ltv == offer.liquidation_ltv
     # assert event.initial_ltv == offer.max_iltv
     # assert event.origination_fee_amount == offer.origination_fee_bps * offer.principal // BPS
     # assert event.protocol_upfront_fee_amount == p2p_usdc_weth.protocol_upfront_fee() * offer.principal // BPS
     # assert event.protocol_settlement_fee == p2p_usdc_weth.protocol_settlement_fee()
-    # assert event.soft_liquidation_fee == p2p_usdc_weth.soft_liquidation_fee()
+    # assert event.partial_liquidation_fee == p2p_usdc_weth.partial_liquidation_fee()
     # assert event.offer_id == compute_signed_offer_id(offer_usdc_weth2)
     # assert event.offer_tracing_id == offer.tracing_id
     # assert event.original_loan_id == loan.id
@@ -254,9 +254,7 @@ def test_replace_loan(
     assert p2p_usdc_weth.commited_liquidity(liquidity1_key) == offer1_liquidity_before - loan.amount
     assert p2p_usdc_weth.commited_liquidity(liquidity2_key) == offer2_liquidity_before + offer.principal
 
-    assert (
-        weth.balanceOf(p2p_usdc_weth.address) == initial_protocol_collateral + new_collateral_amount - loan.collateral_amount
-    )
+    assert weth.balanceOf(p2p_usdc_weth) == initial_protocol_collateral + new_collateral_amount - loan.collateral_amount
     assert weth.balanceOf(loan.borrower) == initial_borrower_collateral - new_collateral_amount + loan.collateral_amount
 
     assert usdc.balanceOf(loan.borrower) == initial_borrower_balance + delta_borrower

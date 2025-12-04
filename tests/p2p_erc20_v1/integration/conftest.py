@@ -118,6 +118,11 @@ def protocol_wallet(accounts):
 
 
 @pytest.fixture(scope="session")
+def transfer_agent():
+    return boa.env.generate_address("transfer_agent")
+
+
+@pytest.fixture(scope="session")
 def erc721_contract_def():
     return boa.load_partial("contracts/auxiliary/ERC721.vy")
 
@@ -181,6 +186,16 @@ def p2p_lending_refinance_contract_def():
 
 
 @pytest.fixture(scope="session")
+def p2p_lending_liquidation_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingLiquidation.vy")
+
+
+@pytest.fixture(scope="session")
+def vault_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingVault.vy")
+
+
+@pytest.fixture(scope="session")
 def kyc_validator_contract_def():
     return boa.load_partial("contracts/KYCValidator.vy")
 
@@ -220,7 +235,15 @@ def p2p_liquidation(p2p_lending_liquidation_contract_def):
 
 @pytest.fixture
 def p2p_usdc_weth(
-    p2p_lending_erc20_contract_def, p2p_refinance, p2p_liquidation, usdc, weth, oracle_usdc_eth, kyc_validator_contract, owner
+    p2p_lending_erc20_contract_def,
+    p2p_refinance,
+    p2p_liquidation,
+    usdc,
+    weth,
+    oracle_usdc_eth,
+    kyc_validator_contract,
+    owner,
+    transfer_agent,
 ):
     return p2p_lending_erc20_contract_def.deploy(
         usdc,
@@ -234,8 +257,10 @@ def p2p_usdc_weth(
         10000,
         10000,
         0,
+        0,
         p2p_refinance.address,
         p2p_liquidation.address,
+        transfer_agent,
     )
 
 

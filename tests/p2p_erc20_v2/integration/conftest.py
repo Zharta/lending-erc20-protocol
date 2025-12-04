@@ -186,7 +186,7 @@ def p2p_lending_refinance_contract_def():
 
 
 @pytest.fixture(scope="session")
-def p2p_lending_liquidation_contract_def(boa_env):
+def p2p_lending_liquidation_contract_def():
     return boa.load_partial("contracts/v2/P2PLendingV2Liquidation.vy")
 
 

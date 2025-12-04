@@ -65,7 +65,7 @@ def offer_usdc_weth(now, borrower, lender, oracle_usdc_eth, lender_key, usdc, we
         available_liquidity=principal,
         call_eligibility=10,
         call_window=10,
-        soft_liquidation_ltv=0,
+        liquidation_ltv=0,
         oracle_addr=oracle_usdc_eth.address,
         expiration=now + 100,
         lender=lender,
@@ -96,7 +96,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.address, collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth, collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
     loan_id = p2p_usdc_weth.create_loan(
@@ -122,10 +122,10 @@ def ongoing_loan_usdc_weth(
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        soft_liquidation_fee=p2p_usdc_weth.soft_liquidation_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
-        soft_liquidation_ltv=offer.soft_liquidation_ltv,
+        liquidation_ltv=offer.liquidation_ltv,
         oracle_addr=offer.oracle_addr,
         initial_ltv=offer.max_iltv,
         call_time=0,
