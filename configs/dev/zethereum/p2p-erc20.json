@@ -102,6 +102,35 @@
             "token_symbol": "USDC",
             "version": "1"
         },
+        "usdc_acred_2": {
+            "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
+            "address": "0xa6709A34c80397013D72Bf1CDC0f2Ae5DaD0dC75",
+            "contract": "P2PLendingSecuritize",
+            "oracle_name": "RedStone Feed: ACRED / USD",
+            "properties": {
+                "borrower": "0xB81bD7Cd0807122af2718399E9bf0CDA83cDb751",
+                "collateral_token_key": "common.acred",
+                "kyc_validator_key": "common.kyc",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_acred_usd",
+                "oracle_reverse": false,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "refinance_impl_key": "common.refinance_impl"
+            },
+            "properties_addresses": {
+                "collateral_token": "0x29f52C105ade90F928Caf22D1355801AA4D0202c",
+                "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
+                "oracle": "0x036611CaA5aDBF21C0699C9A30C5715adB2DC3BE",
+                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
+                "refinance_impl": "0xCeac0EB0A510Fe43C4538AA3F544Bbb0B34848Be"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
         "usdc_cbbtc": {
             "abi_key": "6227d6178f7b21287e81e39e03959760b3e94a31",
             "address": "0xD28CE18f2f8B1E2c68c0fd3b774A3b72045a8C64",
