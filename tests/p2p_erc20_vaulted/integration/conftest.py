@@ -210,6 +210,11 @@ def sc_wallet_contract_def(boa_env):
     return boa.load_partial("tests/stubs/SCWallet.vy")
 
 
+@pytest.fixture(scope="session")
+def securitize_proxy_contract_def():
+    return boa.load_partial("contracts/SecuritizeProxy.vy")
+
+
 @pytest.fixture
 def now():
     return boa.eval("block.timestamp")
