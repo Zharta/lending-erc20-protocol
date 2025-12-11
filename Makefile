@@ -44,6 +44,9 @@ unit-tests:
 integration-tests:
 	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration
 
+failing:
+	${VENV}/bin/pytest tests/p2p_erc20_v2/integration/test_create_securitize.py
+
 profitr-tests:
 	${VENV}/bin/pytest tests/p2p_erc20_vaulted/profitr
 
