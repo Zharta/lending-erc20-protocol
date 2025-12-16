@@ -319,7 +319,7 @@ def calc_collateral_from_ltv(principal, ltv, principal_token, collateral_token, 
     return principal * BPS * oracle_decimals * collateral_token_decimals // (ltv * rate * principal_token_decimals)
 
 
-def calc_soft_liquidation(loan, principal_token, collateral_token, oracle, timestamp, *, oracle_reverse=False):
+def calc_partial_liquidation(loan, principal_token, collateral_token, oracle, timestamp, *, oracle_reverse=False):
     convertion_rate_numerator = oracle.latestRoundData().answer
     convertion_rate_denominator = 10 ** oracle.decimals()
     if oracle_reverse:

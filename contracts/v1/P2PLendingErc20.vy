@@ -905,7 +905,7 @@ def is_loan_defaulted(loan: base.Loan) -> bool:
 
 @view
 @external
-def simulate_soft_liquidation(loan: base.Loan) -> base.PartialLiquidationResult:
+def simulate_partial_liquidation(loan: base.Loan) -> base.PartialLiquidationResult:
 
     assert base._is_loan_valid(loan), "invalid loan"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
