@@ -163,7 +163,6 @@ def buy(payment_token: address, ds_token_amount: uint256, max_stable_coin_amount
     @param max_stable_coin_amount The maximum amount of stable coins to spend.
     """
 
-    print("Authriziation check for buy")
     assert self._check_user(self.owner), "unauthorized"
 
     securitize_swap_contract: address = staticcall SecuritizeDSToken(self.token).getDSService(1<<14)
