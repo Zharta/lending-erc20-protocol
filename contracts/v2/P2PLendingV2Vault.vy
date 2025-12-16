@@ -84,8 +84,21 @@ def deposit(amount: uint256, wallet: address):
     """
 
     assert msg.sender == self.caller, "unauthorized"
-    assert extcall IERC20(self.token).transferFrom(wallet, self, amount), "transferFrom failed"
+
+    pending: uint256 = self.pending_transfers[wallet]
+    if pending >= amount:
+        self.pending_transfers[wallet] = pending - amount
+        self.pending_transfers_total -= amount
+        log WithdrawPending(wallet=wallet, amount=amount)
+    elif pending > 0:
+        self.pending_transfers_total -= pending
+        self.pending_transfers[wallet] = 0
+        log WithdrawPending(wallet=wallet, amount=pending)
+        assert extcall IERC20(self.token).transferFrom(wallet, self, amount - pending), "transferFrom failed"
+    else:
+        assert extcall IERC20(self.token).transferFrom(wallet, self, amount), "transferFrom failed"
     log Deposit(wallet=wallet, amount=amount)
+
 
 @external
 def withdraw(amount: uint256, wallet: address):

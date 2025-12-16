@@ -1032,6 +1032,17 @@ def wallet_to_vault(wallet: address) -> address:
     return base._wallet_to_vault(wallet, vault_impl_addr)
 
 @external
+def create_vault_if_needed(wallet: address):
+
+    """
+    @notice Create a vault for a given wallet if it does not exist
+    @param wallet The wallet address
+    """
+
+    base._create_vault_if_needed(wallet, vault_impl_addr, collateral_token)
+
+
+@external
 def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base.SignedWalletValidation):
 
     """
