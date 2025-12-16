@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This protocol implements a peer-to-peer lending system for ERC20 tokens, available in two main versions: v1 and v2. Both allow ERC20 token owners to use their assets as collateral to borrow cryptocurrency, while lenders can provide loans and earn interest. The protocol is designed to be trustless, efficient, and flexible, with support for various ERC20 tokens as collateral. It also includes features for dynamic collateral management, soft liquidations, and loan refinancing. Version 2 introduces a robust vault system for enhanced compliance and isolated collateral management.
+This protocol implements a peer-to-peer lending system for ERC20 tokens, available in two main versions: v1 and v2. Both allow ERC20 token owners to use their assets as collateral to borrow cryptocurrency, while lenders can provide loans and earn interest. The protocol is designed to be trustless, efficient, and flexible, with support for various ERC20 tokens as collateral. It also includes features for dynamic collateral management, partial liquidations, and loan refinancing. Version 2 introduces a robust vault system for enhanced compliance and isolated collateral management.
 
 ## Overview
 
@@ -17,7 +17,7 @@ The lending of an NFT in the context of this protocol means that:
 3.  The loan is created when the borrower accepts an offer
 4.  The borrower repays the loan within the specified term
 5.  If the borrower defaults, the lender or a liquidator can trigger a full liquidation to claim the ERC20 collateral.
-6.  The loan can be soft liquidated if the Loan-to-Value (LTV) ratio exceeds a certain threshold.
+6.  The loan can be partially liquidated if the Loan-to-Value (LTV) ratio exceeds a certain threshold.
 7.  The lender can "call" a loan, initiating a repayment window before maturity.
 8.  Borrowers can add or remove collateral from an ongoing loan.
 9.  A loan may be replaced by the borrower while still ongoing, by accepting a new offer (refinancing).
@@ -53,7 +53,7 @@ The current status of the protocol follows certain assumptions:
 5.  Loan terms are part of the lender offers, which are signed and kept off-chain.
 6.  Offers have an expiration timestamp and can be revoked on-chain.
 7.  Loans can be callable by the lender after a specified `call_eligibility` period, starting a `call_window` for repayment before default.
-8.  Loans can be soft liquidated if the LTV exceeds a `soft_liquidation_ltv` threshold.
+8.  Loans can be partially liquidated if the LTV exceeds a `partial_liquidation_ltv` threshold.
 9.  Dynamic collateral management (add/remove ERC20 collateral) is supported, managed directly by the main contract in v1, and through the borrower's dedicated vault in v2.
 10. Additional fees are supported both for the protocol (upfront and settlement) and for the lender (origination).
 11. v2 uses a vault system (`P2PLendingV2Vault`) to hold collateral. Each borrower has a unique vault, deployed via CREATE2, enhancing collateral isolation and compliance.
@@ -76,7 +76,7 @@ Users and other protocols should primarily interact with the `P2PLendingErc20.vy
 *   Creating loans based on signed offers and ERC20 collateral, including KYC validation (collateral held directly by the contract).
 *   Settling loans and distributing funds (returning collateral directly).
 *   Handling defaulted loans by allowing lenders to claim collateral (collateral transferred directly to lender).
-*   Performing soft liquidations based on LTV thresholds (collateral transferred directly to liquidator/lender).
+*   Performing partial liquidations based on LTV thresholds (collateral transferred directly to liquidator/lender).
 *   Initiating loan calls by lenders.
 *   Allowing borrowers to add or remove collateral from existing loans (collateral deposited/withdrawn directly).
 *   Facilitating loan refinancing for both borrowers and lenders via the `P2PLendingRefinance` facet.
@@ -91,7 +91,7 @@ Users and other protocols should primarily interact with the `P2PLendingV2Erc20.
 *   Creating loans based on signed offers and ERC20 collateral, including KYC validation (collateral deposited into the borrower's dedicated vault).
 *   Settling loans and distributing funds (collateral withdrawn from the vault and returned to the borrower).
 *   Handling defaulted loans by allowing lenders to claim collateral (collateral transferred from the borrower's vault to the lender).
-*   Performing soft liquidations based on LTV thresholds (collateral transferred from the borrower's vault to the liquidator/lender).
+*   Performing partial liquidations based on LTV thresholds (collateral transferred from the borrower's vault to the liquidator/lender).
 *   Initiating loan calls by lenders.
 *   Allowing borrowers to add or remove collateral from existing loans (collateral deposited into/widhrawn from the borrower's vault).
 *   Facilitating loan refinancing for both borrowers and lenders via the `P2PLendingV2Refinance` facet.
@@ -115,7 +115,7 @@ Loans are created based on the borrower acceptance of offers from lenders, which
     - `available_liquidity`: The total principal amount the lender has allocated to this offer.
     - `call_eligibility`: Time in seconds after loan start when the lender can call the loan (0 if not callable).
     - `call_window`: Time in seconds after a loan is called for the borrower to repay before default (0 if not callable).
-    - `soft_liquidation_ltv`: LTV threshold (in basis points) for soft liquidation (0 if not applicable).
+    - `partial_liquidation_ltv`: LTV threshold (in basis points) for partial liquidation (0 if not applicable).
     - `oracle_addr`: Address of the oracle contract for collateral valuation.
     - `expiration`: Expiration timestamp of the offer.
     - `lender`: Address of the lender.
@@ -152,11 +152,11 @@ As offers are kept off-chain, to prevent abusive usage, several on-chain validat
     *   For **v1**, collateral is transferred directly from the `P2PLendingErc20` contract.
     *   For **v2**, collateral is transferred from the borrower's `P2PLendingV2Vault`.
 
-4.  **Soft Liquidation (`partially_liquidate_loan`)**:
-    If the current Loan-to-Value (LTV) ratio of an active loan exceeds the `soft_liquidation_ltv` threshold defined in the offer, any address can trigger a soft liquidation via `partially_liquidate_loan` (handled by the `P2PLendingLiquidation` or `P2PLendingV2Liquidation` facet). In this process:
+4.  **Partial Liquidation (`partially_liquidate_loan`)**:
+    If the current Loan-to-Value (LTV) ratio of an active loan exceeds the `partial_liquidation_ltv` threshold defined in the offer, any address can trigger a partial liquidation via `partially_liquidate_loan` (handled by the `P2PLendingLiquidation` or `P2PLendingV2Liquidation` facet). In this process:
     *   A portion of the outstanding debt is "written off" (reduced).
     *   A corresponding amount of collateral is claimed from the loan.
-    *   A `soft_liquidation_fee` (in collateral tokens) is applied and sent to the liquidator. The remaining claimed collateral (if any) is sent to the lender.
+    *   A `partial_liquidation_fee` (in collateral tokens) is applied and sent to the liquidator. The remaining claimed collateral (if any) is sent to the lender.
     *   The loan's `accrual_start_time` is reset to the current `block.timestamp`.
     *   The goal is to bring the LTV back to the `initial_ltv` ratio, thereby "healing" the loan.
     *   For **v1**, collateral is claimed directly from the `P2PLendingErc20` contract.
@@ -194,7 +194,7 @@ The protocol supports several types of fees:
 *   **Protocol Upfront Fee**: A percentage (in basis points) of the principal, paid to the `protocol_wallet` when the loan is created. Configurable by the owner.
 *   **Protocol Settlement Fee**: A percentage (in basis points) of the interest, paid to the `protocol_wallet` during loan settlement. Configurable by the owner.
 *   **Origination Fee**: An upfront fee (in basis points of the principal) paid to the lender when a loan is created. It is part of the loan terms defined in the `Offer` structure.
-*   **Soft Liquidation Fee**: A percentage (in basis points) of the claimed collateral value, paid to the liquidator during a soft liquidation. Configurable by the owner.
+*   **Partial Liquidation Fee**: A percentage (in basis points) of the claimed collateral value, paid to the liquidator during a partial liquidation. Configurable by the owner.
 *   **Full Liquidation Fee**: A percentage (in basis points) of the claimed collateral value, paid to the liquidator during a full liquidation. Configurable by the owner.
 
 All upfront fees are paid during loan creation, while settlement fees are paid as a fraction of the interest amount during loan settlement.
@@ -202,7 +202,7 @@ All upfront fees are paid during loan creation, while settlement fees are paid a
 ### Roles
 
 The protocol defines the following key roles:
-*   `Owner`: The privileged address that can update protocol-wide parameters (e.g., protocol fees, soft/full liquidation fees), manage authorized proxies, and propose/claim ownership.
+*   `Owner`: The privileged address that can update protocol-wide parameters (e.g., protocol fees, partial/full liquidation fees), manage authorized proxies, and propose/claim ownership.
 *   `Borrower`: The recipient of the loan, identified by `loan.borrower`. Can settle loans, add/remove collateral, and initiate loan replacements.
 *   `Lender`: The provider of the loan, identified by `loan.lender`. Can initiate loan replacements and claim collateral for defaulted loans, and call loans.
 *   `Liquidator`: Any address that can trigger a `partially_liquidate_loan` or `liquidate_loan` if the LTV conditions are met. Receives the `partial_liquidation_fee` or `full_liquidation_fee` for performing this action.
@@ -246,7 +246,7 @@ The `P2PLendingErc20` contract serves as the main entry point for the v1 protoco
 | `loans` | `public(HashMap[bytes32, bytes32])` | Yes | Mapping of loan IDs to loan state hashes |
 | `protocol_wallet` | `public(address)` | Yes | Address where protocol fees are accrued |
 | `protocol_upfront_fee` | `public(uint256)` | Yes | Current upfront fee for the protocol (in BPS) |
-| `partial_liquidation_fee` | `public(uint256)` | Yes | Fee charged during soft liquidation (in BPS of collateral claimed) |
+| `partial_liquidation_fee` | `public(uint256)` | Yes | Fee charged during partial liquidation (in BPS of collateral claimed) |
 | `full_liquidation_fee` | `public(uint256)` | Yes | Fee charged during full liquidation (in BPS of collateral claimed) |
 | `protocol_settlement_fee` | `public(uint256)` | Yes | Current settlement fee for the protocol (in BPS of interest) |
 | `commited_liquidity` | `public(HashMap[bytes32, uint256])` | Yes | Mapping of offer `tracing_id` to committed principal |
@@ -284,7 +284,7 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | | `available_liquidity` | `uint256` | Total principal amount available for this offer |
 | | `call_eligibility` | `uint256` | Time in seconds after loan start when the loan becomes callable (0 if not callable) |
 | | `call_window` | `uint256` | Time in seconds after a loan is called for repayment before default |
-| | `liquidation_ltv` | `uint256` | LTV threshold (in BPS) for soft liquidation |
+| | `liquidation_ltv` | `uint256` | LTV threshold (in BPS) for partial liquidation |
 | | `oracle_addr` | `address` | Address of the oracle for collateral valuation |
 | | `expiration` | `uint256` | Offer expiration timestamp |
 | | `lender` | `address` | Lender's address |
@@ -301,7 +301,7 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | | `payment_token` | `address` | Address of the payment token |
 | | `maturity` | `uint256` | Maturity timestamp of the loan |
 | | `start_time` | `uint256` | Start timestamp of the loan |
-| | `accrual_start_time` | `uint256` | Timestamp from which interest accrual is calculated (reset after soft liquidation) |
+| | `accrual_start_time` | `uint256` | Timestamp from which interest accrual is calculated (reset after partial liquidation) |
 | | `borrower` | `address` | Borrower's address |
 | | `lender` | `address` | Lender's address |
 | | `collateral_token` | `address` | Address of the collateral token |
@@ -310,20 +310,20 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | | `origination_fee_amount` | `uint256` | Total origination fee for the lender |
 | | `protocol_upfront_fee_amount` | `uint256` | Upfront protocol fee amount |
 | | `protocol_settlement_fee` | `uint256` | Protocol settlement fee percentage (in BPS) |
-| | `partial_liquidation_fee` | `uint256` | Soft liquidation fee percentage (in BPS) |
+| | `partial_liquidation_fee` | `uint256` | Partial liquidation fee percentage (in BPS) |
 | | `full_liquidation_fee` | `uint256` | Full liquidation fee percentage (in BPS) |
 | | `call_eligibility` | `uint256` | Time in seconds after loan start when the loan becomes callable |
 | | `call_window` | `uint256` | Time in seconds after a loan is called for repayment before default |
-| | `liquidation_ltv` | `uint256` | LTV threshold (in BPS) for soft liquidation |
+| | `liquidation_ltv` | `uint256` | LTV threshold (in BPS) for partial liquidation |
 | | `oracle_addr` | `address` | Address of the oracle for collateral valuation |
 | | `initial_ltv` | `uint256` | Initial LTV of the loan (in BPS) |
 | | `call_time` | `uint256` | Timestamp when the loan was called (0 if not called) |
 | `UInt256Rational` | `numerator` | `uint256` | Numerator of a rational number |
 | | `denominator` | `uint256` | Denominator of a rational number |
-| `PartialLiquidationResult` | `collateral_claimed` | `uint256` | Amount of collateral claimed in a soft liquidation simulation |
-| | `liquidation_fee` | `uint256` | Liquidation fee in a soft liquidation simulation |
-| | `debt_written_off` | `uint256` | Amount of debt written off in a soft liquidation simulation |
-| | `updated_ltv` | `uint256` | Calculated LTV after a soft liquidation simulation |
+| `PartialLiquidationResult` | `collateral_claimed` | `uint256` | Amount of collateral claimed in a partial liquidation simulation |
+| | `liquidation_fee` | `uint256` | Liquidation fee in a partial liquidation simulation |
+| | `debt_written_off` | `uint256` | Amount of debt written off in a partial liquidation simulation |
+| | `updated_ltv` | `uint256` | Calculated LTV after a partial liquidation simulation |
 
 ##### Relevant External Functions (`P2PLendingErc20.vy`)
 
@@ -331,7 +331,7 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | --- | :-: | --- | --- |
 | `create_loan` | Any (caller is borrower) | Nonpayable | Creates a new loan based on a signed offer and ERC20 collateral |
 | `settle_loan` | Borrower | Payable | Settles an existing loan |
-| `partially_liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a soft liquidation on a loan if LTV conditions are met |
+| `partially_liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a partial liquidation on a loan if LTV conditions are met |
 | `liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a full liquidation on a defaulted loan |
 | `call_loan` | Lender | Nonpayable | Calls an eligible loan, starting the repayment window |
 | `add_collateral_to_loan` | Borrower | Nonpayable | Adds ERC20 collateral to an existing loan |
@@ -351,7 +351,7 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | `set_transfer_agent` | Owner/Transfer Agent | Nonpayable | Sets the transfer agent address |
 | `current_ltv` | Any | View | Gets the current LTV of a loan |
 | `is_loan_defaulted` | Any | View | Checks if a loan is defaulted |
-| `simulate_soft_liquidation` | Any | View | Simulates the outcome of a soft liquidation |
+| `simulate_partial_liquidation` | Any | View | Simulates the outcome of a partial liquidation |
 
 #### P2PLendingV2Erc20 Contract (v2) (`P2PLendingV2Erc20.vy`)
 
@@ -389,7 +389,7 @@ The `P2PLendingV2Erc20` contract serves as the main entry point for the v2 proto
 | --- | :-: | --- | --- |
 | `create_loan` | Any (caller is borrower) | Nonpayable | Creates a new loan (collateral deposited to borrower's vault) |
 | `settle_loan` | Borrower | Payable | Settles an existing loan (collateral withdrawn from vault) |
-| `partially_liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a soft liquidation on a loan (collateral claimed from vault) |
+| `partially_liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a partial liquidation on a loan (collateral claimed from vault) |
 | `liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a full liquidation on a defaulted loan (collateral claimed from vault) |
 | `call_loan` | Lender | Nonpayable | Calls an eligible loan, starting the repayment window |
 | `add_collateral_to_loan` | Borrower | Nonpayable | Adds ERC20 collateral to an existing loan (deposited to vault) |
@@ -409,7 +409,7 @@ The `P2PLendingV2Erc20` contract serves as the main entry point for the v2 proto
 | `set_transfer_agent` | Owner/Transfer Agent | Nonpayable | Sets the transfer agent address |
 | `current_ltv` | Any | View | Gets the current LTV of a loan |
 | `is_loan_defaulted` | Any | View | Checks if a loan is defaulted |
-| `simulate_soft_liquidation` | Any | View | Simulates the outcome of a soft liquidation |
+| `simulate_partial_liquidation` | Any | View | Simulates the outcome of a partial liquidation |
 | `wallet_to_vault` | Any | View | Gets the deterministic vault address for a given wallet |
 
 #### P2PLendingBase (v1) / P2PLendingV2Base (v2) Contracts
@@ -560,7 +560,7 @@ The `P2PLendingErc20` (v1) / `P2PLendingV2Erc20` (v2), their respective Base con
 | `_protocol_wallet` | `address` | Address where the protocol fees are accrued. |
 | `_max_protocol_upfront_fee` | `uint256` | The maximum percentage (bps) that can be charged as protocol upfront fee. |
 | `_max_protocol_settlement_fee` | `uint256` | The maximum percentage (bps) that can be charged as protocol settlement fee. |
-| `_partial_liquidation_fee` | `uint256` | The percentage (bps) charged as a liquidation fee during soft liquidation. |
+| `_partial_liquidation_fee` | `uint256` | The percentage (bps) charged as a liquidation fee during partial liquidation. |
 | `_full_liquidation_fee` | `uint256` | The percentage (bps) charged as a liquidation fee during full liquidation. |
 | `_refinance_addr` | `address` | The address of the `P2PLendingRefinance` / `P2PLendingV2Refinance` facet contract. |
 | `_liquidation_addr` | `address` | The address of the `P2PLendingLiquidation` / `P2PLendingV2Liquidation` facet contract. |
@@ -576,11 +576,11 @@ The protocol allows borrowers to actively manage their collateral positions:
 -   **Add Collateral**: Borrowers can add more collateral tokens to reduce their LTV ratio and improve loan health.
 -   **Remove Collateral**: Borrowers can remove excess collateral as long as the remaining collateral maintains the minimum required amount and doesn't exceed the initial LTV threshold.
 
-### Soft Liquidation System
+### Partial Liquidation System
 
-Unlike traditional hard liquidations, the protocol implements a soft liquidation mechanism:
+Unlike traditional hard liquidations, the protocol implements a partial liquidation mechanism:
 
--   **Trigger**: When LTV exceeds the `soft_liquidation_ltv` threshold.
+-   **Trigger**: When LTV exceeds the `partial_liquidation_ltv` threshold.
 -   **Process**: A portion of debt is written off and corresponding collateral is claimed.
 -   **Goal**: Bring the LTV back to the initial level, effectively "healing" the loan.
 -   **Incentive**: Liquidators receive a fee for performing this service.
@@ -633,7 +633,7 @@ All participants must pass KYC validation:
 
 -   Maximum fee limits prevent excessive protocol fees.
 -   LTV thresholds protect against under-collateralization.
--   Soft liquidation prevents complete loan defaults.
+-   Partial liquidation prevents complete loan defaults.
 
 ### Vault Security (v2)
 
@@ -674,7 +674,7 @@ The protocol supports integration through:
 
 ## Key Innovations
 
-1.  **Soft Liquidation**: Protects against market volatility without full liquidation.
+1.  **Partial Liquidation**: Protects against market volatility without full liquidation.
 2.  **Callable Loans**: Provides flexibility for lenders while protecting borrowers.
 3.  **Dynamic Collateral Management**: Allows borrowers to adjust collateral levels.
 4.  **KYC Integration**: Ensures regulatory compliance through signed validations.

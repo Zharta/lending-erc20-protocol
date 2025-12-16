@@ -30,6 +30,9 @@ interface KYCValidator:
     def check_validation(validation: SignedWalletValidation) -> bool: view
     def check_validations_pair(validation1: SignedWalletValidation, validation2: SignedWalletValidation) -> bool: view
 
+interface EIP1271Signer:
+    def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
+
 
 # Structs
 
@@ -37,6 +40,8 @@ BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
 MALLEABILITY_THRESHOLD: constant(uint256) = 57896044618658097711785492504343953926418782139537452191302581570759080747168
+EIP1271_MAGIC_VALUE: constant(bytes4) = 0x1626ba7e
+
 
 _COLLISION_OFFSET: constant(bytes1) = 0xFF
 _DEPLOYMENT_CODE: constant(bytes9) = 0x602D3D8160093D39F3
@@ -238,8 +243,7 @@ def _loan_state_hash(loan: Loan) -> bytes32:
 def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separator: bytes32) -> bool:
     assert signed_offer.signature.s <= MALLEABILITY_THRESHOLD, "invalid signature"
 
-    return ecrecover(
-        keccak256(
+    message_hash: bytes32 = keccak256(
             concat(
                 convert("\x19\x01", Bytes[2]),
                 abi_encode(
@@ -247,11 +251,27 @@ def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separ
                     keccak256(abi_encode(OFFER_TYPE_HASH, signed_offer.offer))
                 )
             )
-        ),
+        )
+
+    signer: address = ecrecover(
+        message_hash,
         signed_offer.signature.v,
         signed_offer.signature.r,
         signed_offer.signature.s
-    ) == signed_offer.offer.lender
+    )
+
+    if signed_offer.offer.lender.is_contract:
+        return staticcall EIP1271Signer(signed_offer.offer.lender).is_valid_signature(
+            message_hash,
+            concat(
+                convert(signed_offer.signature.r, bytes32),
+                convert(signed_offer.signature.s, bytes32),
+                convert(convert(signed_offer.signature.v, uint8), bytes1)
+            )
+        ) == EIP1271_MAGIC_VALUE
+    else:
+        return signer == signed_offer.offer.lender
+
 
 
 @view

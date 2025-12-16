@@ -247,6 +247,11 @@ def p2p_lending_erc20_proxy_contract_def(boa_env):
     return boa.load_partial("tests/stubs/P2PErc20Proxy.vy")
 
 
+@pytest.fixture(scope="session")
+def sc_wallet_contract_def(boa_env):
+    return boa.load_partial("tests/stubs/SCWallet.vy")
+
+
 @pytest.fixture
 def now():
     return boa.eval("block.timestamp")
