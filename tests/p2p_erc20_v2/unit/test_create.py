@@ -29,6 +29,11 @@ def lender_funds(lender, usdc):
     usdc.mint(lender, 10**12)
 
 
+@pytest.fixture
+def lender_sc_wallet(sc_wallet_contract_def, lender):
+    return sc_wallet_contract_def.deploy(lender)
+
+
 @pytest.fixture(autouse=True)
 def kyc_lender(lender, kyc_for, kyc_validator_contract):
     return kyc_for(lender, kyc_validator_contract.address)
@@ -42,6 +47,11 @@ def kyc_lender2(lender2, kyc_for, kyc_validator_contract):
 @pytest.fixture(autouse=True)
 def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
     return kyc_for(borrower, kyc_validator_contract.address)
+
+
+@pytest.fixture
+def kyc_lender_sc_wallet(lender_sc_wallet, kyc_for, kyc_validator_contract):
+    return kyc_for(lender_sc_wallet.address, kyc_validator_contract.address)
 
 
 def test_create_loan_reverts_if_offer_not_signed_by_lender(
@@ -770,3 +780,72 @@ def test_create_loan_creates_vault_if_needed(
     p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
     assert boa.eval(f"{borrower_vault}.is_contract")
+
+
+def test_create_loan_works_with_lender_sc_wallet(
+    p2p_usdc_weth,
+    borrower,
+    now,
+    lender,
+    lender_key,
+    kyc_borrower,
+    kyc_lender,
+    weth,
+    usdc,
+    oracle,
+    lender_sc_wallet,
+    kyc_lender_sc_wallet,
+):
+    principal = 1000 * int(1e9)
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender_sc_wallet.address,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.deposit(value=principal, sender=lender)
+    usdc.transfer(lender_sc_wallet.address, principal, sender=lender)
+    lender_sc_wallet.approve_erc20(usdc.address, p2p_usdc_weth.address, principal, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(
+        signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender_sc_wallet, sender=borrower
+    )
+    initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, weth, oracle)
+
+    loan = Loan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender_sc_wallet.address,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee(),
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=p2p_usdc_weth.oracle_addr(),
+        initial_ltv=initial_ltv,
+        call_time=0,
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)

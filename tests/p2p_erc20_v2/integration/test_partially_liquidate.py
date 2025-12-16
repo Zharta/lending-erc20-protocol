@@ -9,7 +9,7 @@ from ..conftest_base import (
     PartialLiquidationResult,
     calc_collateral_from_ltv,
     calc_ltv,
-    calc_soft_liquidation,
+    calc_partial_liquidation,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
@@ -137,14 +137,14 @@ def ongoing_loan_usdc_weth(
     return loan
 
 
-def disabled_test_soft_liquidate(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle_usdc_eth, usdc, now):
+def disabled_test_partial_liquidate(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle_usdc_eth, usdc, now):
     liquidator = boa.env.generate_address("liquidator")
     loan = ongoing_loan_usdc_weth
     oracle_usdc_eth.set_rate(oracle_usdc_eth.rate() // 3, sender=oracle_usdc_eth.owner())
     current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle_usdc_eth)
     assert current_ltv > loan.liquidation_ltv
 
-    principal_written_off, collateral_claimed, liquidation_fee = calc_soft_liquidation(
+    principal_written_off, collateral_claimed, liquidation_fee = calc_partial_liquidation(
         loan, usdc, weth, oracle_usdc_eth, now, oracle_reverse=False
     )
 
