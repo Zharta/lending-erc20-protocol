@@ -277,7 +277,12 @@ def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separ
 @view
 @internal
 def _compute_settlement_interest(loan: Loan) -> uint256:
-    return loan.amount * loan.apr * (block.timestamp - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
+    if block.timestamp > loan.maturity:
+        return loan.amount * loan.apr * (loan.maturity - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
+    elif loan.call_time > 0 and block.timestamp > loan.call_time + loan.call_window:
+        return loan.amount * loan.apr * (loan.call_time + loan.call_window - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
+    else:
+        return loan.amount * loan.apr * (block.timestamp - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
 
 
 @internal
