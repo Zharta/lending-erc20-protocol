@@ -88,7 +88,7 @@ class Offer(NamedTuple):
     available_liquidity: int = 0
     call_eligibility: int = 0
     call_window: int = 0
-    soft_liquidation_ltv: int = 0
+    liquidation_ltv: int = 0
     oracle_addr: str = ZERO_ADDRESS
     expiration: int = 0
     lender: str = ZERO_ADDRESS
@@ -182,7 +182,7 @@ def sign_offer(offer: Offer, lender: Account, verifying_contract: str) -> Signed
                 {"name": "available_liquidity", "type": "uint256"},
                 {"name": "call_eligibility", "type": "uint256"},
                 {"name": "call_window", "type": "uint256"},
-                {"name": "soft_liquidation_ltv", "type": "uint256"},
+                {"name": "liquidation_ltv", "type": "uint256"},
                 {"name": "oracle_addr", "type": "address"},
                 {"name": "expiration", "type": "uint256"},
                 {"name": "lender", "type": "address"},
