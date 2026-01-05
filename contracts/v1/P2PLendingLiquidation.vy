@@ -149,8 +149,8 @@ def liquidate_loan(
 ):
 
     """
-    @notice Fully liquidates a defaulted loan. Can be called by anyone.
-    @param loan The loan to be soft liquidated.
+    @notice Fully liquidates a defaulted loan. It also allows the full liquidation of active loans that are enabled for partial liquidations but can't be restored to a healthy ltv. The function can be called by anyone.
+    @param loan The loan to be liquidated.
     """
 
     assert base._is_loan_valid(loan), "invalid loan"
