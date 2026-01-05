@@ -68,6 +68,7 @@ def initialise(_owner: address, _token: address):
 
 
 @external
+@nonreentrant
 def deposit(amount: uint256, wallet: address):
     """
     @notice Deposit tokens into the vault on behalf of a specified wallet.
@@ -81,6 +82,7 @@ def deposit(amount: uint256, wallet: address):
     log Deposit(wallet=wallet, amount=amount)
 
 @external
+@nonreentrant
 def withdraw(amount: uint256, wallet: address):
     """
     @notice Withdraw tokens from the vault to a specified wallet.
@@ -93,6 +95,7 @@ def withdraw(amount: uint256, wallet: address):
     log Withdraw(wallet=wallet, amount=amount)
 
 @external
+@nonreentrant
 def claimInterest(interest_payment: address, payment_token: address, amount: uint256):
     balance_before: uint256 = staticcall IERC20(payment_token).balanceOf(self)
     extcall ProfitInterestPayment(interest_payment).claimInterest(amount)
