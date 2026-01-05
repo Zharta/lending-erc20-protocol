@@ -1092,9 +1092,9 @@ def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base
     base.loans[loan.id] = empty(bytes32)
 
     base._send_collateral(
-        base._wallet_to_vault(loan.borrower, vault_impl_addr),
+        base._create_vault_if_needed(new_borrower, vault_impl_addr, collateral_token).address,
         loan.collateral_amount,
-        base._create_vault_if_needed(new_borrower, vault_impl_addr, collateral_token)
+        vault.Vault(base._wallet_to_vault(loan.borrower, vault_impl_addr))
     )
 
     log LoanBorrowerTransferred(
