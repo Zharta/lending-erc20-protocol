@@ -160,10 +160,11 @@ def liquidate_loan(
     assert base._is_loan_valid(loan), "invalid loan"
     # assert base._is_loan_defaulted(loan), "loan not defaulted"
     liquidator: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
+    current_interest: uint256 = 0
 
     if not base._is_loan_defaulted(loan):
 
-        current_interest: uint256 = base._compute_settlement_interest(loan)
+        current_interest = base._compute_settlement_interest(loan)
         convertion_rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
         current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate, payment_token_decimals, collateral_token_decimals)
 
@@ -185,7 +186,9 @@ def liquidate_loan(
 
         assert principal_written_off >= loan.amount + current_interest, "not defaulted, partial possible"
 
-    current_interest: uint256 = base._compute_settlement_interest(loan)
+    else:
+        current_interest = self._compute_liquidation_interest(loan)
+
     outstanding_debt: uint256 = loan.amount + current_interest
     rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
 
@@ -254,3 +257,8 @@ def _max_interest_delta(loan: base.Loan, offer: base.Offer, new_principal: uint2
         ),
         uint256
     )
+
+@view
+@internal
+def _compute_liquidation_interest(loan: base.Loan) -> uint256:
+    return loan.amount * loan.apr * (min(loan.call_time + loan.call_window if loan.call_time > 0 else max_value(uint256), loan.maturity) - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)

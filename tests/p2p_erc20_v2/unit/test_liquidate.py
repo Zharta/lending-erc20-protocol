@@ -269,12 +269,12 @@ def test_liquidate_loan_with_shortfall_reverts_if_not_approved(
     oracle.set_rate(oracle.rate() // 100, sender=oracle.owner())
 
     liquidator = boa.env.generate_address("liquidator")
-    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle)
     usdc.mint(liquidator, liquidation.receive_from_liquidator)
     usdc.approve(p2p_usdc_weth.address, liquidation.receive_from_liquidator - 1, sender=liquidator)
 
     # Calculate expected values with helper
-    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle)
     assert liquidation.shortfall > 0
     assert liquidation.receive_from_liquidator > 0
 
@@ -308,7 +308,7 @@ def test_liquidate_loan_with_surplus_transfers_collateral_in_excess_to_borrower(
     boa.env.time_travel(seconds=liquidation_time - now)
 
     oracle.set_rate(oracle.rate() * 2, sender=oracle.owner())
-    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle)
 
     assert liquidation.remaining_collateral_value >= liquidation.outstanding_debt
     assert liquidation.send_to_borrower > 0
@@ -335,7 +335,7 @@ def test_liquidate_loan_with_shortfall_transfers_all_collateral(
     boa.env.time_travel(seconds=liquidation_time - now)
 
     oracle.set_rate(oracle.rate() // 4, sender=oracle.owner())
-    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle)
     assert liquidation.remaining_collateral_value < liquidation.outstanding_debt
 
     usdc.mint(liquidator, liquidation.receive_from_liquidator)
@@ -360,7 +360,7 @@ def test_liquidate_loan_with_surplus_transfers_payment_to_lender_and_protocol(
     boa.env.time_travel(seconds=liquidation_time - now)
 
     oracle.set_rate(oracle.rate() * 2, sender=oracle.owner())
-    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle)
     assert liquidation.remaining_collateral_value >= liquidation.outstanding_debt
 
     usdc.mint(liquidator, liquidation.receive_from_liquidator)
@@ -387,7 +387,7 @@ def test_liquidate_loan_with_shortfall_transfers_payment_to_lender_and_protocol(
     boa.env.time_travel(seconds=liquidation_time - now)
 
     oracle.set_rate(oracle.rate() // 4, sender=oracle.owner())
-    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle)
     assert liquidation.remaining_collateral_value < liquidation.outstanding_debt
 
     usdc.mint(liquidator, liquidation.receive_from_liquidator)
@@ -414,7 +414,7 @@ def test_liquidate_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, 
     boa.env.time_travel(seconds=liquidation_time - now)
 
     oracle.set_rate(int(oracle.rate() * 2), sender=oracle.owner())
-    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, liquidation_time)
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle)
 
     usdc.mint(liquidator, liquidation.receive_from_liquidator)
     usdc.approve(p2p_usdc_weth.address, liquidation.receive_from_liquidator, sender=liquidator)
