@@ -152,14 +152,15 @@ As offers are kept off-chain, to prevent abusive usage, several on-chain validat
     If a loan defaults (either by reaching `maturity` or failing to repay within `call_window` after a `call_loan`), the lender or any address (liquidator) can trigger a full liquidation via `liquidate_loan` (handled by the `P2PLendingLiquidation` or `P2PLendingV2Liquidation` facet). The collateral is transferred to the lender (or liquidator for a fee) without any fund transfers.
     *   For **v1**, collateral is transferred directly from the `P2PLendingErc20` contract.
     *   For **v2**, collateral is transferred from the borrower's `P2PLendingV2Vault`.
+    *   **Important**: A full liquidation can also be triggered on a **non-defaulted loan** if its LTV exceeds the `partial_liquidation_ltv` threshold (meaning partial liquidation is enabled and triggered) AND the loan is so severely undercollateralized that even a partial liquidation (aimed at restoring the `initial_ltv`) would result in the **entire outstanding debt being written off**. In such cases, the system proceeds with a full liquidation.
 
 4.  **Partial Liquidation (`partially_liquidate_loan`)**:
     If the current Loan-to-Value (LTV) ratio of an active loan exceeds the `partial_liquidation_ltv` threshold defined in the offer, any address can trigger a partial liquidation via `partially_liquidate_loan` (handled by the `P2PLendingLiquidation` or `P2PLendingV2Liquidation` facet). In this process:
     *   A portion of the outstanding debt is "written off" (reduced).
-    *   A corresponding amount of collateral is claimed from the loan.
-    *   A `partial_liquidation_fee` (in collateral tokens) is applied and sent to the liquidator. The remaining claimed collateral (if any) is sent to the lender.
+    *   The goal is to bring the LTV back to the `initial_ltv` ratio, thereby "healing" the loan. This is only possible if the calculated debt write-off amount is *less than* the total outstanding debt. If a partial liquidation would write off the entire debt, the loan would instead be fully liquidated.
+    *   The `liquidator` receives an amount of collateral equal to the `collateral_claimed` and the `partial_liquidation_fee` (both in collateral tokens).
+    *   If the `liquidator` is not the `lender`, the `liquidator` also transfers the `principal_written_off` amount (in payment tokens) to the `lender`, effectively buying out the written-off portion of the debt. The lender's `commited_liquidity` for the offer is reduced by this `principal_written_off`.
     *   The loan's `accrual_start_time` is reset to the current `block.timestamp`.
-    *   The goal is to bring the LTV back to the `initial_ltv` ratio, thereby "healing" the loan.
     *   For **v1**, collateral is claimed directly from the `P2PLendingErc20` contract.
     *   For **v2**, collateral is claimed from the borrower's `P2PLendingV2Vault`.
 
@@ -317,7 +318,7 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | | `call_window` | `uint256` | Time in seconds after a loan is called for repayment before default |
 | | `liquidation_ltv` | `uint256` | LTV threshold (in BPS) for partial liquidation |
 | | `oracle_addr` | `address` | Address of the oracle for collateral valuation |
-| | `initial_ltv` | `uint256` | Initial LTV of the loan (in BPS) |
+| | `initial_ltv` | `uint256` | Initial LTV of the loan (in BPS). This is the target LTV for partial liquidations. |
 | | `call_time` | `uint256` | Timestamp when the loan was called (0 if not called) |
 | `UInt256Rational` | `numerator` | `uint256` | Numerator of a rational number |
 | | `denominator` | `uint256` | Denominator of a rational number |
