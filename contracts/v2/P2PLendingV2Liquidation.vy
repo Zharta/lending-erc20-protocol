@@ -243,14 +243,3 @@ def _get_repayment_time(loan: base.Loan) -> uint256:
 @internal
 def _validate_kyc(validation: base.SignedWalletValidation, wallet: address, kyc_validator_addr: address):
     assert (staticcall base.KYCValidator(kyc_validator_addr).check_validation(validation) and validation.validation.wallet == wallet), "KYC validation fail"
-
-@view
-@internal
-def _max_interest_delta(loan: base.Loan, offer: base.Offer, new_principal: uint256) -> uint256:
-    return convert(
-        max(
-            0,
-            (convert(new_principal * offer.apr, int256) - convert(loan.amount * loan.apr, int256)) * convert(loan.maturity - block.timestamp, int256) // convert(365 * 86400 * BPS, int256)
-        ),
-        uint256
-    )
