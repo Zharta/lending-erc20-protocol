@@ -297,6 +297,8 @@ def __init__(
     vault_impl_addr = _vault_impl_addr
     collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
+    base.protocol_upfront_fee = _protocol_upfront_fee
+    base.protocol_settlement_fee = _protocol_settlement_fee
     base.protocol_wallet = _protocol_wallet
     base.transfer_agent = _transfer_agent
     base.partial_liquidation_fee = _partial_liquidation_fee
