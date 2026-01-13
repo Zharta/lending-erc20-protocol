@@ -153,17 +153,18 @@ def liquidate_loan(
 ):
 
     """
-    @notice Fully liquidates a defaulted loan. Can be called by anyone.
-    @param loan The loan to be soft liquidated.
+    @notice Fully liquidates a defaulted loan. It also allows the full liquidation of active loans that are enabled for partial liquidations but can't be restored to a healthy ltv. The function can be called by anyone.
+    @param loan The loan to be liquidated.
     """
 
     assert base._is_loan_valid(loan), "invalid loan"
     # assert base._is_loan_defaulted(loan), "loan not defaulted"
     liquidator: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
+    current_interest: uint256 = 0
 
     if not base._is_loan_defaulted(loan):
 
-        current_interest: uint256 = base._compute_settlement_interest(loan)
+        current_interest = base._compute_settlement_interest(loan)
         convertion_rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
         current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate, payment_token_decimals, collateral_token_decimals)
 
@@ -185,11 +186,13 @@ def liquidate_loan(
 
         assert principal_written_off >= loan.amount + current_interest, "not defaulted, partial possible"
 
-    current_interest: uint256 = base._compute_settlement_interest(loan)
+    else:
+        current_interest = self._compute_liquidation_interest(loan)
+
     outstanding_debt: uint256 = loan.amount + current_interest
     rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
 
-    liquidation_fee_collateral: uint256 = min(loan.collateral_amount, outstanding_debt * base.full_liquidation_fee * rate.denominator * collateral_token_decimals // (BPS * rate.numerator * payment_token_decimals))
+    liquidation_fee_collateral: uint256 = min(loan.collateral_amount, outstanding_debt * loan.full_liquidation_fee * rate.denominator * collateral_token_decimals // (BPS * rate.numerator * payment_token_decimals))
     collateral_for_debt: uint256 = outstanding_debt * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals)
     remaining_collateral: uint256 = loan.collateral_amount - liquidation_fee_collateral
     remaining_collateral_value: uint256 = remaining_collateral * rate.numerator * payment_token_decimals // (rate.denominator * collateral_token_decimals)
@@ -198,18 +201,28 @@ def liquidate_loan(
     _vault: vault.Vault = base._get_vault(loan.borrower, vault_impl_addr)
 
     if remaining_collateral_value >= outstanding_debt:
-        base._receive_funds(liquidator, outstanding_debt, payment_token)
+        if liquidator != loan.lender:
+            base._receive_funds(liquidator, outstanding_debt, payment_token)
+            base._send_funds(loan.lender, outstanding_debt - protocol_settlement_fee_amount, payment_token)
+            base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
+            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
+        else:
+            base._transfer_funds(liquidator, base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
+
         base._send_collateral(liquidator, collateral_for_debt + liquidation_fee_collateral, _vault)
         if remaining_collateral > collateral_for_debt:
             base._send_collateral(loan.borrower, remaining_collateral - collateral_for_debt, _vault)
-        base._send_funds(loan.lender, outstanding_debt - protocol_settlement_fee_amount, payment_token)
-        base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
 
     else:
-        base._receive_funds(liquidator, remaining_collateral_value, payment_token)
+        if liquidator != loan.lender:
+            base._receive_funds(liquidator, remaining_collateral_value, payment_token)
+            base._send_funds(loan.lender, remaining_collateral_value - protocol_settlement_fee_amount, payment_token)
+            base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
+            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, remaining_collateral_value)
+        else:
+            base._transfer_funds(liquidator, base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
+
         base._send_collateral(liquidator, loan.collateral_amount, _vault)
-        base._send_funds(loan.lender, remaining_collateral_value - protocol_settlement_fee_amount, payment_token)
-        base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
 
     base.loans[loan.id] = empty(bytes32)
 
@@ -243,3 +256,8 @@ def _get_repayment_time(loan: base.Loan) -> uint256:
 @internal
 def _validate_kyc(validation: base.SignedWalletValidation, wallet: address, kyc_validator_addr: address):
     assert (staticcall base.KYCValidator(kyc_validator_addr).check_validation(validation) and validation.validation.wallet == wallet), "KYC validation fail"
+
+@view
+@internal
+def _compute_liquidation_interest(loan: base.Loan) -> uint256:
+    return loan.amount * loan.apr * (min(loan.call_time + loan.call_window if loan.call_time > 0 else max_value(uint256), loan.maturity) - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)

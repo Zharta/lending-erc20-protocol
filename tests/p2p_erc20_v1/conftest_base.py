@@ -366,13 +366,14 @@ class FullLiquidationResult:
     send_to_liquidator: int = field(default=0)
 
 
-def calc_full_liquidation(loan, principal_token, collateral_token, oracle, timestamp, *, oracle_reverse=False):
+def calc_full_liquidation(loan, principal_token, collateral_token, oracle, timestamp=0, *, oracle_reverse=False):
     convertion_rate_numerator = oracle.latestRoundData().answer
     convertion_rate_denominator = 10 ** oracle.decimals()
     if oracle_reverse:
         convertion_rate_numerator, convertion_rate_denominator = convertion_rate_denominator, convertion_rate_numerator
     payment_token_decimals = 10 ** principal_token.decimals()
     collateral_token_decimals = 10 ** collateral_token.decimals()
+    timestamp = timestamp or min(loan.call_time + loan.call_window if loan.call_time > 0 else 2**256, loan.maturity)
     current_interest = loan.get_interest(timestamp)
     outstanding_debt = loan.amount + current_interest
 

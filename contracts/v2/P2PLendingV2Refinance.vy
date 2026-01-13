@@ -298,8 +298,8 @@ def replace_loan_lender(
 
     if new_loan.liquidation_ltv > 0:
         assert new_loan.liquidation_ltv >= loan.liquidation_ltv, "liquidation ltv lt old loan"
-    if loan.call_eligibility > 0 and new_loan.call_eligibility > 0:
-        assert new_loan.call_window >= loan.call_window, "call window lt old loan"
+    if new_loan.call_eligibility > 0:
+        assert loan.call_eligibility > 0 and new_loan.call_window >= loan.call_window, "call window lt old loan"
     assert new_loan.initial_ltv >= loan.initial_ltv, "max iltv lt old loan"
     if new_loan.liquidation_ltv > 0:
         assert initial_ltv <= current_ltv, "initial ltv gt old loan"
