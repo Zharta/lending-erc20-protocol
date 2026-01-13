@@ -574,11 +574,10 @@ def test_replace_loan_lender_reverts_if_loan_becomes_callable(
     with boa.reverts("call window lt old loan"):
         p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
 
-
-def _max_interest_delta(loan: Loan, offer: Offer, new_principal: int, refinance_timestamp: int):
+def _max_interest_delta(loan: Loan, offer: Offer, new_principal: int, origination_fee_amount: int, refinance_timestamp: int):
     assert refinance_timestamp >= loan.start_time
     assert refinance_timestamp <= loan.maturity
-    print(f"_max_interest_delta: {loan=}, {offer=}, {refinance_timestamp=}")
+    print(f"_max_interest_delta: {loan=}, {offer=}, {origination_fee_amount=}, {refinance_timestamp=}")
     print(
         f"_max_interest_delta: {loan.amount=} {loan.apr=} {new_principal=}, {offer.apr=} {loan.maturity=}, {refinance_timestamp=}"  # noqa: E501
     )  # noqa: E501
@@ -586,7 +585,9 @@ def _max_interest_delta(loan: Loan, offer: Offer, new_principal: int, refinance_
     loan_interest_delta_at_maturity = loan.amount * loan.apr * (loan.maturity - refinance_timestamp) // (365 * DAY * BPS)
     offer_interest_at_loan_maturity = new_principal * offer.apr * (loan.maturity - refinance_timestamp) // (365 * DAY * BPS)
 
-    return max(0, offer_interest_at_loan_maturity - loan_interest_delta_at_maturity)
+    return max(
+        0, origination_fee_amount, origination_fee_amount + offer_interest_at_loan_maturity - loan_interest_delta_at_maturity
+    )
 
 
 def _calc_deltas(loan, offer, principal, timestamp, contract) -> (int, int, int, int):
@@ -597,7 +598,7 @@ def _calc_deltas(loan, offer, principal, timestamp, contract) -> (int, int, int,
     origination_fee_amount = offer.origination_fee_bps * new_principal // BPS
     protocol_fee_amount = contract.protocol_upfront_fee() * new_principal // BPS
 
-    max_interest_delta = _max_interest_delta(loan, offer, new_principal, timestamp)
+    max_interest_delta = _max_interest_delta(loan, offer, new_principal, origination_fee_amount, timestamp)
     borrower_compensation = max(0, max_interest_delta + new_principal - outstanding_debt - origination_fee_amount)
     borrower_compensation = max(max_interest_delta, origination_fee_amount - new_principal + outstanding_debt)
 
@@ -610,6 +611,35 @@ def _calc_deltas(loan, offer, principal, timestamp, contract) -> (int, int, int,
         f"_calc_deltas {max_interest_delta=}, {borrower_compensation=} {delta_borrower=}, {delta_lender=}, {delta_new_lender=}, {delta_protocol=}"  # noqa: E501
     )  # noqa: E501
     return delta_borrower, delta_lender, delta_new_lender, delta_protocol
+
+
+def test_replace_loan_lender_compensates_borrower_for_origination_fee(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now, offer_usdc_weth2, kyc_lender, lender, lender_key
+):
+    loan = ongoing_loan_usdc_weth
+    new_principal = loan.amount * 3
+    offer = replace_namedtuple_field(
+        offer_usdc_weth2.offer,
+        principal=new_principal,
+        origination_fee_bps=6600,
+        apr=loan.apr,
+        available_liquidity=new_principal,
+        lender=lender,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+    delta_borrower, delta_lender, delta_new_lender, _ = _calc_deltas(loan, offer, new_principal, now, p2p_usdc_weth)
+
+    if delta_borrower < 0:
+        usdc.approve(p2p_usdc_weth.address, -delta_borrower, sender=loan.borrower)
+    if delta_lender + delta_new_lender < 0:
+        usdc.approve(p2p_usdc_weth.address, -(delta_lender + delta_new_lender), sender=loan.lender)
+
+    assert delta_borrower > new_principal * offer.origination_fee_bps // BPS
+
+    p2p_usdc_weth.replace_loan_lender(loan, signed_offer, offer.principal, kyc_lender, sender=loan.lender)
+
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert usdc.balanceOf(p2p_usdc_weth.address) == 0
 
 
 def test_replace_loan_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now, offer_usdc_weth2, kyc_lender2, lender2):

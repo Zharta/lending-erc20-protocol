@@ -259,16 +259,5 @@ def _validate_kyc(validation: base.SignedWalletValidation, wallet: address, kyc_
 
 @view
 @internal
-def _max_interest_delta(loan: base.Loan, offer: base.Offer, new_principal: uint256) -> uint256:
-    return convert(
-        max(
-            0,
-            (convert(new_principal * offer.apr, int256) - convert(loan.amount * loan.apr, int256)) * convert(loan.maturity - block.timestamp, int256) // convert(365 * 86400 * BPS, int256)
-        ),
-        uint256
-    )
-
-@view
-@internal
 def _compute_liquidation_interest(loan: base.Loan) -> uint256:
     return loan.amount * loan.apr * (min(loan.call_time + loan.call_window if loan.call_time > 0 else max_value(uint256), loan.maturity) - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)

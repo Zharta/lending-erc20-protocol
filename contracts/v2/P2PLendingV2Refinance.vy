@@ -295,7 +295,7 @@ def replace_loan_lender(
     repayment_time_old_loan: uint256 = self._get_repayment_time(loan)
     repayment_time_new_loan: uint256 = self._get_repayment_time(new_loan)
     assert repayment_time_new_loan >= repayment_time_old_loan, "repayment time lt old loan"
-    assert repayment_time_new_loan * new_loan.apr * new_loan.amount <= repayment_time_old_loan * loan.apr * loan.amount, "repayment amount gt old loan"
+
     if new_loan.liquidation_ltv > 0:
         assert new_loan.liquidation_ltv >= loan.liquidation_ltv, "liquidation ltv lt old loan"
     if new_loan.call_eligibility > 0:
@@ -310,7 +310,7 @@ def replace_loan_lender(
     base._check_and_update_offer_state(offer, new_principal)
     base.loans[new_loan.id] = base._loan_state_hash(new_loan)
 
-    max_interest_delta: uint256 = self._max_interest_delta(loan, offer.offer, new_principal)
+    max_interest_delta: uint256 = self._max_interest_delta(loan, offer.offer, new_principal, new_loan.origination_fee_amount)
 
     borrower_compensation: uint256 = convert(max(convert(max_interest_delta, int256), convert(outstanding_debt + new_loan.origination_fee_amount, int256) - convert(new_principal, int256)), uint256)
     borrower_delta: int256 = convert(new_principal + borrower_compensation, int256) - convert(outstanding_debt + new_loan.origination_fee_amount, int256)
@@ -391,11 +391,11 @@ def _validate_kyc(validation: base.SignedWalletValidation, wallet: address, kyc_
 
 @view
 @internal
-def _max_interest_delta(loan: base.Loan, offer: base.Offer, new_principal: uint256) -> uint256:
-    return convert(
+def _max_interest_delta(loan: base.Loan, offer: base.Offer, new_principal: uint256, origination_fee_amount: uint256) -> uint256:
+    return max(origination_fee_amount, convert(
         max(
             0,
-            (convert(new_principal * offer.apr, int256) - convert(loan.amount * loan.apr, int256)) * convert(loan.maturity - block.timestamp, int256) // convert(365 * 86400 * BPS, int256)
+            (convert(origination_fee_amount + new_principal * offer.apr, int256) - convert(loan.amount * loan.apr, int256)) * convert(loan.maturity - block.timestamp, int256) // convert(365 * 86400 * BPS, int256)
         ),
         uint256
-    )
+    ))
