@@ -21,22 +21,22 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Set up Python 3.11
       uses: actions/setup-python@v3
       with:
         python-version: "3.11"
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install coverage
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-  
-    - name: Run project unit tests 
+
+    - name: Run project unit tests
       run: |
-        coverage run -m pytest tests/unit --durations=0 --runslow
+        coverage run -m pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_v2/unit --durations=0 --runslow
         coverage report -m | tee coverage.txt
         sed -i '1s/^/coverage: platform marker \n/' coverage.txt
         coverage xml
