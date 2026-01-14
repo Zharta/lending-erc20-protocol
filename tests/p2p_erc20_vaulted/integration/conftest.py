@@ -172,27 +172,27 @@ def oracle_usdc_eth(oracle_contract_def, owner):
 
 @pytest.fixture(scope="session")
 def p2p_lending_securitize_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2Securitize.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultedSecuritize.vy")
 
 
 @pytest.fixture(scope="session")
 def p2p_lending_erc20_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2Erc20.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultedErc20.vy")
 
 
 @pytest.fixture(scope="session")
 def p2p_lending_refinance_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2Refinance.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultedRefinance.vy")
 
 
 @pytest.fixture(scope="session")
 def p2p_lending_liquidation_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2Liquidation.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultedLiquidation.vy")
 
 
 @pytest.fixture(scope="session")
 def vault_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2Vault.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVault.vy")
 
 
 @pytest.fixture(scope="session")
@@ -202,7 +202,7 @@ def kyc_validator_contract_def():
 
 @pytest.fixture(scope="session")
 def p2p_lending_erc20_proxy_contract_def():
-    return boa.load_partial("tests/stubs/P2PV2Erc20Proxy.vy")
+    return boa.load_partial("tests/stubs/P2PVaultedErc20Proxy.vy")
 
 
 @pytest.fixture(scope="session")

@@ -1,13 +1,13 @@
 # @version 0.4.3
 
 """
-@title P2PLendingV2Refinance
+@title P2PLendingVaultedLiquidation
 @author [Zharta](https://zharta.io/)
 @notice This contract facilitates peer-to-peer lending using ERC20s as collateral.
 
 """
 
-from contracts.v2 import P2PLendingV2Base as base
+from contracts.v1 import P2PLendingVaultedBase as base
 
 initializes: base
 exports: base.__interface__
@@ -17,8 +17,8 @@ exports: base.__interface__
 from ethereum.ercs import IERC721
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
-from contracts.v2 import P2PLendingV2Vault as vault
-from contracts.v2 import P2PLendingV2Erc20 as main
+from contracts.v1 import P2PLendingVault as vault
+from contracts.v1 import P2PLendingVaultedErc20 as main
 
 
 

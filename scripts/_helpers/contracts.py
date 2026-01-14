@@ -246,7 +246,7 @@ class P2PLendingSecuritize(ContractConfig):
 
 
 @dataclass
-class P2PLendingV2Erc20(ContractConfig):
+class P2PLendingVaultedErc20(ContractConfig):
     def __init__(
         self,
         *,
@@ -274,7 +274,7 @@ class P2PLendingV2Erc20(ContractConfig):
         super().__init__(
             key,
             None,
-            project.P2PLendingV2Erc20,
+            project.P2PLendingVaultedErc20,
             version=version,
             abi_key=abi_key,
             deployment_deps={
@@ -333,7 +333,7 @@ class LiquidationImpl(ContractConfig):
 
 
 @dataclass
-class LiquidationV2Impl(ContractConfig):
+class LiquidationVaultedImpl(ContractConfig):
     def __init__(
         self,
         *,
@@ -345,7 +345,7 @@ class LiquidationV2Impl(ContractConfig):
         super().__init__(
             key,
             None,
-            project.P2PLendingV2Liquidation,
+            project.P2PLendingVaultedLiquidation,
             version=version,
             abi_key=abi_key,
             token=False,
@@ -402,7 +402,7 @@ class RefinanceImpl(ContractConfig):
 
 
 @dataclass
-class RefinanceV2Impl(ContractConfig):
+class RefinanceVaultedImpl(ContractConfig):
     def __init__(
         self,
         *,
@@ -414,7 +414,7 @@ class RefinanceV2Impl(ContractConfig):
         super().__init__(
             key,
             None,
-            project.P2PLendingV2Refinance,
+            project.P2PLendingVaultedRefinance,
             version=version,
             abi_key=abi_key,
             token=False,
@@ -425,7 +425,7 @@ class RefinanceV2Impl(ContractConfig):
 
 
 @dataclass
-class VaultV2Impl(ContractConfig):
+class VaultImpl(ContractConfig):
     def __init__(
         self,
         *,
@@ -437,7 +437,7 @@ class VaultV2Impl(ContractConfig):
         super().__init__(
             key,
             None,
-            project.P2PLendingV2Vault,
+            project.P2PLendingVault,
             version=version,
             abi_key=abi_key,
             token=False,

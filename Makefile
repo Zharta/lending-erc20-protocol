@@ -31,24 +31,24 @@ test: ${VENV}
 	${VENV}/bin/pytest tests
 
 coverage:
-	${VENV}/bin/coverage run -m pytest tests/p2p_erc20_v2/unit --runslow
+	${VENV}/bin/coverage run -m pytest tests/p2p_erc20_vaulted/unit --runslow
 	${VENV}/bin/coverage report
 
 branch-coverage:
-	${VENV}/bin/coverage run --branch -m pytest tests/p2p_erc20_v2/unit --runslow
+	${VENV}/bin/coverage run --branch -m pytest tests/p2p_erc20_vaulted/unit --runslow
 	${VENV}/bin/coverage report
 
 unit-tests:
-	${VENV}/bin/pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_v2/unit --runslow -n auto --dist loadscope
+	${VENV}/bin/pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_vaulted/unit --runslow -n auto --dist loadscope
 
 integration-tests:
-	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_v2/integration
+	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration
 
 profitr-tests:
-	${VENV}/bin/pytest tests/p2p_erc20_v2/profitr
+	${VENV}/bin/pytest tests/p2p_erc20_vaulted/profitr
 
 gas:
-	${VENV}/bin/pytest tests/p2p_erc20_v2/unit --gas-profile
+	${VENV}/bin/pytest tests/p2p_erc20_vaulted/unit --gas-profile
 
 interfaces:
 	${VENV}/bin/python scripts/build_interfaces.py contracts/*.vy

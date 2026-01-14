@@ -42,7 +42,7 @@ def fee_wallet(owner):
 
 @pytest.fixture
 def profitr_vault_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2VaultProfitr.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultProfitr.vy")
 
 
 @pytest.fixture

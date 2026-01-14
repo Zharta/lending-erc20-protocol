@@ -574,6 +574,7 @@ def test_replace_loan_lender_reverts_if_loan_becomes_callable(
     with boa.reverts("call window lt old loan"):
         p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
 
+
 def _max_interest_delta(loan: Loan, offer: Offer, new_principal: int, origination_fee_amount: int, refinance_timestamp: int):
     assert refinance_timestamp >= loan.start_time
     assert refinance_timestamp <= loan.maturity

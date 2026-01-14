@@ -136,20 +136,20 @@ def oracle_contract_def(boa_env):
 
 @pytest.fixture(scope="session")
 def p2p_lending_refinance_contract_def(boa_env):
-    return boa.load_partial("contracts/v2/P2PLendingV2Refinance.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultedRefinance.vy")
 
 
 @pytest.fixture(scope="session")
 def p2p_lending_liquidation_contract_def(boa_env):
-    return boa.load_partial("contracts/v2/P2PLendingV2Liquidation.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultedLiquidation.vy")
 
 
 @pytest.fixture(scope="session")
 def p2p_lending_erc20_contract_def(boa_env):
-    # return boa.load_partial("contracts/v2/P2PLendingV2Erc20.vy")
+    # return boa.load_partial("contracts/v1/P2PLendingVaultedErc20.vy")
 
     # workaround: boa doesnt catch 'unused' events and fails, so we inject a dummy function that logs them
-    contents = Path("contracts/v2/P2PLendingV2Erc20.vy").read_text(encoding="utf-8")
+    contents = Path("contracts/v1/P2PLendingVaultedErc20.vy").read_text(encoding="utf-8")
     contents += dedent("""
         @external
         def log_stuff():
@@ -234,7 +234,7 @@ def p2p_lending_erc20_contract_def(boa_env):
             )
 
     """)
-    return boa.loads_partial(contents, name="P2PLendingV2Erc20")
+    return boa.loads_partial(contents, name="P2PLendingVaultedErc20")
 
 
 @pytest.fixture(scope="session")
@@ -244,7 +244,7 @@ def kyc_validator_contract_def(boa_env):
 
 @pytest.fixture(scope="session")
 def p2p_lending_erc20_proxy_contract_def(boa_env):
-    return boa.load_partial("tests/stubs/P2PV2Erc20Proxy.vy")
+    return boa.load_partial("tests/stubs/P2PVaultedErc20Proxy.vy")
 
 
 @pytest.fixture(scope="session")
@@ -305,7 +305,7 @@ def p2p_liquidation(p2p_lending_liquidation_contract_def):
 
 @pytest.fixture(scope="session")
 def vault_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2Vault.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVault.vy")
 
 
 @pytest.fixture
