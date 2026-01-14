@@ -1,0 +1,1109 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "trustedForwarder_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "accessControl_",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveTransferAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferRules_BadRestrictionCode",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferRules_InvalidAccessControl",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferRules_InvalidArrayLengths",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferRules_InvalidTokenType",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferRules_InvalidTrustedForwarder",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferRules_RecipientNotAmlKycPassed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferRules_TokenTypeRuleNotFound",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "requiresAmlKyc",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isActive",
+        "type": "bool"
+      }
+    ],
+    "name": "DefaultTokenTypeRuleSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "region",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "accreditation",
+        "type": "uint256"
+      }
+    ],
+    "name": "TokenTypeRuleRemoved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "region",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "accreditation",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "requiresAmlKyc",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isActive",
+        "type": "bool"
+      }
+    ],
+    "name": "TokenTypeRuleSet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "recipientRegion",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "recipientAccreditation",
+        "type": "uint256"
+      }
+    ],
+    "name": "TransferRuleRemoved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "recipientRegion",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "recipientAccreditation",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "lockDurationSeconds",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "requiresAmlKyc",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "isActive",
+        "type": "bool"
+      }
+    ],
+    "name": "TransferRuleSet",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "ALL_TRANSFERS_PAUSED",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "DO_NOT_SEND_TO_EMPTY_ADDRESS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "DO_NOT_SEND_TO_TOKEN_CONTRACT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "GREATER_THAN_RECIPIENT_MAX_BALANCE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "HOLDING_PERIOD_NOT_MET",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "INSUFFICIENT_BALANCE_OF_SENDER",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "INTERFACE_ID",
+    "outputs": [
+      {
+        "internalType": "bytes4",
+        "name": "",
+        "type": "bytes4"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "LOWER_THAN_RECIPIENT_MIN_BALANCE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_RESTRICTION_CODE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "NO_RULE_FOR_RECIPIENT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "RECIPIENT_ADDRESS_FROZEN",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "RECIPIENT_NOT_AMLKYCPASSED",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "RECIPIENT_NOT_QUALIFIED",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SENDER_ADDRESS_FROZEN",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SENDER_NOT_AMLKYCPASSED",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SENDER_TOKENS_TIME_LOCKED",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SUCCESS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "TOKEN_TYPE_GENERIC",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "accessControl",
+    "outputs": [
+      {
+        "internalType": "contract IAccessControl",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "regions",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "accreditations",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "tokenTypes",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "bool[]",
+        "name": "requiresAmlKycFlags",
+        "type": "bool[]"
+      },
+      {
+        "internalType": "bool[]",
+        "name": "isActiveFlags",
+        "type": "bool[]"
+      }
+    ],
+    "name": "batchSetTokenTypeRules",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "tokenType",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "recipientRegion",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "recipientAccreditation",
+        "type": "uint256[]"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "lockDurationSeconds",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "requiresAmlKyc",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "isActive",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct ITransferRules.TransferRule[]",
+        "name": "rules",
+        "type": "tuple[]"
+      }
+    ],
+    "name": "batchSetTransferRules",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "restrictionCode",
+        "type": "uint256"
+      }
+    ],
+    "name": "checkSuccess",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "isSuccess",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "defaultTokenTypeRule",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "tokenType",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "requiresAmlKyc",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "isActive",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct ITransferRules.TokenTypeRule",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "tokenAddr",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "detectTransferRestriction",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "tokenAddr",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "detectTransferRestrictionBasic",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "mintTimestamp",
+        "type": "uint256"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256[]",
+            "name": "regions",
+            "type": "uint256[]"
+          },
+          {
+            "internalType": "uint256",
+            "name": "accreditationType",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "lastAmlKycChangeTimestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "lastAccreditationChangeTimestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "amlKycPassed",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct IIdentityRegistry.IdentityInfo",
+        "name": "recipientIdentity",
+        "type": "tuple"
+      },
+      {
+        "internalType": "bool",
+        "name": "isAmlKycPassed",
+        "type": "bool"
+      }
+    ],
+    "name": "detectTransferRestrictionForHolding",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "restrictionCode",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IIdentityRegistry",
+        "name": "identityRegistry",
+        "type": "address"
+      }
+    ],
+    "name": "determineTokenType",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "region",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "accreditation",
+        "type": "uint256"
+      }
+    ],
+    "name": "getTokenTypeRule",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "tokenType",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "requiresAmlKyc",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "isActive",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct ITransferRules.TokenTypeRule",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "mintTimestamp",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IIdentityRegistry",
+        "name": "identityRegistry",
+        "type": "address"
+      }
+    ],
+    "name": "getUnlockTimestamp",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "unlockTimestamp",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "forwarder",
+        "type": "address"
+      }
+    ],
+    "name": "isTrustedForwarder",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "restrictionCode",
+        "type": "uint256"
+      }
+    ],
+    "name": "messageForTransferRestriction",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "region",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "accreditation",
+        "type": "uint256"
+      }
+    ],
+    "name": "removeTokenTypeRule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "recipientRegion",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "recipientAccreditation",
+        "type": "uint256"
+      }
+    ],
+    "name": "removeTransferRule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "resetDefaultTokenTypeRule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "requiresAmlKyc",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "isActive",
+        "type": "bool"
+      }
+    ],
+    "name": "setDefaultTokenTypeRule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "region",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "accreditation",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "requiresAmlKyc",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "isActive",
+        "type": "bool"
+      }
+    ],
+    "name": "setTokenTypeRule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "recipientRegion",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "recipientAccreditation",
+        "type": "uint256"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "lockDurationSeconds",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "requiresAmlKyc",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "isActive",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct ITransferRules.TransferRule",
+        "name": "_rule",
+        "type": "tuple"
+      }
+    ],
+    "name": "setTransferRule",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes4",
+        "name": "interfaceId",
+        "type": "bytes4"
+      }
+    ],
+    "name": "supportsInterface",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "internalType": "contract IIdentityRegistry",
+        "name": "identityRegistry",
+        "type": "address"
+      }
+    ],
+    "name": "tokenTypeAllowed",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "recipientRegion",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "recipientAccreditation",
+        "type": "uint256"
+      }
+    ],
+    "name": "transferRuleFor",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "lockDurationSeconds",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "requiresAmlKyc",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "isActive",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct ITransferRules.TransferRule",
+        "name": "rule",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "trustedForwarder",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

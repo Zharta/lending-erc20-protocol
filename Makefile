@@ -3,7 +3,7 @@
 VENV?=./.venv
 PYTHON=${VENV}/bin/python3
 
-CONTRACTS := $(shell find contracts -depth 1 -name '*.vy')
+CONTRACTS := $(shell find contracts -maxdepth 2 -name '*.vy' | grep -v auxiliary)
 NATSPEC := $(patsubst contracts/%, natspec/%, $(CONTRACTS:%.vy=%.json))
 PATH := ${VENV}/bin:${PATH}
 PYTHONPATH:=contracts:scripts:$(PYTHONPATH)
@@ -28,24 +28,27 @@ requirements-dev.txt: pyproject.toml
 	uv pip compile -o requirements-dev.txt --extra dev pyproject.toml
 
 test: ${VENV}
-	${VENV}/bin/pytest tests/unit -n auto --dist loadscope
+	${VENV}/bin/pytest tests
 
 coverage:
-	${VENV}/bin/coverage run -m pytest tests/unit --runslow
+	${VENV}/bin/coverage run -m pytest tests/p2p_erc20_vaulted/unit --runslow
 	${VENV}/bin/coverage report
 
 branch-coverage:
-	${VENV}/bin/coverage run --branch -m pytest tests/unit --runslow
+	${VENV}/bin/coverage run --branch -m pytest tests/p2p_erc20_vaulted/unit --runslow
 	${VENV}/bin/coverage report
 
 unit-tests:
-	${VENV}/bin/pytest tests/unit --runslow -n auto --dist loadscope
+	${VENV}/bin/pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_vaulted/unit --runslow -n auto --dist loadscope
 
 integration-tests:
-	${VENV}/bin/pytest tests/integration
+	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration
+
+profitr-tests:
+	${VENV}/bin/pytest tests/p2p_erc20_vaulted/profitr
 
 gas:
-	${VENV}/bin/pytest tests/unit --gas-profile
+	${VENV}/bin/pytest tests/p2p_erc20_vaulted/unit --gas-profile
 
 interfaces:
 	${VENV}/bin/python scripts/build_interfaces.py contracts/*.vy
@@ -53,7 +56,7 @@ interfaces:
 docs: $(NATSPEC)
 
 natspec/%.json: %.vy
-	${VENV}/bin/vyper -f userdoc,devdoc $< > $@
+	dirname $@ | xargs mkdir -p && ${VENV}/bin/vyper -f userdoc,devdoc $< > $@
 
 clean:
 	rm -rf ${VENV} .cache .build __pycache__ **/__pycache__

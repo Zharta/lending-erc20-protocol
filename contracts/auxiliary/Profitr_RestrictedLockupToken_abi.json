@@ -1,0 +1,2622 @@
+[
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "transferRules",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "accessControl",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "snapshotPeriods",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "trustedForwarder",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "identityRegistry",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "restrictedLockupTokenManagementExtension",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "restrictedLockupTokenExtension",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "symbol",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "internalType": "uint8",
+            "name": "decimals",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxTotalSupply",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "minTimelockAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxReleaseDelay",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "recordMintTimestamp",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct RestrictedLockupToken.ConstructorParams",
+        "name": "params",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "allowance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "needed",
+        "type": "uint256"
+      }
+    ],
+    "name": "ERC20InsufficientAllowance",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "balance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "needed",
+        "type": "uint256"
+      }
+    ],
+    "name": "ERC20InsufficientBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "approver",
+        "type": "address"
+      }
+    ],
+    "name": "ERC20InvalidApprover",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "receiver",
+        "type": "address"
+      }
+    ],
+    "name": "ERC20InvalidReceiver",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      }
+    ],
+    "name": "ERC20InvalidSender",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      }
+    ],
+    "name": "ERC20InvalidSpender",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EasyAccessControl_AlreadyHasRole",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EasyAccessControl_ArraysMustBeSameLength",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EasyAccessControl_AtLeastOneContractAdminRequired",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EasyAccessControl_CannotRevokeRole",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveContractAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveContractOrTransferAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveReserveAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveSoftBurnAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveTransferAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "EasyAccessControl_DoesNotHaveWalletsAdminRole",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EasyAccessControl_InvalidRole",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "EasyAccessControl_InvalidZeroAddress",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_AddressAlreadyHasHolder",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_AlreadySet",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_AmountExceedsUnlockedBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_AmountLessThanReleaseCount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_CannotExceedMaxTotalSupply",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_CannotRemoveHolderWithActiveTimelocks",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_CannotRemoveLastWallet",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_CantVestAllForMultipleReleases",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_CommencementTimestampDoesNotMatch",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "expected",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "actual",
+        "type": "uint256"
+      }
+    ],
+    "name": "RestrictedLockupToken_ExtensionSlotsPerWordMismatch",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_HolderAddressDoesNotExist",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_HolderAlreadyExists",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_HolderDoesNotExist",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_HoldingIndexOutOfBound",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InitialReleaseOutOfRange",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InsufficientBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InsufficientBurnableBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InsufficientTotalBalanceOf",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidAccessControl",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidAddressArray",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidFirstRelease",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidFundAddress",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidFundAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidHolding",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidHoldingIndex",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidIdentityRegistry",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidMinTimelockAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidName",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidNumberOfRelases",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidRInitialReleaseBIPS",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidReclaimTo",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidReleasePeriod",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidReleasePortionForSingleRelease",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidRestrictedLockupTokenExtension",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidRestrictedLockupTokenManagementExtension",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidScheduleId",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidSymbol",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidTimelock",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidTokenType",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidTransferRules",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidTrustedForwarder",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidZeroAddress",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_InvalidZeroAmount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_MaxCancelersExceeded",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_MaxHolderCountReached",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_MaxTimelocksExceeded",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_MaxTotalSupplyTooLarge",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_MismatchedArrayLength",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_NewHolderMaxMustExceedCurrentHolderCount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_NewIdentityRegistryContractDoesNotImplementIIdentityRegistry",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_NewMaxTotalSupplyMustExceedCurrentTotalSupply",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_NewTransferRulesContractDoesNotImplementITransferRules",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_NoItemWithEnoughBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_RecipientAndAmountLengthsShouldMatch",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_SafeApprove",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_ScheduleIdDoesNotMatch",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      }
+    ],
+    "name": "RestrictedLockupToken_SenderCannotBeRecipient",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_TimelockCannotBeCanceled",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_TimelockHasNoValueRemaining",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_TokenTypeNotAllowed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_TokenTypeNotAllowedForRecipient",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "RestrictedLockupToken_TotalAmountDoesNotMatch",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bool",
+        "name": "status",
+        "type": "bool"
+      }
+    ],
+    "name": "AddressFrozen",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "holderId",
+        "type": "uint256"
+      }
+    ],
+    "name": "AppendHolderAddress",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "Approval",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ForceTransferBetween",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "holderId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "HolderCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "oldTokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "newTokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "mintTimestamp",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "HoldingTokenTypeUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bool",
+        "name": "status",
+        "type": "bool"
+      }
+    ],
+    "name": "Pause",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "holderId",
+        "type": "uint256"
+      }
+    ],
+    "name": "RemoveHolder",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "holderId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "RemoveWalletFromHolder",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "scheduleId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ScheduleCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "scheduleId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "commencementTimestamp",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timelockId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address[]",
+        "name": "cancelableBy",
+        "type": "address[]"
+      }
+    ],
+    "name": "ScheduleFunded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "holderMax",
+        "type": "uint256"
+      }
+    ],
+    "name": "SetHolderMax",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxTotalSupply",
+        "type": "uint256"
+      }
+    ],
+    "name": "SetMaxTotalSupply",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "canceledBy",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "target",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "timelockIndex",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "reclaimTokenTo",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "canceledAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "paidAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "TimelockCanceled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "timelockIndex",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "oldTokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "newTokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "TimelockTokenTypeUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "holdingsMerged",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "totalAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "newMintTimestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "TokenHoldingsMerged",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      }
+    ],
+    "name": "TokenTypeBurned",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "TokenTypeMinted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      }
+    ],
+    "name": "TokenTypeTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "Transfer",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "admin",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldRules",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newRules",
+        "type": "address"
+      }
+    ],
+    "name": "Upgrade",
+    "type": "event"
+  },
+  {
+    "stateMutability": "nonpayable",
+    "type": "fallback"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_CANCELABLE_BY",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "_IIDENTITY_REGISTRY_INTERFACE_ID",
+    "outputs": [
+      {
+        "internalType": "bytes4",
+        "name": "",
+        "type": "bytes4"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "_ITRANSFER_RULES_INTERFACE_ID",
+    "outputs": [
+      {
+        "internalType": "bytes4",
+        "name": "",
+        "type": "bytes4"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "accessControl",
+    "outputs": [
+      {
+        "internalType": "contract EasyAccessControl",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      }
+    ],
+    "name": "allowance",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "approve",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "balanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timelockIndex_",
+        "type": "uint256"
+      }
+    ],
+    "name": "balanceOfTimelock",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address[]",
+        "name": "recipients",
+        "type": "address[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "amounts",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "batchTransfer",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "commencedTimestamp_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "currentTimestamp_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "releaseCount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "delayUntilFirstReleaseInSeconds",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "initialReleasePortionInBips",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "periodBetweenReleasesInSeconds",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct Storage.ReleaseSchedule",
+        "name": "releaseSchedule_",
+        "type": "tuple"
+      }
+    ],
+    "name": "calculateUnlocked",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "commencedTimestamp_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "currentTimestamp_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "scheduleId_",
+        "type": "uint256"
+      }
+    ],
+    "name": "calculateUnlocked",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "target_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timelockIndex_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "scheduleId_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "commencementTimestamp_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "totalAmount_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "reclaimTokenTo_",
+        "type": "address"
+      }
+    ],
+    "name": "cancelTimelock",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "success",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "circulatingTokenSupply",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "_circulatingTokenSupply",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "contractVersion",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [
+      {
+        "internalType": "uint8",
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "deploymentDay",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "from_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value_",
+        "type": "uint256"
+      }
+    ],
+    "name": "detectTransferRestriction",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenType_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "mintTimestamp_",
+        "type": "uint256"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256[]",
+            "name": "regions",
+            "type": "uint256[]"
+          },
+          {
+            "internalType": "uint256",
+            "name": "accreditationType",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "lastAmlKycChangeTimestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "lastAccreditationChangeTimestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "amlKycPassed",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct IIdentityRegistry.IdentityInfo",
+        "name": "recipientIdentity",
+        "type": "tuple"
+      },
+      {
+        "internalType": "bool",
+        "name": "isAmlKycPassed_",
+        "type": "bool"
+      }
+    ],
+    "name": "detectTransferRestrictionFor",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      }
+    ],
+    "name": "determineTokenType",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "elementBitSize",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "from_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      }
+    ],
+    "name": "forceTransferBetween",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index",
+        "type": "uint256"
+      }
+    ],
+    "name": "getWalletIndexes",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      }
+    ],
+    "name": "getWalletIndexesLength",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "globalHoldingCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "globalMintTimestamps",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "holderCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "holderMax",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "identityRegistry",
+    "outputs": [
+      {
+        "internalType": "contract IIdentityRegistry",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      }
+    ],
+    "name": "isAmlKycPassed",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "isPaused",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "forwarder",
+        "type": "address"
+      }
+    ],
+    "name": "isTrustedForwarder",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      }
+    ],
+    "name": "lockedBalanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timelockIndex_",
+        "type": "uint256"
+      }
+    ],
+    "name": "lockedBalanceOfTimelock",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "_locked",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "maxBalancePerSubIndex",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "maxReleaseDelay",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "maxTotalSupply",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "restrictionCode_",
+        "type": "uint256"
+      }
+    ],
+    "name": "messageForTransferRestriction",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "minTimelockAmount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value_",
+        "type": "uint256"
+      }
+    ],
+    "name": "mint",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "mintTimestampCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokenType",
+        "type": "uint256"
+      }
+    ],
+    "name": "mintTokenType",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "name",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "recordMintTimestamp",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "releaseSchedules",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "releaseCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "delayUntilFirstReleaseInSeconds",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "initialReleasePortionInBips",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "periodBetweenReleasesInSeconds",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "restrictedLockupTokenExtension",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "restrictedLockupTokenManagementExtension",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "scheduleCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "count",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bool",
+        "name": "enabled",
+        "type": "bool"
+      }
+    ],
+    "name": "setRecordMintTimestamp",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "slotsPerWord",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "snapshotPeriods",
+    "outputs": [
+      {
+        "internalType": "contract ISnapshotPeriods",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "snapshotPeriodsAddress",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "snapshotsEnabled",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      }
+    ],
+    "name": "superBalanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes4",
+        "name": "interfaceId_",
+        "type": "bytes4"
+      }
+    ],
+    "name": "supportsInterface",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "symbol",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      }
+    ],
+    "name": "timelockCountOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "index_",
+        "type": "uint256"
+      }
+    ],
+    "name": "timelockOf",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "funder",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "scheduleId",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "commencementTimestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "tokensTransferred",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "totalAmount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "tokenType",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "mintTimestamp",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address[]",
+            "name": "cancelableBy",
+            "type": "address[]"
+          }
+        ],
+        "internalType": "struct Storage.Timelock",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "totalBalanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "balance",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalSupply",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalTokenSupply",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "_totalTokenSupply",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timelockIndex_",
+        "type": "uint256"
+      }
+    ],
+    "name": "totalUnlockedToDateOfTimelock",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      }
+    ],
+    "name": "transfer",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "from_",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      }
+    ],
+    "name": "transferFrom",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "globalHoldingIdx",
+        "type": "uint256"
+      }
+    ],
+    "name": "transferHolding",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "transferRules",
+    "outputs": [
+      {
+        "internalType": "contract ITransferRules",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "to_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timelockId_",
+        "type": "uint256"
+      }
+    ],
+    "name": "transferTimelock",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "trustedForwarder",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "unissuedTokenSupply",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "_unissuedTokenSupply",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      }
+    ],
+    "name": "unlockedBalanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount_",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timelockIndex_",
+        "type": "uint256"
+      }
+    ],
+    "name": "unlockedBalanceOfTimelock",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "_unlocked",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "who_",
+        "type": "address"
+      }
+    ],
+    "name": "unlockedTotalBalanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
