@@ -1,7 +1,7 @@
 # @version 0.4.3
 
 """
-@title P2PLendingBase
+@title P2PLendingVaultedBase
 @author [Zharta](https://zharta.io/)
 @notice This contract facilitates peer-to-peer lending using ERC20s as collateral.
 @dev Keep all state here so that the storage layout is consistent across contracts
@@ -13,7 +13,7 @@
 from ethereum.ercs import IERC721
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
-from contracts.v2 import P2PLendingV2Vault as vault
+from contracts.v1 import P2PLendingVault as vault
 
 struct AggregatorV3LatestRoundData:
     roundId: uint80

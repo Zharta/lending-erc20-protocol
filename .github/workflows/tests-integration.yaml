@@ -35,4 +35,4 @@ jobs:
 
     - name: Run project integration tests
       run: |
-        pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_v2/integration
+        pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration

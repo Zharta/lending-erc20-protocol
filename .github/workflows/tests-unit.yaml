@@ -36,7 +36,7 @@ jobs:
 
     - name: Run project unit tests
       run: |
-        coverage run -m pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_v2/unit --durations=0 --runslow
+        coverage run -m pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_vaulted/unit --durations=0 --runslow
         coverage report -m | tee coverage.txt
         sed -i '1s/^/coverage: platform marker \n/' coverage.txt
         coverage xml
