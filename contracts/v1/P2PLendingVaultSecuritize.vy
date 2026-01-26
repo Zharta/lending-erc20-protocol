@@ -170,14 +170,14 @@ def withdraw_pending(amount: uint256):
 @external
 def withdraw_funds(payment_token: address, amount: uint256):
     """
-    @notice Withdraw specified funds from the vault to the owner.
-    @dev Transfers the specified amount of payment tokens from the vault to the owner.
+    @notice Withdraw specified funds from the vault to the caller.
+    @dev Transfers the specified amount of payment tokens from the vault to the caller (main contract).
     @param payment_token The address of the payment token to withdraw.
     @param amount The amount of tokens to withdraw.
     """
 
-    assert self._check_user(self.owner), "unauthorized"
-    assert extcall IERC20(payment_token).transfer(self.owner, amount), "transfer failed"
+    assert self._check_user(self.caller), "unauthorized"
+    assert extcall IERC20(payment_token).transfer(self.caller, amount), "transfer failed"
 
 
 @external
