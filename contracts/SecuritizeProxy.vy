@@ -1,9 +1,9 @@
 # @version 0.4.3
 
 from ethereum.ercs import IERC20
-from contracts.v2 import P2PLendingV2VaultSecuritize as vault
-from contracts.v2 import P2PLendingV2Erc20
-from contracts.v2 import P2PLendingV2Base as base
+from contracts.v1 import P2PLendingVaultSecuritize as vault
+from contracts.v1 import P2PLendingSecuritizeErc20
+from contracts.v1 import P2PLendingSecuritizeBase as base
 
 FLASH_LOAN_CALLBACK_SIZE: constant(uint256) = 10240
 FLASH_LOAN_MAX_TOKENS: constant(uint256) = 1
@@ -80,8 +80,8 @@ def receiveFlashLoan(
 
     callback_data: CallbackData = abi_decode(data, CallbackData)
 
-    payment_token: address = staticcall P2PLendingV2Erc20.__at__(p2p_lending_erc20).payment_token()
-    collateral_token: address = staticcall P2PLendingV2Erc20.__at__(p2p_lending_erc20).collateral_token()
+    payment_token: address = staticcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).payment_token()
+    collateral_token: address = staticcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).collateral_token()
     assert tokens[0] == payment_token, "Invalid asset"
 
     assert (staticcall IERC20(payment_token).balanceOf(self)) >= amounts[0], "Insufficient balance"
@@ -91,10 +91,10 @@ def receiveFlashLoan(
 
     assert staticcall IERC20(payment_token).balanceOf(self) >= collateral_max_spend, "Insufficient balance for swap"
 
-    borrower_vault: address = staticcall P2PLendingV2Erc20.__at__(p2p_lending_erc20).wallet_to_vault(callback_data.borrower)
+    borrower_vault: address = staticcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).wallet_to_vault(callback_data.borrower)
     extcall IERC20(payment_token).approve(borrower_vault, collateral_max_spend)
     if not borrower_vault.is_contract:
-        extcall P2PLendingV2Erc20.__at__(p2p_lending_erc20).create_vault_if_needed(callback_data.borrower)
+        extcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).create_vault_if_needed(callback_data.borrower)
     extcall vault.__at__(borrower_vault).buy(payment_token, callback_data.collateral_to_buy, collateral_max_spend)
 
     self._create_loan(
@@ -118,7 +118,7 @@ def _create_loan(
     borrower_kyc: base.SignedWalletValidation,
     lender_kyc: base.SignedWalletValidation
 ) -> bytes32:
-    return extcall P2PLendingV2Erc20.__at__(p2p_lending_erc20).create_loan(
+    return extcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).create_loan(
         offer,
         principal,
         collateral_amount,
@@ -140,7 +140,7 @@ def create_loan(
 
     # raw_call(0x0000000000000000000000000000000000011111, abi_encode(b"refinance"))
 
-    payment_token: address = staticcall P2PLendingV2Erc20.__at__(p2p_lending_erc20).payment_token()
+    payment_token: address = staticcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).payment_token()
     callback_data: CallbackData = CallbackData(
         securitize_swap_contract = staticcall SecuritizeDSToken(offer.offer.collateral_token).getDSService(SEC_SWAP_SERVICE_ID),
         collateral_to_buy = collateral_to_buy,

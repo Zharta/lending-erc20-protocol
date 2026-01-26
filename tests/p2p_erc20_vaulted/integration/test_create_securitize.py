@@ -55,7 +55,7 @@ def oracle_acred_usd(oracle_contract_def, owner):
 
 @pytest.fixture
 def securitize_vault_contract_def():
-    return boa.load_partial("contracts/v2/P2PLendingV2VaultSecuritize.vy")
+    return boa.load_partial("contracts/v1/P2PLendingVaultSecuritize.vy")
 
 
 @pytest.fixture
@@ -64,10 +64,20 @@ def securitize_vault_impl(securitize_vault_contract_def):
 
 
 @pytest.fixture
+def p2p_sec_refinance(p2p_lending_securitize_refinance_contract_def):
+    return p2p_lending_securitize_refinance_contract_def.deploy()
+
+
+@pytest.fixture
+def p2p_sec_liquidation(p2p_lending_securitize_liquidation_contract_def):
+    return p2p_lending_securitize_liquidation_contract_def.deploy()
+
+
+@pytest.fixture
 def p2p_usdc_acred(
     p2p_lending_erc20_contract_def,
-    p2p_refinance,
-    p2p_liquidation,
+    p2p_sec_refinance,
+    p2p_sec_liquidation,
     usdc,
     acred,
     oracle_acred_usd,
@@ -89,8 +99,8 @@ def p2p_usdc_acred(
         10000,
         0,
         0,
-        p2p_refinance.address,
-        p2p_liquidation.address,
+        p2p_sec_refinance.address,
+        p2p_sec_liquidation.address,
         securitize_vault_impl.address,
         transfer_agent,
     )
