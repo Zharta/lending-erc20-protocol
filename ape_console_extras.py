@@ -107,7 +107,7 @@ SignedWalletValidation = namedtuple(
 )
 
 
-class Loan(NamedTuple):
+class LoanV0(NamedTuple):
     id: bytes = ZERO_BYTES32
     offer_id: bytes = ZERO_BYTES32
     offer_tracing_id: bytes = ZERO_BYTES32
@@ -138,11 +138,55 @@ class Loan(NamedTuple):
         return self.apr * self.amount * (timestamp - self.accrual_start_time) // (365 * 24 * 3600 * BPS)
 
 
-def compute_loan_hash(loan: Loan):
+class Loan(NamedTuple):
+    id: bytes = ZERO_BYTES32
+    offer_id: bytes = ZERO_BYTES32
+    offer_tracing_id: bytes = ZERO_BYTES32
+    initial_amount: int = 0
+    amount: int = 0
+    apr: int = 0
+    payment_token: str = ZERO_ADDRESS
+    maturity: int = 0
+    start_time: int = 0
+    accrual_start_time: int = 0
+    borrower: str = ZERO_ADDRESS
+    lender: str = ZERO_ADDRESS
+    collateral_token: str = ZERO_ADDRESS
+    collateral_amount: int = 0
+    min_collateral_amount: int = 0
+    origination_fee_amount: int = 0
+    protocol_upfront_fee_amount: int = 0
+    protocol_settlement_fee: int = 0
+    partial_liquidation_fee: int = 0
+    full_liquidation_fee: int = 0
+    call_eligibility: int = 0
+    call_window: int = 0
+    liquidation_ltv: int = 0
+    oracle_addr: str = ZERO_ADDRESS
+    initial_ltv: int = 0
+    call_time: int = 0
+    vault_id: int = 0
+
+    def get_interest(self, timestamp):
+        return self.apr * self.amount * (timestamp - self.accrual_start_time) // (365 * 24 * 3600 * BPS)
+
+
+def compute_loan_hash_v0(loan: Loan):
     print(f"compute_loan_hash {loan=}")
     encoded = eth_abi.encode(
         [
             "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256)"
+        ],
+        [loan],
+    )
+    return boa.eval(f"""keccak256({encoded})""")
+
+
+def compute_loan_hash(loan: Loan):
+    print(f"compute_loan_hash {loan=}")
+    encoded = eth_abi.encode(
+        [
+            "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256)"
         ],
         [loan],
     )

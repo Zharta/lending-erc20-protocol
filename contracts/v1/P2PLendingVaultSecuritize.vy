@@ -17,6 +17,8 @@ interface Vault:
     def initialise(_owner: address, _token: address): nonpayable
     def deposit(amount: uint256, wallet: address): nonpayable
     def withdraw(amount: uint256, wallet: address): nonpayable
+    def withdrawable_balance() -> uint256: view
+    def withdraw_funds(payment_token: address, amount: uint256): nonpayable
 
 
 interface SecuritizeSwap:
@@ -141,6 +143,17 @@ def withdraw(amount: uint256, wallet: address):
 
 
 @external
+@view
+def withdrawable_balance() -> uint256:
+    """
+    @notice Get the withdrawable balance of the vault.
+    @dev Calculates the withdrawable balance by subtracting pending transfers from the total token balance.
+    @return The withdrawable balance of the vault.
+    """
+    return staticcall IERC20(self.token).balanceOf(self) - self.pending_transfers_total
+
+
+@external
 def withdraw_pending(amount: uint256):
     """
     @notice Withdraw tokens from the vault that are pending transfer to the sender.
@@ -152,6 +165,19 @@ def withdraw_pending(amount: uint256):
     self.pending_transfers_total -= amount
     assert extcall IERC20(self.token).transfer(msg.sender, amount), "transfer failed"
     log WithdrawPending(wallet=msg.sender, amount=amount)
+
+
+@external
+def withdraw_funds(payment_token: address, amount: uint256):
+    """
+    @notice Withdraw specified funds from the vault to the owner.
+    @dev Transfers the specified amount of payment tokens from the vault to the owner.
+    @param payment_token The address of the payment token to withdraw.
+    @param amount The amount of tokens to withdraw.
+    """
+
+    assert self._check_user(self.owner), "unauthorized"
+    assert extcall IERC20(payment_token).transfer(self.owner, amount), "transfer failed"
 
 
 @external

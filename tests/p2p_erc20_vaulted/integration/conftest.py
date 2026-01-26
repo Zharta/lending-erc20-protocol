@@ -172,7 +172,17 @@ def oracle_usdc_eth(oracle_contract_def, owner):
 
 @pytest.fixture(scope="session")
 def p2p_lending_securitize_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingVaultedSecuritize.vy")
+    return boa.load_partial("contracts/v1/P2PLendingSecuritizeErc20.vy")
+
+
+@pytest.fixture(scope="session")
+def p2p_lending_securitize_refinance_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingSecuritizeRefinance.vy")
+
+
+@pytest.fixture(scope="session")
+def p2p_lending_securitize_liquidation_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingSecuritizeLiquidation.vy")
 
 
 @pytest.fixture(scope="session")
