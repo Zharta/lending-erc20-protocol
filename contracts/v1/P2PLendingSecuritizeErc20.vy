@@ -1219,7 +1219,7 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
 
 # @external
 # def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base.SignedWalletValidation):
-# 
+#
 #     """
 #     @notice Transfer a loan to a new borrower.
 #     @dev Only allowed to be called by the transfer agent. Used for supporting cases of death, lost keys, or legal transfers
@@ -1227,13 +1227,13 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
 #     @param new_borrower The address of the new borrower.
 #     @param new_borrower_kyc The signed KYC validation for the new borrower.
 #     """
-# 
+#
 #     assert base._is_loan_valid(loan), "invalid loan"
 #     assert base._check_user(base.transfer_agent), "not transfer agent"
-# 
+#
 #     assert staticcall base.KYCValidator(kyc_validator_addr).check_validation(new_borrower_kyc), "KYC validation fail"
 #     assert new_borrower_kyc.validation.wallet == new_borrower, "KYC validation fail"
-# 
+#
 #     updated_loan: base.Loan = base.Loan(
 #         id=empty(bytes32),
 #         offer_id=loan.offer_id,
@@ -1268,13 +1268,13 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
 #     updated_loan.id = base._compute_loan_id(updated_loan)
 #     base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)
 #     base.loans[loan.id] = empty(bytes32)
-# 
+#
 #     base._send_collateral(
 #         base._create_vault_if_needed(new_borrower, vault_impl_addr, collateral_token).address,
 #         loan.collateral_amount,
 #         base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
 #     )
-# 
+#
 #     log LoanBorrowerTransferred(
 #         loan_id=loan.id,
 #         new_loan_id=updated_loan.id,
