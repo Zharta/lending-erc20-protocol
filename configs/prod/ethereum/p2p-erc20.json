@@ -54,6 +54,24 @@
             "contract": "RefinanceImpl",
             "properties": {},
             "properties_addresses": {}
+        },
+        "vault_securitize_impl": {
+            "address": "",
+            "contract": "VaultSecuritizeImpl",
+            "properties": {},
+            "properties_addresses": {}
+        },
+        "refinance_securitize_impl": {
+            "address": "",
+            "contract": "RefinanceSecuritizeImpl",
+            "properties": {},
+            "properties_addresses": {}
+        },
+        "liquidation_securitize_impl": {
+            "address": "",
+            "contract": "LiquidationSecuritizeImpl",
+            "properties": {},
+            "properties_addresses": {}
         }
     },
     "configs": {},
@@ -86,6 +104,33 @@
             },
             "token_symbol": "USDC",
             "version": "1"
+        },
+        "usdc_acred_securitize": {
+            "address": "",
+            "contract": "P2PLendingSecuritizeErc20",
+            "oracle_name": "RedStone Feed: ACRED / USD",
+            "properties": {
+                "collateral_token_key": "common.acred",
+                "full_liquidation_fee": 1000,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_securitize_impl",
+                "max_protocol_settlement_fee": 5000,
+                "max_protocol_upfront_fee": 5000,
+                "oracle_key": "common.oracle_acred_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 1000,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
+                "refinance_impl_key": "common.refinance_securitize_impl",
+                "transfer_agent": "TODO",
+                "securitize_redemption_wallet": "TODO",
+                "vault_impl_key": "common.vault_securitize_impl"
+            },
+            "properties_addresses": {},
+            "token_symbol": "USDC",
+            "version": "securitize"
         },
         "usdc_cbbtc": {
             "abi_key": "b855716684686e4c8f75aebaf41810373b718e17",
