@@ -200,7 +200,7 @@ def liquidate_loan(
 
     _vault: vault.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
     if is_loan_redeemed:
-        assert base._is_loan_redeem_concluded(loan), "redeem not concluded"
+        assert base._is_loan_redeem_concluded(loan, _vault), "redeem not concluded"
         in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(_vault, payment_token)
 
     outstanding_debt: uint256 = loan.amount + current_interest

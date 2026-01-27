@@ -625,7 +625,7 @@ def settle_loan(loan: base.Loan):
     in_vault_collateral: uint256 = 0
     in_vault_payment_token: uint256 = 0
     if base._is_loan_redeemed(loan):
-        assert base._is_loan_redeem_concluded(loan), "redeem not concluded"
+        assert base._is_loan_redeem_concluded(loan, _vault), "redeem not concluded"
         in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(_vault, payment_token)
 
     interest: uint256 = base._compute_settlement_interest(loan)
@@ -993,14 +993,15 @@ def is_loan_redeemed(loan: base.Loan) -> bool:
 
 @view
 @external
-def _is_loan_redeem_concluded(loan: base.Loan) -> bool:
+def _is_loan_redeem_concluded(loan: base.Loan, _vault: vault.Vault) -> bool:
     """
     @notice Check if a loan redeem is completed.
     @param loan The loan to check.
+    @param _vault The vault associated with the loan.
     @return True if the loan redeem is completed, false otherwise.
     """
 
-    return base._is_loan_redeem_concluded(loan)
+    return base._is_loan_redeem_concluded(loan, _vault)
 
 
 @view

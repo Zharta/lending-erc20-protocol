@@ -30,8 +30,10 @@ SEC_REG_APPROVED = 1
 
 
 @pytest.fixture
-def redemption_wallet():
-    return boa.env.generate_address("redemption_wallet")
+def redemption_wallet(accounts, usdc):
+    wallet = "0xbb543C77436645C8b95B64eEc39E3C0d48D4842b"
+    usdc.transfer(wallet, int(1e12), sender=accounts[0])
+    return wallet
 
 
 @pytest.fixture
@@ -375,6 +377,7 @@ def test_redeem(
     securitize_registry,
     securitize_swap,
     securitize_proxy,
+    redemption_wallet,
 ):
     principals = [70000000000, 49000000000, 34300000000, 24000000000, 17000000000]
     collateral_amounts = [94000000, 66000000, 46000000, 32000000, 23000000]
@@ -419,6 +422,7 @@ def test_redeem(
 
     origination_fee = offer.origination_fee_bps * principal // BPS
     lender_balance_before = usdc.balanceOf(lender)
+    redemption_wallet_balance_before = acred.balanceOf(redemption_wallet)
 
     securitize_proxy.create_loan(
         signed_offer,
@@ -467,7 +471,12 @@ def test_redeem(
 
     assert compute_securitize_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
 
-    assert acred.balanceOf(p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)) == collateral_amount
+    print(f"{p2p_usdc_acred.vault_impl_addr()=}")
+    vault = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
+    print(f"{vault=}")
+    vault = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
+    print(f"{p2p_usdc_acred.vault_impl_addr()=}")
+    assert acred.balanceOf(vault) == collateral_amount
     assert acred.balanceOf(borrower) == borrower_collateral_balance_before + collateral_to_buy - collateral_amount
 
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - collateral_to_buy_value - origination_fee
@@ -494,3 +503,32 @@ def test_redeem(
         redeem_residual_collateral=residual_collateral,
     )
     assert compute_securitize_loan_hash(loan) == p2p_usdc_acred.loans(loan.id)
+
+    assert acred.balanceOf(redemption_wallet) == redemption_wallet_balance_before + collateral_amount - residual_collateral
+    assert acred.balanceOf(vault) == residual_collateral
+    assert acred.balanceOf(borrower) == borrower_collateral_balance_before + collateral_to_buy - collateral_amount
+
+    redeem_usdc = collateral_to_buy * oracle_price_num // oracle_price_den
+    usdc.transfer(vault, redeem_usdc, sender=redemption_wallet)
+
+    amount_to_settle = loan.amount + 0
+
+    usdc.approve(p2p_usdc_acred.address, amount_to_settle, sender=loan.borrower)
+
+    assert (
+        p2p_usdc_acred.eval(f"base._get_vault({loan.borrower}, {loan.vault_id}, {p2p_usdc_acred.vault_impl_addr()}).address")
+        == vault
+    )
+    p2p_usdc_acred.settle_loan(loan, sender=loan.borrower)
+
+    assert p2p_usdc_acred.loans(loan.id) == ZERO_BYTES32
+
+    assert usdc.balanceOf(vault) == 0
+    assert usdc.balanceOf(loan.lender) == lender_balance_before
+    assert usdc.balanceOf(loan.borrower) >= borrower_balance_before
+
+    assert acred.balanceOf(vault) == 0
+    assert (
+        acred.balanceOf(borrower)
+        == borrower_collateral_balance_before + collateral_to_buy - collateral_amount + residual_collateral
+    )
