@@ -119,9 +119,8 @@ def securitize_registry(p2p_usdc_acred, securitize_owner, now):
 
 @pytest.fixture
 def securitize_swap(p2p_usdc_acred, securitize_registry, securitize_owner, now):
-    contract_def = boa.load_abi("contracts/auxiliary/SecuritizeSwapService_abi.json")
-    # return contract_def.at(securitize_registry.getDSService(1 << 14))
-    return contract_def.at("0x4A107BAEc38840E744d397f6a7E90ffc36beE141")
+    contract_def = boa.load_abi("contracts/auxiliary/SecuritizeOnRamp_abi.json")
+    return contract_def.at(securitize_registry.getDSService(1 << 14))
 
 
 @pytest.fixture
@@ -285,7 +284,10 @@ def test_loop(
     initial_borrower_collateral = collateral_amounts[0]
     collateral_amount = sum(collateral_amounts)
     collateral_to_buy = collateral_amount - initial_borrower_collateral
-    collateral_to_buy_value = securitize_swap.calculateStableCoinAmount(collateral_to_buy)
+    oracle_price_num = oracle_acred_usd.latestRoundData()[1]
+    oracle_price_den = 10 ** oracle_acred_usd.decimals()
+    # collateral_to_buy_value = securitize_swap.calculateStableCoinAmount(collateral_to_buy)
+    collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
     principal = sum(principals)
 
     borrower = sec_borrower
@@ -327,6 +329,7 @@ def test_loop(
         kyc_lender,
         collateral_to_buy,
         collateral_to_buy_value,
+        oracle_acred_usd.address,
         sender=borrower,
     )
 
