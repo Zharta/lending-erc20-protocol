@@ -10,14 +10,24 @@ FLASH_LOAN_MAX_TOKENS: constant(uint256) = 1
 
 
 interface SecuritizeSwap:
-    def calculateDsTokenAmount(_stableCoinAmount: uint256) -> (uint256, uint256): view
-    def calculateStableCoinAmount(_dsTokenAmount: uint256) -> uint256: view
-    def buy(_dsTokenAmount: uint256, _maxStableCoinAmount: uint256): nonpayable
+    def calculateDsTokenAmount(_stableCoinAmount: uint256) -> (uint256, uint256, uint256): view
+    def swap(_liquidityAmount: uint256, _minOutAmount: uint256): nonpayable
 
 
 interface SecuritizeDSToken:
     def getDSService(_serviceId: uint256) -> address: view
 
+
+struct AggregatorV3LatestRoundData:
+    roundId: uint80
+    answer: int256
+    startedAt: uint256
+    updatedAt: uint256
+    answeredInRound: uint80
+
+interface AggregatorV3Interface:
+    def decimals() -> uint8: view
+    def latestRoundData() -> AggregatorV3LatestRoundData: view
 
 interface IFlashLender:
     def flashLoan(
@@ -86,16 +96,15 @@ def receiveFlashLoan(
 
     assert (staticcall IERC20(payment_token).balanceOf(self)) >= amounts[0], "Insufficient balance"
 
-    collateral_max_spend: uint256 = staticcall SecuritizeSwap(callback_data.securitize_swap_contract).calculateStableCoinAmount(callback_data.collateral_to_buy)
-    assert collateral_max_spend <= amounts[0], "Insufficient flash loan amount"
+    assert callback_data.collateral_max_spend <= amounts[0], "Insufficient flash loan amount"
 
-    assert staticcall IERC20(payment_token).balanceOf(self) >= collateral_max_spend, "Insufficient balance for swap"
+    assert staticcall IERC20(payment_token).balanceOf(self) >= callback_data.collateral_max_spend, "Insufficient balance for swap"
 
     borrower_vault: address = staticcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).wallet_to_vault(callback_data.borrower)
-    extcall IERC20(payment_token).approve(borrower_vault, collateral_max_spend)
+    extcall IERC20(payment_token).approve(borrower_vault, callback_data.collateral_max_spend)
     if not borrower_vault.is_contract:
         extcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).create_vault_if_needed(callback_data.borrower)
-    extcall vault.__at__(borrower_vault).buy(payment_token, callback_data.collateral_to_buy, collateral_max_spend)
+    extcall vault.__at__(borrower_vault).buy(payment_token, callback_data.collateral_to_buy, callback_data.collateral_max_spend)
 
     self._create_loan(
         callback_data.offer,
@@ -135,16 +144,22 @@ def create_loan(
     borrower_kyc: base.SignedWalletValidation,
     lender_kyc: base.SignedWalletValidation,
     collateral_to_buy: uint256,
-    collateral_max_spend: uint256
+    collateral_max_spend: uint256,
+    oracle_addr: address
 ):
 
     # raw_call(0x0000000000000000000000000000000000011111, abi_encode(b"refinance"))
 
     payment_token: address = staticcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).payment_token()
+    rate_numerator: uint256 = 0
+    rate_denominator: uint256 = 0
+    (rate_numerator, rate_denominator) = self._get_oracle_rate(oracle_addr)
+    expected_collateral_swap_value: uint256 = collateral_to_buy * rate_numerator // rate_denominator
+    assert expected_collateral_swap_value <= collateral_max_spend, "max spend too low"
     callback_data: CallbackData = CallbackData(
         securitize_swap_contract = staticcall SecuritizeDSToken(offer.offer.collateral_token).getDSService(SEC_SWAP_SERVICE_ID),
         collateral_to_buy = collateral_to_buy,
-        collateral_max_spend = collateral_max_spend,
+        collateral_max_spend = expected_collateral_swap_value,
         payment_token = payment_token,
         borrower = msg.sender,
         offer = offer,
@@ -160,3 +175,9 @@ def create_loan(
         [collateral_max_spend],
         abi_encode(callback_data)
     )
+
+
+@view
+@internal
+def _get_oracle_rate(oracle_addr: address) -> (uint256, uint256):
+    return convert((staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer, uint256), 10 ** convert(staticcall AggregatorV3Interface(oracle_addr).decimals(), uint256)
