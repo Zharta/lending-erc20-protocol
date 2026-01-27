@@ -128,7 +128,7 @@
                 "protocol_upfront_fee": 0,
                 "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
                 "refinance_impl_key": "common.refinance_securitize_impl",
-                "securitize_redemption_wallet": "0x0000000000000000000000000000000000000000",
+                "securitize_redemption_wallet": "0xbb543C77436645C8b95B64eEc39E3C0d48D4842b",
                 "transfer_agent": "0x0000000000000000000000000000000000000000",
                 "vault_impl_key": "common.vault_securitize_impl"
             },

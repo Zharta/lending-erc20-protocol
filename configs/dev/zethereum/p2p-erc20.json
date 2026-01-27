@@ -120,7 +120,7 @@
         },
         "securitize_loop": {
             "abi_key": "5347634a608bfe1f978cb0b0fe17ca307b07f18b",
-            "address": "0x320C3abAdE5BbC1C4B01B86AaDF42Fe4281BBc99",
+            "address": "0xeA1b473c7bDC79368a60e2998109F52e3674430E",
             "contract": "SecuritizeLoop",
             "properties": {
                 "balancer_key": "common.balancer",
@@ -128,7 +128,7 @@
             },
             "properties_addresses": {
                 "balancer": "0xF69C97118847848E939E5c2E2913F779D6311ed8",
-                "p2p_contract": "0xBdB9196999257a28Ff6901728d873464f983eE77"
+                "p2p_contract": "0xafC3e1d450FBa3396347605841DBb174cD8F5022"
             }
         },
         "vault_impl": {
@@ -208,7 +208,7 @@
         },
         "usdc_acred_securitize": {
             "abi_key": "ddd4793da54d11958a34dbed3dffdab3d85cd07d",
-            "address": "0xBdB9196999257a28Ff6901728d873464f983eE77",
+            "address": "0xafC3e1d450FBa3396347605841DBb174cD8F5022",
             "contract": "P2PLendingSecuritizeErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {

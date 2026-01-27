@@ -415,10 +415,9 @@ def _get_redeem_balances(_vault: vault.Vault, payment_token: address) -> (uint25
 
 @view
 @internal
-def _is_loan_redeem_concluded(loan: Loan) -> bool:
+def _is_loan_redeem_concluded(loan: Loan, _vault: vault.Vault) -> bool:
     if loan.redeem_start == 0:
         return False
-    _vault: vault.Vault = self._get_vault(loan.borrower, loan.vault_id, loan.collateral_token)
     if staticcall IERC20(loan.payment_token).balanceOf(_vault.address) > 0:
         return True
     if staticcall _vault.withdrawable_balance() > loan.redeem_residual_collateral:
@@ -429,8 +428,8 @@ def _is_loan_redeem_concluded(loan: Loan) -> bool:
 
 @internal
 @view
-def _get_vault(wallet: address, vault_id: uint256, vault_impl_addr: address) -> vault.Vault:
-    _vault: address = self._wallet_to_vault(wallet, vault_id, vault_impl_addr)
+def _get_vault(wallet: address, vault_id: uint256, _vault_impl_addr: address) -> vault.Vault:
+    _vault: address = self._wallet_to_vault(wallet, vault_id, _vault_impl_addr)
     assert _vault.is_contract, "no vault exists for wallet"
     return vault.Vault(_vault)
 
