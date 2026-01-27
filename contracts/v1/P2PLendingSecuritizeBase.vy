@@ -435,17 +435,27 @@ def _get_vault(wallet: address, vault_id: uint256, vault_impl_addr: address) -> 
     return vault.Vault(_vault)
 
 @internal
-def _create_vault_if_needed(wallet: address, vault_impl_addr: address, payment_token: address) -> vault.Vault:
-    # only creates a vault if needed
-    vault_id: uint256 = self.vault_count[wallet]
+def _create_vault_by_id_if_needed(wallet: address, vault_impl_addr: address, payment_token: address, vault_id: uint256) -> vault.Vault:
     _vault: address = self._wallet_to_vault(wallet, vault_id, vault_impl_addr)
     if not _vault.is_contract:
-        self.vault_count[wallet] += 1
         _salt: bytes32 = keccak256(concat(convert(wallet, bytes20), convert(vault_id, bytes32)))
         _vault = create_minimal_proxy_to(vault_impl_addr, salt=_salt)
         extcall vault.Vault(_vault).initialise(wallet, payment_token)
 
     return vault.Vault(_vault)
+
+
+@internal
+def _create_vault_if_needed(wallet: address, vault_impl_addr: address, payment_token: address) -> vault.Vault:
+    return self._create_vault_by_id_if_needed(wallet, vault_impl_addr, payment_token, self.vault_count[wallet])
+
+
+@internal
+def _create_new_vault(wallet: address, vault_impl_addr: address, payment_token: address) -> vault.Vault:
+    # only creates a vault if needed
+    _vault: vault.Vault = self._create_vault_if_needed(wallet, vault_impl_addr, payment_token)
+    self.vault_count[wallet] += 1
+    return _vault
 
 
 @view

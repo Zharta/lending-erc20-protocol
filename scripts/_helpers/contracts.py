@@ -473,6 +473,82 @@ class Oracle(ContractConfig):
 
 
 @dataclass
+class Balancer(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.BalancerMock,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class Acred(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        supply: int | None = 0,
+        oracle_key: str | None = None,
+        stablecoin_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.AcredMock,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={oracle_key, stablecoin_key},
+            deployment_args=[int(supply) if supply else 0, oracle_key, stablecoin_key],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class SecuritizeLoop(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        p2p_contract_key: str,
+        balancer_key: str,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.SecuritizeProxy,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={p2p_contract_key, balancer_key},
+            deployment_args=[p2p_contract_key, balancer_key],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
 class KYCValidator(ContractConfig):
     def __init__(
         self,
