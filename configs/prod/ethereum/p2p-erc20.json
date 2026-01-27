@@ -11,7 +11,7 @@
         },
         "liquidation_securitize_impl": {
             "abi_key": "af3fa2477bf961123ea91b2d51106b537f096094",
-            "address": "0x655C6099535aa68870D4803D2E3514832eb41b80",
+            "address": "0x279fC5356B427275eeEA326c0Ff62bd1101bDE32",
             "contract": "LiquidationSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
@@ -70,8 +70,8 @@
             "properties_addresses": {}
         },
         "vault_securitize_impl": {
-            "abi_key": "8a15456e82f891dd8402e81018703b9dbc3d718a",
-            "address": "0x8dffcB2B46AF7c547c99D5E9b5c58Cc56313cACD",
+            "abi_key": "091947ac846186381751f75014e9213a6df80f7d",
+            "address": "0x1814b0B5468274E83dE72c5Fe8Ff6df03A0De070",
             "contract": "VaultSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
@@ -109,8 +109,8 @@
             "version": "1"
         },
         "usdc_acred_securitize": {
-            "abi_key": "ddd4793da54d11958a34dbed3dffdab3d85cd07d",
-            "address": "0xA0a5056170e53Fae9e13EFFbBd6aAB63bb02531d",
+            "abi_key": "01430a1ea96f22508a0f93613bb5db7fd393ef89",
+            "address": "0xa554B9A8576b2940C7535fCA1855bCb154e67E48",
             "contract": "P2PLendingSecuritizeErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
@@ -135,11 +135,11 @@
             "properties_addresses": {
                 "collateral_token": "0x17418038ecF73BA4026c4f428547BF099706F27B",
                 "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
-                "liquidation_impl": "0x655C6099535aa68870D4803D2E3514832eb41b80",
+                "liquidation_impl": "0x279fC5356B427275eeEA326c0Ff62bd1101bDE32",
                 "oracle": "0xD6BcbbC87bFb6c8964dDc73DC3EaE6d08865d51C",
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0xDf96D685E40DBF018917aEb1F4Db6fF6d1BFE704",
-                "vault_impl": "0x8dffcB2B46AF7c547c99D5E9b5c58Cc56313cACD"
+                "vault_impl": "0x1814b0B5468274E83dE72c5Fe8Ff6df03A0De070"
             },
             "token_symbol": "USDC",
             "version": "securitize"
