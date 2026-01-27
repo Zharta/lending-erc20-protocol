@@ -573,7 +573,7 @@ def create_loan(
     base._check_and_update_offer_state(offer, principal)
     base.loans[loan.id] = base._loan_state_hash(loan)
 
-    _vault: vault.Vault = base._create_vault_if_needed(loan.borrower, vault_impl_addr, collateral_token)
+    _vault: vault.Vault = base._create_new_vault(loan.borrower, vault_impl_addr, collateral_token)
     base._receive_collateral(loan.borrower, loan.collateral_amount, _vault)
     self._transfer_funds(loan.lender, loan.borrower, loan.amount - loan.origination_fee_amount)
 
@@ -1213,7 +1213,7 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
         collateral_token=loan.collateral_token,
         vault_id=loan.vault_id,
         redeem_start=updated_loan.redeem_start,
-        redeem_residual_collateral=loan.redeem_residual_collateral,
+        redeem_residual_collateral=updated_loan.redeem_residual_collateral,
     )
 
 
