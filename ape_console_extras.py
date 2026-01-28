@@ -666,6 +666,104 @@ def calc_deltas(loan: Loan, offer: Offer, principal: int, contract, timestamp: i
     return delta_borrower, delta_lender, delta_new_lender, delta_protocol
 
 
+def max_collateral_to_buy(borrower_collateral: int, ltv: int):
+    return borrower_collateral * ltv // (BPS - ltv)
+
+
+def dump_address(address: str):
+    if address.startswith("0x"):
+        address = address[2:]
+    padded_hex = address.zfill(40).lower()
+    return f'"0x{padded_hex}"'
+
+
+def dump_bytes(data: bytes):
+    return '"0x' + data.hex() + '"'
+
+
+def dump_tuple(*args):
+    return "[" + ",".join(str(arg) for arg in args) + "]"
+
+
+def dump_create_loan_proxy(
+    signed_offer: SignedOffer,
+    principal: int,
+    collateral_amount: int,
+    kyc_borrower: SignedWalletValidation,
+    kyc_lender: SignedWalletValidation,
+    collateral_to_buy: int,
+    collateral_max_spend: int,
+    oracle_addr: str,
+):
+    offer = signed_offer.offer
+    offer_signature = signed_offer.signature
+    print(
+        "offer=",
+        dump_tuple(
+            offer.principal,
+            offer.apr,
+            dump_address(offer.payment_token),
+            dump_address(offer.collateral_token),
+            offer.duration,
+            offer.origination_fee_bps,
+            offer.min_collateral_amount,
+            offer.max_iltv,
+            offer.available_liquidity,
+            offer.call_eligibility,
+            offer.call_window,
+            offer.liquidation_ltv,
+            dump_address(offer.oracle_addr),
+            offer.expiration,
+            dump_address(offer.lender),
+            dump_address(offer.borrower),
+            dump_bytes(offer.tracing_id),
+        ),
+    )
+    print(
+        "offer_signature=",
+        dump_tuple(
+            offer_signature.v,
+            dump_bytes(offer_signature.r),
+            dump_bytes(offer_signature.s),
+        ),
+    )
+    print(f"{principal=}")
+    print(f"{collateral_amount=}")
+    print(
+        "kyc_borrower.validation=",
+        dump_tuple(
+            dump_address(kyc_borrower.validation.wallet),
+            kyc_borrower.validation.expiration_time,
+        ),
+    )
+    print(
+        "kyc_borrower.signature=",
+        dump_tuple(
+            kyc_borrower.signature.v,
+            dump_bytes(kyc_borrower.signature.r),
+            dump_bytes(kyc_borrower.signature.s),
+        ),
+    )
+    print(
+        "kyc_lender.validation=",
+        dump_tuple(
+            dump_address(kyc_lender.validation.wallet),
+            kyc_lender.validation.expiration_time,
+        ),
+    )
+    print(
+        "kyc_lender.signature=",
+        dump_tuple(
+            kyc_lender.signature.v,
+            dump_bytes(kyc_lender.signature.r),
+            dump_bytes(kyc_lender.signature.s),
+        ),
+    )
+    print(f"{collateral_to_buy=}")
+    print(f"{collateral_max_spend=}")
+    print("oracle.address=", dump_address(oracle_addr))
+
+
 def contract_size(path):
     c = vyper.compile_code(Path(path).read_text(encoding="utf-8"))
     codesize = len(c["bytecode"]) // 2
