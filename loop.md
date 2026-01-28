@@ -1,8 +1,6 @@
 
 # Offer creation
 
-    initial_borrower_collateral = 94000000
-    ltv = 6800
 
 ```python
     lender = me
