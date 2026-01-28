@@ -329,7 +329,106 @@ def test_loop(
     # usdc.approve(securitize_swap.address, collateral_to_buy_value, sender=borrower)
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
-    acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount - collateral_to_buy, sender=borrower)
+    usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
+    usdc.approve(securitize_proxy.address, collateral_to_buy_value, sender=borrower)
+
+    borrower_collateral_balance_before = acred.balanceOf(borrower)
+    borrower_balance_before = usdc.balanceOf(borrower)
+
+    now = boa.eval("block.timestamp")
+
+    origination_fee = offer.origination_fee_bps * principal // BPS
+    lender_balance_before = usdc.balanceOf(lender)
+
+    securitize_proxy.create_loan(
+        signed_offer,
+        principal,
+        collateral_amount,
+        kyc_borrower,
+        kyc_lender,
+        collateral_to_buy,
+        collateral_to_buy_value,
+        oracle_acred_usd.address,
+        sender=borrower,
+    )
+
+    assert acred.balanceOf(p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)) == collateral_amount
+    assert acred.balanceOf(borrower) == borrower_collateral_balance_before + collateral_to_buy - collateral_amount
+
+    assert usdc.balanceOf(borrower) == borrower_balance_before + principal - collateral_to_buy_value - origination_fee
+    assert usdc.balanceOf(lender) == lender_balance_before - principal + origination_fee
+
+    liquidity_key = compute_liquidity_key(offer.lender, offer.tracing_id)
+    assert p2p_usdc_acred.commited_liquidity(liquidity_key) == principal
+
+
+def max_collateral_to_buy(borrower_collateral: int, ltv: int):
+    return borrower_collateral * ltv // (BPS - ltv)
+
+
+def test_loop2(
+    p2p_usdc_acred,
+    sec_borrower,
+    lender,
+    lender_key,
+    kyc_lender,
+    kyc_validator_contract,
+    kyc_validator_key,
+    usdc,
+    acred,
+    oracle_acred_usd,
+    securitize_registry,
+    securitize_swap,
+    securitize_proxy,
+):
+    initial_borrower_collateral = 94000000
+    ltv = 6800
+    collateral_to_buy = max_collateral_to_buy(initial_borrower_collateral, ltv)
+    # collateral_to_buy = int(collateral_to_buy * 1.01)
+    collateral_amount = initial_borrower_collateral + collateral_to_buy
+    oracle_price_num = oracle_acred_usd.latestRoundData()[1]
+    oracle_price_den = 10 ** oracle_acred_usd.decimals()
+    collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
+    principal = collateral_amount * oracle_price_num * ltv // (oracle_price_den * BPS)
+    collateral_amount_value = collateral_amount * oracle_price_num // oracle_price_den
+
+    print(f"{initial_borrower_collateral=}")
+    print(f"{collateral_to_buy=}")
+    print(f"{collateral_amount=}")
+    print(f"{ltv=}")
+    print(f"{oracle_price_num=}")
+    print(f"{oracle_price_den=}")
+    print(f"{collateral_to_buy_value=}")
+    print(f"{collateral_amount_value=}")
+    print(f"{principal=}")
+
+    borrower = sec_borrower
+    # principal = 1000 * int(1e9)
+    # collateral_amount = 95 * int(1e6)
+    now = boa.eval("block.timestamp")
+    offer = Offer(
+        # principal=principal,
+        max_iltv=ltv,
+        payment_token=p2p_usdc_acred.payment_token(),
+        collateral_token=p2p_usdc_acred.collateral_token(),
+        duration=100,
+        # min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
+    kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
+
+    # usdc.approve(securitize_swap.address, collateral_to_buy_value, sender=borrower)
+
+    assert acred.balanceOf(borrower) >= collateral_amount - collateral_to_buy
+    assert usdc.balanceOf(lender) >= principal
+    assert usdc.balanceOf(securitize_proxy.flash_lender()) >= collateral_to_buy_value
+
+    vault_id = p2p_usdc_acred.vault_count(borrower)
+    acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount - collateral_to_buy, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
     usdc.approve(securitize_proxy.address, collateral_to_buy_value, sender=borrower)
 
