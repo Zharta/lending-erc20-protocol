@@ -1168,6 +1168,7 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
     assert base._check_user(loan.borrower), "not borrower"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan already redeemed"
+    assert base.securitize_redemption_wallet != empty(address), "redemption wallet not set"
 
     assert residual_collateral <= loan.collateral_amount, "residual collateral gt total"
 

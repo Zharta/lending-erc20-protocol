@@ -1,22 +1,20 @@
-import os
-from textwrap import dedent
+"""
+Integration tests for Securitize with ACRED token (real forked chain tests).
+These tests use the actual ACRED token and Securitize registry on mainnet fork.
+"""
 
 import boa
 import pytest
-from boa.environment import Env
 
 from ..conftest_base import (
-    ZERO_ADDRESS,
     ZERO_BYTES32,
     Offer,
     SecuritizeLoan,
-    SignedOffer,
     calc_ltv,
     compute_liquidity_key,
     compute_loan_id,
     compute_securitize_loan_hash,
     compute_signed_offer_id,
-    get_events,
     get_last_event,
     replace_namedtuple_field,
     sign_kyc,
@@ -61,34 +59,9 @@ def oracle_acred_usd(oracle_contract_def, owner):
     return oracle_contract_def.at("0xD6BcbbC87bFb6c8964dDc73DC3EaE6d08865d51C")
 
 
-@pytest.fixture(scope="session")
-def p2p_sec_erc20_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingSecuritizeErc20.vy")
-
-
-@pytest.fixture
-def securitize_vault_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingVaultSecuritize.vy")
-
-
-@pytest.fixture
-def securitize_vault_impl(securitize_vault_contract_def):
-    return securitize_vault_contract_def.deploy()
-
-
-@pytest.fixture
-def p2p_sec_refinance(p2p_lending_securitize_refinance_contract_def):
-    return p2p_lending_securitize_refinance_contract_def.deploy()
-
-
-@pytest.fixture
-def p2p_sec_liquidation(p2p_lending_securitize_liquidation_contract_def):
-    return p2p_lending_securitize_liquidation_contract_def.deploy()
-
-
 @pytest.fixture
 def p2p_usdc_acred(
-    p2p_sec_erc20_contract_def,
+    p2p_lending_securitize_erc20_contract_def,
     p2p_sec_refinance,
     p2p_sec_liquidation,
     usdc,
@@ -100,7 +73,7 @@ def p2p_usdc_acred(
     transfer_agent,
     redemption_wallet,
 ):
-    return p2p_sec_erc20_contract_def.deploy(
+    return p2p_lending_securitize_erc20_contract_def.deploy(
         usdc,
         acred,
         oracle_acred_usd,
@@ -198,6 +171,7 @@ def test_create_loan(
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
     kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
 
+    vault_id = p2p_usdc_acred.vault_count(borrower)
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
 
@@ -205,14 +179,10 @@ def test_create_loan(
     borrower_balance_before = usdc.balanceOf(borrower)
 
     now = boa.eval("block.timestamp")
-    boa.vm.py_evm.register_raw_precompile(
-        "0x0000000000000000000000000000000000011111", lambda computation: print("0x" + computation.msg.data.hex())
-    )
 
     origination_fee = offer.origination_fee_bps * principal // BPS
     lender_balance_before = usdc.balanceOf(lender)
 
-    vault_id = p2p_usdc_acred.vault_count(borrower)
     loan_id = p2p_usdc_acred.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     event = get_last_event(p2p_usdc_acred, "LoanCreated")
     initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, acred, oracle_acred_usd, oracle_reverse=False)
@@ -237,6 +207,7 @@ def test_create_loan(
         protocol_upfront_fee_amount=p2p_usdc_acred.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_acred.protocol_settlement_fee(),
         partial_liquidation_fee=p2p_usdc_acred.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_acred.full_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         liquidation_ltv=offer.liquidation_ltv,
@@ -305,13 +276,10 @@ def test_loop(
     collateral_to_buy = collateral_amount - initial_borrower_collateral
     oracle_price_num = oracle_acred_usd.latestRoundData()[1]
     oracle_price_den = 10 ** oracle_acred_usd.decimals()
-    # collateral_to_buy_value = securitize_swap.calculateStableCoinAmount(collateral_to_buy)
     collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
     principal = sum(principals)
 
     borrower = sec_borrower
-    # principal = 1000 * int(1e9)
-    # collateral_amount = 95 * int(1e6)
     now = boa.eval("block.timestamp")
     offer = Offer(
         principal=principal,
@@ -325,8 +293,6 @@ def test_loop(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
     kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
-
-    # usdc.approve(securitize_swap.address, collateral_to_buy_value, sender=borrower)
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount - collateral_to_buy, sender=borrower)
@@ -385,43 +351,25 @@ def test_loop2(
     initial_borrower_collateral = 94000000
     ltv = 6800
     collateral_to_buy = max_collateral_to_buy(initial_borrower_collateral, ltv)
-    # collateral_to_buy = int(collateral_to_buy * 1.01)
     collateral_amount = initial_borrower_collateral + collateral_to_buy
     oracle_price_num = oracle_acred_usd.latestRoundData()[1]
     oracle_price_den = 10 ** oracle_acred_usd.decimals()
     collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
     principal = collateral_amount * oracle_price_num * ltv // (oracle_price_den * BPS)
-    collateral_amount_value = collateral_amount * oracle_price_num // oracle_price_den
-
-    print(f"{initial_borrower_collateral=}")
-    print(f"{collateral_to_buy=}")
-    print(f"{collateral_amount=}")
-    print(f"{ltv=}")
-    print(f"{oracle_price_num=}")
-    print(f"{oracle_price_den=}")
-    print(f"{collateral_to_buy_value=}")
-    print(f"{collateral_amount_value=}")
-    print(f"{principal=}")
 
     borrower = sec_borrower
-    # principal = 1000 * int(1e9)
-    # collateral_amount = 95 * int(1e6)
     now = boa.eval("block.timestamp")
     offer = Offer(
-        # principal=principal,
         max_iltv=ltv,
         payment_token=p2p_usdc_acred.payment_token(),
         collateral_token=p2p_usdc_acred.collateral_token(),
         duration=100,
-        # min_collateral_amount=1,
         available_liquidity=principal,
         expiration=now + 100,
         lender=lender,
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
     kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
-
-    # usdc.approve(securitize_swap.address, collateral_to_buy_value, sender=borrower)
 
     assert acred.balanceOf(borrower) >= collateral_amount - collateral_to_buy
     assert usdc.balanceOf(lender) >= principal
@@ -486,13 +434,10 @@ def test_redeem(
     collateral_to_buy = collateral_amount - initial_borrower_collateral
     oracle_price_num = oracle_acred_usd.latestRoundData()[1]
     oracle_price_den = 10 ** oracle_acred_usd.decimals()
-    # collateral_to_buy_value = securitize_swap.calculateStableCoinAmount(collateral_to_buy)
     collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
     principal = sum(principals)
 
     borrower = sec_borrower
-    # principal = 1000 * int(1e9)
-    # collateral_amount = 95 * int(1e6)
     now = boa.eval("block.timestamp")
     offer = Offer(
         principal=principal,
@@ -506,8 +451,6 @@ def test_redeem(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
     kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
-
-    # usdc.approve(securitize_swap.address, collateral_to_buy_value, sender=borrower)
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
@@ -557,6 +500,7 @@ def test_redeem(
         protocol_upfront_fee_amount=p2p_usdc_acred.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_acred.protocol_settlement_fee(),
         partial_liquidation_fee=p2p_usdc_acred.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_acred.full_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         liquidation_ltv=offer.liquidation_ltv,
@@ -570,11 +514,7 @@ def test_redeem(
 
     assert compute_securitize_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
 
-    print(f"{p2p_usdc_acred.vault_impl_addr()=}")
     vault = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
-    print(f"{vault=}")
-    vault = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
-    print(f"{p2p_usdc_acred.vault_impl_addr()=}")
     assert acred.balanceOf(vault) == collateral_amount
     assert acred.balanceOf(borrower) == borrower_collateral_balance_before + collateral_to_buy - collateral_amount
 

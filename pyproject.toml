@@ -62,6 +62,7 @@ target-version = "py311"
 "ape_console_extras.py" = ["T201", "B006", "PYI024", "RUF052"]
 "tests/*.py" = [
     "ARG001",
+    "DOC",
     "ERA001",
     "F401",
     "FBT003",
