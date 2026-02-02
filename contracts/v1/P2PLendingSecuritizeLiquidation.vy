@@ -213,6 +213,7 @@ def liquidate_loan(
         in_vault_payment_token -= liquidation_fee
     else:
         liquidation_fee_collateral = min(in_vault_collateral, (liquidation_fee - in_vault_payment_token) * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals))
+        liquidation_fee = in_vault_payment_token
         in_vault_payment_token = 0
 
     collateral_for_debt: uint256 = (outstanding_debt - in_vault_payment_token) * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals) if in_vault_payment_token < outstanding_debt else 0
@@ -222,13 +223,18 @@ def liquidate_loan(
     shortfall: uint256 = outstanding_debt - remaining_collateral_value if remaining_collateral_value < outstanding_debt else 0
     extcall _vault.withdraw_funds(payment_token, in_vault_payment_token)
 
+
+    # payment_token: outstanding_debt (incl protocol_settlement_fee_amount) + liquidation_fee
+    # collateral_token: collateral_for_debt + liquidation_fee_collateral
+
     if in_vault_payment_token >= outstanding_debt:
+        # liquidation_fee_collateral == 0
         base._send_funds(loan.lender, outstanding_debt - protocol_settlement_fee_amount, payment_token)
         base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
         base._send_funds(liquidator, liquidation_fee, payment_token)
         base._send_funds(loan.borrower, in_vault_payment_token - outstanding_debt, payment_token)
 
-        base._send_collateral(liquidator, collateral_for_debt + liquidation_fee_collateral, _vault)
+        base._send_collateral(liquidator, collateral_for_debt, _vault)
         if remaining_collateral > collateral_for_debt:
             base._send_collateral(loan.borrower, remaining_collateral - collateral_for_debt, _vault)
 
@@ -237,21 +243,21 @@ def liquidate_loan(
     elif in_vault_payment_token + remaining_collateral_value >= outstanding_debt:
     # if remaining_collateral_value >= outstanding_debt:
         if liquidator != loan.lender:
-            base._receive_funds(liquidator, outstanding_debt - in_vault_payment_token, payment_token)
+            base._receive_funds(liquidator, outstanding_debt - in_vault_payment_token - liquidation_fee, payment_token)
             base._send_funds(loan.lender, outstanding_debt - protocol_settlement_fee_amount, payment_token)
             base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
             base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
         else:
             base._transfer_funds(liquidator, base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
+            base._send_funds(liquidator, liquidation_fee, payment_token)
 
-        base._send_funds(liquidator, liquidation_fee, payment_token)
         base._send_collateral(liquidator, collateral_for_debt + liquidation_fee_collateral, _vault)
-        if remaining_collateral > collateral_for_debt:
-            base._send_collateral(loan.borrower, remaining_collateral - collateral_for_debt, _vault)
+        if remaining_collateral > collateral_for_debt + liquidation_fee_collateral:
+            base._send_collateral(loan.borrower, remaining_collateral - collateral_for_debt - liquidation_fee_collateral, _vault)
 
     else:
         if liquidator != loan.lender:
-            base._receive_funds(liquidator, remaining_collateral_value - in_vault_payment_token, payment_token)
+            base._receive_funds(liquidator, remaining_collateral_value - in_vault_payment_token - liquidation_fee, payment_token)
             base._send_funds(loan.lender, remaining_collateral_value - protocol_settlement_fee_amount, payment_token)
             base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
             base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, remaining_collateral_value)
