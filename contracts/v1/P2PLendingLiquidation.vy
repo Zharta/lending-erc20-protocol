@@ -115,7 +115,8 @@ def partially_liquidate_loan(
 
     base._send_collateral(liquidator, collateral_claimed + liquidation_fee, collateral_token)
     if liquidator != loan.lender:
-        base._transfer_funds(liquidator, loan.lender, principal_written_off, payment_token)
+        base._receive_funds(liquidator, principal_written_off, payment_token)
+        base._send_funds(loan.lender, principal_written_off, payment_token)
         base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, principal_written_off)
 
     log main.LoanPartiallyLiquidated(
