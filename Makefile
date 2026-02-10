@@ -39,10 +39,10 @@ branch-coverage:
 	${VENV}/bin/coverage report
 
 unit-tests:
-	${VENV}/bin/pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_vaulted/unit --runslow -n auto --dist loadscope
+	${VENV}/bin/pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_vaulted/unit tests/p2p_erc20_securitize/unit --runslow -n auto --dist loadscope
 
 integration-tests:
-	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration
+	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration tests/p2p_erc20_securitize/integration
 
 profitr-tests:
 	${VENV}/bin/pytest tests/p2p_erc20_vaulted/profitr
@@ -109,3 +109,6 @@ publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-ether
 
 get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-ethereum get-metadata-apechain:
 	${VENV}/bin/ape run get_tokens
+
+contract-sizes:
+	${VENV}/bin/ape run contract_sizes
