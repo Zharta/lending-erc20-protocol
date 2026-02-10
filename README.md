@@ -6,10 +6,11 @@ This protocol implements a peer-to-peer lending system for ERC20 tokens, availab
 
 ## Overview
 
-The protocol is implemented in Vyper 0.4.3. It exists in two primary versions:
+The protocol is implemented in Vyper 0.4.3. It exists in three primary versions:
 
 *   **Non-vaulted**: The initial version, where collateral is held directly by the main lending contract. The main component is the `P2PLendingErc20` contract, which supports peer-to-peer lending backed by ERC20 collateral. It utilizes `P2PLendingBase` for shared state and common logic, `P2PLendingRefinance` as a facet for complex refinancing operations, `P2PLendingLiquidation` as a facet for liquidation operations, and interacts with a `KYCValidator` contract for compliance checks.
 *   **Vaulted**: An updated version featuring a dedicated vault system for managing collateral. This enhancement provides better isolation of borrower collateral, which is crucial for compliance requirements and enhanced security. The main entry point for the vaulted version is `P2PLendingVaultedErc20`, which leverages `P2PLendingVaultedBase` for core logic, `P2PLendingVaultedRefinance` and `P2PLendingVaultedLiquidation` as facets, and integrates with `KYCValidator` and a new `P2PLendingVault` contract for collateral handling.
+*   **Securitize**: A specialized version designed for Securitize DS Token collateral. This version supports the unique requirements of security tokens, including a redemption workflow where collateral can be converted back to payment tokens via Securitize. The main entry point is `P2PLendingSecuritizeErc20`, using `P2PLendingSecuritizeBase` for core logic, `P2PLendingSecuritizeRefinance` and `P2PLendingSecuritizeLiquidation` as facets, and `P2PLendingVaultSecuritize` for vault management with SecuritizeSwap integration.
 
 The lending of an NFT in the context of this protocol means that:
 1.  A lender provides a loan offer with specific terms
@@ -42,6 +43,14 @@ The protocol consists of the following core contracts:
 - `P2PLendingVault.vy`: A minimal proxy factory and implementation for individual borrower collateral vaults, deployed via CREATE2. Each vault holds the collateral for a borrower's loans and provides isolated management.
 - `KYCValidator.vy`: (Same as non-vaulted) A contract responsible for validating signed KYC (Know Your Customer) attestations for borrowers and lenders.
 
+### Securitize Core Contracts
+- `P2PLendingSecuritizeErc20.vy`: The main entry point for Securitize DS Token lending, with redemption workflow support.
+- `P2PLendingSecuritizeBase.vy`: An abstract base contract for the Securitize version that holds core state variables, implements redemption verification, and manages multiple vaults per borrower.
+- `P2PLendingSecuritizeRefinance.vy`: A facet contract (called via `delegatecall`) handling loan refinancing and maturity extension logic.
+- `P2PLendingSecuritizeLiquidation.vy`: A facet contract (called via `delegatecall`) handling loan liquidation with redemption-aware settlement.
+- `P2PLendingVaultSecuritize.vy`: A vault implementation with SecuritizeSwap integration, enabling the purchase of DS tokens from stablecoins.
+- `KYCValidator.vy`: (Same as other versions) A contract responsible for validating signed KYC attestations.
+
 ## General considerations
 
 The current status of the protocol follows certain assumptions:
@@ -57,6 +66,7 @@ The current status of the protocol follows certain assumptions:
 9.  Dynamic collateral management (add/remove ERC20 collateral) is supported, managed directly by the main contract in the non-vaulted version, and through the borrower's dedicated vault in the vaulted version.
 10. Additional fees are supported both for the protocol (upfront and settlement) and for the lender (origination).
 11. The vaulted version uses a vault system (`P2PLendingVault`) to hold collateral. Each borrower has a unique vault, deployed via CREATE2, enhancing collateral isolation and compliance.
+12. The Securitize version creates a new vault for each loan, supports collateral redemption via Securitize, and allows maturity extensions. Callable loans are not supported.
 
 ## Security
 
@@ -100,6 +110,26 @@ Users and other protocols should primarily interact with the `P2PLendingVaultedE
 *   Managing protocol fees and authorized proxies.
 *   Revoking unused offers.
 *   Supporting loan transfers to new borrowers, including transferring collateral ownership in their respective vaults.
+
+### Securitize Architecture
+
+The `P2PLendingSecuritizeErc20.vy` contract serves as the main entry point for Securitize DS Token lending. It builds upon the vaulted architecture but adds specific features for security tokens:
+
+*   **Multiple Vaults per Borrower**: Unlike the standard vaulted version where each borrower has a single vault, the Securitize version creates a new vault for each loan (`vault_id`). This allows for better tracking and isolation of collateral per loan, as well as to track redeption results back to the redeemed loan.
+*   **Redemption Workflow**: Borrowers can initiate a `redeem` process to convert their DS Token collateral back to payment tokens via the Securitize platform. The `redeem_start` timestamp and `redeem_residual_collateral` track this process.
+*   **Maturity Extensions**: Unlike other versions, the Securitize contracts support extending loan maturity via `extend_loan` (borrower-initiated with lender's signed offer) and `extend_loan_lender` (lender-initiated, no borrower action needed).
+*   **No Callable Loans**: The `call_eligibility` and `call_window` features are disabled for Securitize loans.
+*   **SecuritizeSwap Integration**: The `P2PLendingVaultSecuritize` vault includes a `buy()` function that allows purchasing DS tokens from stablecoins via the SecuritizeSwap contract.
+*   **Redemption-Aware Settlement/Liquidation**: When settling or liquidating a redeemed loan, the contract verifies the redemption result (signed by the protocol owner) and handles the mixed collateral/payment token balances appropriately.
+
+Users interact with `P2PLendingSecuritizeErc20.vy` for:
+*   Creating loans with DS Token collateral (each loan gets a new vault).
+*   Initiating redemption of collateral via `redeem()`.
+*   Settling loans (with or without redemption).
+*   Extending loan maturity.
+*   Adding or removing collateral (only before redemption starts).
+*   Loan refinancing for both borrowers and lenders.
+*   Managing protocol configuration.
 
 ### Offers
 
@@ -322,6 +352,9 @@ To reduce gas costs, certain state information, particularly for `Loan` and `Off
 | | `oracle_addr` | `address` | Address of the oracle for collateral valuation |
 | | `initial_ltv` | `uint256` | Initial LTV of the loan (in BPS). This is the target LTV for partial liquidations. |
 | | `call_time` | `uint256` | Timestamp when the loan was called (0 if not called) |
+| `vault_id` | `uint256` | (Securitize only) Vault identifier for this loan |
+| `redeem_start` | `uint256` | (Securitize only) Timestamp when redemption started (0 if not redeemed) |
+| `redeem_residual_collateral` | `uint256` | (Securitize only) Collateral amount kept in vault during redemption |
 | `UInt256Rational` | `numerator` | `uint256` | Numerator of a rational number |
 | | `denominator` | `uint256` | Denominator of a rational number |
 | `PartialLiquidationResult` | `collateral_claimed` | `uint256` | Amount of collateral claimed in a partial liquidation simulation |
@@ -415,6 +448,50 @@ The `P2PLendingVaultedErc20` contract serves as the main entry point for the vau
 | `is_loan_defaulted` | Any | View | Checks if a loan is defaulted |
 | `simulate_partial_liquidation` | Any | View | Simulates the outcome of a partial liquidation |
 | `wallet_to_vault` | Any | View | Gets the deterministic vault address for a given wallet |
+
+#### P2PLendingSecuritizeErc20 Contract (Securitize) (`P2PLendingSecuritizeErc20.vy`)
+
+The `P2PLendingSecuritizeErc20` contract extends the vaulted architecture for Securitize DS Token collateral, adding redemption workflow and maturity extension support.
+
+##### State variables (specific to `P2PLendingSecuritizeErc20`)
+
+| **Variable** | **Type** | **Mutable** | **Description** |
+| --- | --- | :-: | --- |
+| `payment_token` | `immutable(address)` | No | Address of the payment ERC20 token contract |
+| `collateral_token` | `immutable(address)` | No | Address of the Securitize DS Token contract |
+| `oracle_addr` | `immutable(address)` | No | Address of the Chainlink AggregatorV3 oracle contract |
+| `oracle_reverse` | `immutable(bool)` | No | Flag indicating if the oracle returns 1/price |
+| `kyc_validator_addr` | `immutable(address)` | No | Address of the `KYCValidator` contract |
+| `refinance_addr` | `public(immutable(address))` | No | Address of the `P2PLendingSecuritizeRefinance` facet |
+| `liquidation_addr` | `public(immutable(address))` | No | Address of the `P2PLendingSecuritizeLiquidation` facet |
+| `vault_impl_addr` | `public(immutable(address))` | No | Address of the `P2PLendingVaultSecuritize` implementation |
+
+##### State variables (inherited from `P2PLendingSecuritizeBase`)
+
+| **Variable** | **Type** | **Mutable** | **Description** |
+| --- | --- | :-: | --- |
+| `vault_count` | `public(HashMap[address, uint256])` | Yes | Number of vaults created per borrower |
+| `securitize_redemption_wallet` | `public(address)` | Yes | Wallet address for Securitize redemptions |
+
+##### Relevant External Functions (`P2PLendingSecuritizeErc20.vy`)
+
+| **Function** | **Roles Allowed** | **Modifier** | **Description** |
+| --- | :-: | --- | --- |
+| `create_loan` | Any (caller is borrower) | Nonpayable | Creates a new loan with a new vault for the collateral |
+| `settle_loan` | Borrower | Nonpayable | Settles a loan (handles redeemed collateral if applicable) |
+| `partially_liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a partial liquidation (not allowed on redeemed loans) |
+| `liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a full liquidation (handles redeemed collateral) |
+| `add_collateral_to_loan` | Borrower | Nonpayable | Adds collateral (not allowed after redemption starts) |
+| `remove_collateral_from_loan` | Borrower | Nonpayable | Removes collateral (not allowed after redemption starts) |
+| `redeem` | Borrower | Nonpayable | Initiates redemption of collateral via Securitize |
+| `extend_loan` | Borrower | Nonpayable | Extends loan maturity with lender's signed offer |
+| `extend_loan_lender` | Lender | Nonpayable | Extends loan maturity (lender-initiated) |
+| `replace_loan` | Borrower | Nonpayable | Replaces a loan (not allowed on redeemed loans) |
+| `replace_loan_lender` | Lender | Nonpayable | Replaces a loan as lender (not allowed on redeemed loans) |
+| `set_securitize_redemption_wallet` | Owner | Nonpayable | Sets the redemption wallet address |
+| `wallet_to_vault` | Any | View | Gets the latest vault address for a wallet |
+| `vault_id_to_vault` | Any | View | Gets a specific vault address by ID |
+| `is_loan_redeemed` | Any | View | Checks if a loan has started redemption |
 
 #### P2PLendingBase (Non-Vaulted) / P2PLendingVaultedBase (Vaulted) Contracts
 
@@ -618,6 +695,13 @@ All participants must pass KYC validation:
 -   Introduces isolated vaults for each borrower's collateral, enhancing security and meeting compliance requirements by separating collateral from the main lending contract.
 -   Vaults are deployed as minimal proxies via CREATE2, ensuring gas efficiency and deterministic addresses.
 
+### Securitize DS Token Support (securitize only)
+
+-   **Multiple Vaults per Borrower**: Each loan creates a new vault, enabling per-loan collateral isolation.
+-   **Redemption Workflow**: Borrowers can redeem DS Token collateral back to payment tokens via Securitize.
+-   **Maturity Extensions**: Loans can be extended without full refinancing, either by borrower (with lender's signed offer) or by lender directly.
+-   **SecuritizeSwap Integration**: Vaults can purchase DS tokens from stablecoins directly.
+
 ## Security Considerations
 
 ### Oracle Security
@@ -685,6 +769,7 @@ The protocol supports integration through:
 5.  **Gas Optimization**: Externalized state design reduces transaction costs.
 6.  **Refinancing Support**: Both borrowers and lenders can replace existing loans.
 7.  **Vault Collateral System (vaulted)**: Individualized, minimal proxy vaults for each borrower's collateral, improving security, compliance, and asset segregation.
+8.  **Securitize Integration (securitize)**: Native support for security tokens with redemption workflow, maturity extensions, and SecuritizeSwap integration for DS token purchases.
 
 The protocol represents a significant advancement in DeFi lending by providing sophisticated risk management tools while maintaining user-friendly operations.
 

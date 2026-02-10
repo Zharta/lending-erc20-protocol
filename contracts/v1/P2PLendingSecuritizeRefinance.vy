@@ -306,8 +306,6 @@ def replace_loan_lender(
 
     if new_loan.liquidation_ltv > 0:
         assert new_loan.liquidation_ltv >= loan.liquidation_ltv, "liquidation ltv lt old loan"
-    if new_loan.call_eligibility > 0:
-        assert loan.call_eligibility > 0 and new_loan.call_window >= loan.call_window, "call window lt old loan"
     assert new_loan.initial_ltv >= loan.initial_ltv, "max iltv lt old loan"
     if new_loan.liquidation_ltv > 0:
         assert initial_ltv <= current_ltv, "initial ltv gt old loan"
@@ -378,6 +376,132 @@ def replace_loan_lender(
     return new_loan.id
 
 
+@external
+def extend_loan(
+    loan: base.Loan,
+    offer: base.SignedLoanExtensionOffer,
+    new_maturity: uint256,
+    offer_sig_domain_separator: bytes32,
+):
+
+    """
+    @notice Extend a loan.
+    @dev All loan parameters remain the same except the maturity which is extended to the new maturity. Must be called by the borrower and the offer must be signed by the lender.
+    @param loan The current loan.
+    @param offer The signed offer for the loan extension.
+    @param new_maturity The new maturity timestamp for the loan.
+    """
+
+    assert base._is_loan_valid(loan), "invalid loan"
+    assert base._check_user(loan.borrower), "not borrower"
+    assert not base._is_loan_defaulted(loan), "loan defaulted"
+
+    assert base._is_extension_offer_signed_by_lender(offer, loan.lender, offer_sig_domain_separator), "offer not signed by lender"
+    assert new_maturity > loan.maturity, "new maturity le current"
+    assert offer.offer.loan_id == loan.id, "offer loan id mismatch"
+    assert offer.offer.original_maturity == loan.maturity, "offer maturity mismatch"
+    assert offer.offer.new_maturity <= new_maturity, "new maturity gt offer"
+
+    new_loan: base.Loan = base.Loan(
+        id=loan.id,
+        offer_id=loan.offer_id,
+        offer_tracing_id=loan.offer_tracing_id,
+        initial_amount=loan.initial_amount,
+        amount=loan.amount,
+        apr=loan.apr,
+        payment_token=loan.payment_token,
+        maturity=new_maturity,
+        start_time=loan.start_time,
+        accrual_start_time=loan.accrual_start_time,
+        borrower=loan.borrower,
+        lender=loan.lender,
+        collateral_token=loan.collateral_token,
+        collateral_amount=loan.collateral_amount,
+        min_collateral_amount=loan.min_collateral_amount,
+        origination_fee_amount=loan.origination_fee_amount,
+        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
+        protocol_settlement_fee=loan.protocol_settlement_fee,
+        partial_liquidation_fee=loan.partial_liquidation_fee,
+        full_liquidation_fee=loan.full_liquidation_fee,
+        call_eligibility=loan.call_eligibility,
+        call_window=loan.call_window,
+        liquidation_ltv=loan.liquidation_ltv,
+        oracle_addr=loan.oracle_addr,
+        initial_ltv=loan.initial_ltv,
+        call_time=loan.call_time,
+        vault_id=loan.vault_id,
+        redeem_start=loan.redeem_start,
+        redeem_residual_collateral=loan.redeem_residual_collateral,
+    )
+    base.loans[loan.id] = base._loan_state_hash(new_loan)
+
+    log main.LoanMaturityExtended(
+        loan_id=loan.id,
+        original_maturity=loan.maturity,
+        new_maturity=new_loan.maturity,
+        lender=loan.lender,
+        borrower=loan.borrower,
+        caller=loan.borrower
+    )
+
+
+@external
+def extend_loan_lender(loan: base.Loan, new_maturity: uint256):
+
+    """
+    @notice Extend a loan.
+    @dev All loan parameters remain the same except the maturity which is extended to the new maturity. Must be called by the lender.
+    @param loan The current loan.
+    @param new_maturity The new maturity timestamp for the loan.
+    """
+
+    assert base._is_loan_valid(loan), "invalid loan"
+    assert base._check_user(loan.lender), "not lender"
+    assert not base._is_loan_defaulted(loan), "loan defaulted"
+
+    assert new_maturity > loan.maturity, "new maturity le current"
+
+    new_loan: base.Loan = base.Loan(
+        id=loan.id,
+        offer_id=loan.offer_id,
+        offer_tracing_id=loan.offer_tracing_id,
+        initial_amount=loan.initial_amount,
+        amount=loan.amount,
+        apr=loan.apr,
+        payment_token=loan.payment_token,
+        maturity=new_maturity,
+        start_time=loan.start_time,
+        accrual_start_time=loan.accrual_start_time,
+        borrower=loan.borrower,
+        lender=loan.lender,
+        collateral_token=loan.collateral_token,
+        collateral_amount=loan.collateral_amount,
+        min_collateral_amount=loan.min_collateral_amount,
+        origination_fee_amount=loan.origination_fee_amount,
+        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
+        protocol_settlement_fee=loan.protocol_settlement_fee,
+        partial_liquidation_fee=loan.partial_liquidation_fee,
+        full_liquidation_fee=loan.full_liquidation_fee,
+        call_eligibility=loan.call_eligibility,
+        call_window=loan.call_window,
+        liquidation_ltv=loan.liquidation_ltv,
+        oracle_addr=loan.oracle_addr,
+        initial_ltv=loan.initial_ltv,
+        call_time=loan.call_time,
+        vault_id=loan.vault_id,
+        redeem_start=loan.redeem_start,
+        redeem_residual_collateral=loan.redeem_residual_collateral,
+    )
+    base.loans[loan.id] = base._loan_state_hash(new_loan)
+
+    log main.LoanMaturityExtended(
+        loan_id=loan.id,
+        original_maturity=loan.maturity,
+        new_maturity=new_loan.maturity,
+        lender=loan.lender,
+        borrower=loan.borrower,
+        caller=loan.lender
+    )
 
 
 # Internal functions
@@ -385,12 +509,7 @@ def replace_loan_lender(
 @view
 @internal
 def _get_repayment_time(loan: base.Loan) -> uint256:
-    if loan.call_eligibility == 0:
-        return loan.maturity
-    elif loan.call_time > 0:
-        return min(loan.maturity,loan.call_time + loan.call_window)
-    else:
-        return min(loan.maturity, max(block.timestamp, loan.start_time + loan.call_eligibility) + loan.call_window)
+    return loan.maturity
 
 @view
 @internal

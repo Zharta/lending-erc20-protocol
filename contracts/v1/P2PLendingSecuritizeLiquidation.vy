@@ -155,6 +155,7 @@ def liquidate_loan(
     payment_token_decimals: uint256,
     offer_sig_domain_separator: bytes32,
     vault_impl_addr: address,
+    redeem_result: base.SignedRedeemResult,
 ):
 
     """
@@ -201,8 +202,8 @@ def liquidate_loan(
 
     _vault: vault.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
     if is_loan_redeemed:
-        assert base._is_loan_redeem_concluded(loan, _vault), "redeem not concluded"
-        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(_vault, payment_token)
+        assert base._is_loan_redeem_concluded(loan, _vault, redeem_result), "redeem not concluded"
+        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(loan, _vault, payment_token, redeem_result.result)
 
     outstanding_debt: uint256 = loan.amount + current_interest
     rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
@@ -285,61 +286,6 @@ def liquidate_loan(
     )
 
 
-@external
-def call_loan(loan: base.Loan):
-
-    """
-    @notice Call a loan.
-    @param loan The loan to be called.
-    """
-
-    assert base._is_loan_valid(loan), "invalid loan"
-    assert base._check_user(loan.lender), "not lender"
-
-    assert loan.call_eligibility > 0, "loan not callable"
-    assert loan.call_time == 0, "loan already called"
-    assert block.timestamp >= loan.start_time + loan.call_eligibility, "call eligibility not reached"
-    assert not base._is_loan_defaulted(loan), "loan defaulted"
-
-    updated_loan: base.Loan = base.Loan(
-        id=loan.id,
-        offer_id=loan.offer_id,
-        offer_tracing_id=loan.offer_tracing_id,
-        initial_amount=loan.initial_amount,
-        amount=loan.amount,
-        apr=loan.apr,
-        payment_token=loan.payment_token,
-        maturity=loan.maturity,
-        start_time=loan.start_time,
-        accrual_start_time=loan.accrual_start_time,
-        borrower=loan.borrower,
-        lender=loan.lender,
-        collateral_token=loan.collateral_token,
-        collateral_amount=loan.collateral_amount,
-        min_collateral_amount=loan.min_collateral_amount,
-        origination_fee_amount=loan.origination_fee_amount,
-        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
-        protocol_settlement_fee=loan.protocol_settlement_fee,
-        partial_liquidation_fee=loan.partial_liquidation_fee,
-        full_liquidation_fee=loan.full_liquidation_fee,
-        call_eligibility=loan.call_eligibility,
-        call_window=loan.call_window,
-        liquidation_ltv= loan.liquidation_ltv,
-        oracle_addr=loan.oracle_addr,
-        initial_ltv= loan.initial_ltv,
-        call_time=block.timestamp,
-        vault_id=loan.vault_id,
-        redeem_start=loan.redeem_start,
-        redeem_residual_collateral=loan.redeem_residual_collateral,
-    )
-    base.loans[loan.id] = base._loan_state_hash(updated_loan)
-    log main.LoanCalled(
-        id=loan.id,
-        borrower=loan.borrower,
-        lender=loan.lender,
-        call_time=updated_loan.call_time,
-    )
-
 @view
 @external
 def simulate_partial_liquidation(
@@ -388,12 +334,7 @@ def simulate_partial_liquidation(
 @view
 @internal
 def _get_repayment_time(loan: base.Loan) -> uint256:
-    if loan.call_eligibility == 0:
-        return loan.maturity
-    elif loan.call_time > 0:
-        return min(loan.maturity,loan.call_time + loan.call_window)
-    else:
-        return min(loan.maturity, max(block.timestamp, loan.start_time + loan.call_eligibility) + loan.call_window)
+    return loan.maturity
 
 @view
 @internal
@@ -403,4 +344,4 @@ def _validate_kyc(validation: base.SignedWalletValidation, wallet: address, kyc_
 @view
 @internal
 def _compute_liquidation_interest(loan: base.Loan) -> uint256:
-    return loan.amount * loan.apr * (min(loan.call_time + loan.call_window if loan.call_time > 0 else max_value(uint256), loan.maturity) - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
+    return loan.amount * loan.apr * (loan.maturity - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)

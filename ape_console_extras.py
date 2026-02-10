@@ -402,7 +402,7 @@ def _create_offer_backend(signer: Account, **offer):
         "available_liquidity": str(_offer.available_liquidity),
         "call_eligibility": _offer.call_eligibility,
         "call_window": _offer.call_window,
-        "soft_liquidation_ltv": _offer.soft_liquidation_ltv,
+        "soft_liquidation_ltv": _offer.liquidation_ltv,
         "oracle_addr": _offer.oracle_addr,
         "expiration": _offer.expiration,
         "lender": _offer.lender,
@@ -452,7 +452,7 @@ def _parse_offer_data(offer_data) -> SignedOffer:
         available_liquidity=int(offer_data["available_liquidity"]),
         call_eligibility=int(offer_data["call_eligibility"]),
         call_window=int(offer_data["call_window"]),
-        soft_liquidation_ltv=int(offer_data["soft_liquidation_ltv"]),
+        liquidation_ltv=int(offer_data["soft_liquidation_ltv"]),
         oracle_addr=offer_data["oracle_addr"],
         expiration=int(offer_data.get("expiration") or 0),
         lender=offer_data["lender"],
@@ -671,8 +671,7 @@ def max_collateral_to_buy(borrower_collateral: int, ltv: int):
 
 
 def dump_address(address: str):
-    if address.startswith("0x"):
-        address = address[2:]
+    address = address.removeprefix("0x")
     padded_hex = address.zfill(40).lower()
     return f'"0x{padded_hex}"'
 
@@ -685,7 +684,7 @@ def dump_tuple(*args):
     return "[" + ",".join(str(arg) for arg in args) + "]"
 
 
-def dump_create_loan_proxy(
+def dump_create_loan_proxy(  # noqa: PLR0917
     signed_offer: SignedOffer,
     principal: int,
     collateral_amount: int,

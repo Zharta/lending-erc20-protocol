@@ -87,6 +87,18 @@ struct SignedOffer:
     offer: Offer
     signature: Signature
 
+
+struct LoanExtensionOffer:
+    loan_id: bytes32
+    original_maturity: uint256
+    new_maturity: uint256
+
+
+struct SignedLoanExtensionOffer:
+    offer: LoanExtensionOffer
+    signature: Signature
+
+
 struct Loan:
     id: bytes32
     offer_id: bytes32
@@ -131,6 +143,19 @@ struct PartialLiquidationResult:
     updated_ltv: uint256
 
 
+struct RedeemResult:
+    vault: address
+    collateral_redeemed: uint256
+    payment_redeemed: uint256
+    timestamp: uint256
+    redeem_wallet: address
+
+
+struct SignedRedeemResult:
+    result: RedeemResult
+    signature: Signature
+
+
 event OfferRevoked:
     offer_id: bytes32
     lender: address
@@ -173,6 +198,9 @@ OFFER_TYPE_DEF: constant(String[370]) = "Offer(uint256 principal,uint256 apr,add
                                         "uint256 call_eligibility,uint256 call_window,uint256 liquidation_ltv,address oracle_addr," \
                                         "uint256 expiration,address lender,address borrower,bytes32 tracing_id)"
 OFFER_TYPE_HASH: constant(bytes32) = keccak256(OFFER_TYPE_DEF)
+
+EXTENSION_OFFER_TYPE_DEF: constant(String[82]) = "LoanExtensionOffer(bytes32 loan_id,uint256 original_maturity,uint256 new_maturity)"
+EXTENSION_OFFER_TYPE_HASH: constant(bytes32) = keccak256(EXTENSION_OFFER_TYPE_DEF)
 
 
 @deploy
@@ -279,6 +307,49 @@ def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separ
     else:
         return signer == signed_offer.offer.lender
 
+@internal
+def _is_extension_offer_signed_by_lender(signed_offer: SignedLoanExtensionOffer, lender: address, offer_sig_domain_separator: bytes32) -> bool:
+    assert signed_offer.signature.s <= MALLEABILITY_THRESHOLD, "invalid signature"
+
+    message_hash: bytes32 = keccak256(
+            concat(
+                convert("\x19\x01", Bytes[2]),
+                abi_encode(
+                    offer_sig_domain_separator,
+                    keccak256(abi_encode(EXTENSION_OFFER_TYPE_HASH, signed_offer.offer))
+                )
+            )
+        )
+
+    signer: address = ecrecover(
+        message_hash,
+        signed_offer.signature.v,
+        signed_offer.signature.r,
+        signed_offer.signature.s
+    )
+
+    if lender.is_contract:
+        return staticcall EIP1271Signer(lender).is_valid_signature(
+            message_hash,
+            concat(
+                convert(signed_offer.signature.r, bytes32),
+                convert(signed_offer.signature.s, bytes32),
+                convert(convert(signed_offer.signature.v, uint8), bytes1)
+            )
+        ) == EIP1271_MAGIC_VALUE
+    else:
+        return signer == lender
+
+
+@internal
+@view
+def _validate_redeem_result_sig(redeem_result: SignedRedeemResult):
+    assert ecrecover(
+        keccak256(abi_encode(concat(convert("\x19\x00", Bytes[2]), keccak256(abi_encode(redeem_result.result))))),
+         redeem_result.signature.v,
+         redeem_result.signature.r,
+         redeem_result.signature.s
+    ) == self.owner, "invalid redeem result sig"
 
 
 @view
@@ -339,8 +410,9 @@ def _check_offer_validity(offer: SignedOffer, payment_token: address, collateral
     assert offer.offer.payment_token == payment_token, "invalid payment token"
     assert offer.offer.collateral_token == collateral_token, "invalid collateral token"
     assert offer.offer.oracle_addr == empty(address) or offer.offer.oracle_addr == oracle_addr, "invalid oracle address"
-    assert offer.offer.call_window != 0 or offer.offer.call_eligibility == 0, "call window is 0"
     assert offer.offer.min_collateral_amount > 0 or offer.offer.max_iltv > 0, "no min collateral nor max iltv"
+    assert offer.offer.call_eligibility == 0, "call eligibility not supported"
+    assert offer.offer.call_window == 0, "call window not supported"
 
 
 @view
@@ -394,11 +466,7 @@ def _compute_partial_liquidation(
 @view
 @internal
 def _is_loan_defaulted(loan: Loan) -> bool:
-    if block.timestamp > loan.maturity:
-        return True
-    if loan.call_time > 0:
-        return block.timestamp > loan.call_time + loan.call_window
-    return False
+    return block.timestamp > loan.maturity
 
 
 @view
@@ -409,21 +477,25 @@ def _is_loan_redeemed(loan: Loan) -> bool:
 
 @view
 @internal
-def _get_redeem_balances(_vault: vault.Vault, payment_token: address) -> (uint256, uint256):
-    return staticcall IERC20(payment_token).balanceOf(_vault.address), staticcall _vault.withdrawable_balance()
+def _get_redeem_balances(loan: Loan, _vault: vault.Vault, payment_token: address, redeem_result: RedeemResult) -> (uint256, uint256):
+    assert staticcall IERC20(payment_token).balanceOf(_vault.address) >= redeem_result.payment_redeemed, "invalid redeem payment amount"
+    assert staticcall _vault.withdrawable_balance() >= loan.redeem_residual_collateral + redeem_result.collateral_redeemed, "invalid redeem collateral amnt"
+    return redeem_result.payment_redeemed, loan.redeem_residual_collateral + redeem_result.collateral_redeemed
 
 
 @view
 @internal
-def _is_loan_redeem_concluded(loan: Loan, _vault: vault.Vault) -> bool:
+def _is_loan_redeem_concluded(loan: Loan, _vault: vault.Vault, redeem_result: SignedRedeemResult) -> bool:
     if loan.redeem_start == 0:
         return False
-    if staticcall IERC20(loan.payment_token).balanceOf(_vault.address) > 0:
-        return True
-    if staticcall _vault.withdrawable_balance() > loan.redeem_residual_collateral:
-        return True
-    return False
-    # TODO: check if this can be exploited, sending a small ammount to the vault to force redeem conclusion
+    if redeem_result.result.timestamp < loan.redeem_start:
+        return False
+    if redeem_result.result.vault != _vault.address:
+        return False
+    if redeem_result.result.redeem_wallet != self.securitize_redemption_wallet:
+        return False
+    self._validate_redeem_result_sig(redeem_result)
+    return True
 
 
 @internal

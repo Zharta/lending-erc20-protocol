@@ -170,11 +170,13 @@ event LoanLiquidated:
     liquidation_fee: uint256
     protocol_settlement_fee_amount: uint256
 
-event LoanCalled:
-    id: bytes32
-    borrower: address
+event LoanMaturityExtended:
+    loan_id: bytes32
+    original_maturity: uint256
+    new_maturity: uint256
     lender: address
-    call_time: uint256
+    borrower: address
+    caller: address
 
 event OwnerProposed:
     owner: address
@@ -334,6 +336,7 @@ def __init__(
             self
         )
     )
+
 
 
 # Config functions
@@ -610,7 +613,7 @@ def create_loan(
 
 
 @external
-def settle_loan(loan: base.Loan):
+def settle_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
 
     """
     @notice Settle a loan.
@@ -625,8 +628,8 @@ def settle_loan(loan: base.Loan):
     in_vault_collateral: uint256 = 0
     in_vault_payment_token: uint256 = 0
     if base._is_loan_redeemed(loan):
-        assert base._is_loan_redeem_concluded(loan, _vault), "redeem not concluded"
-        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(_vault, payment_token)
+        assert base._is_loan_redeem_concluded(loan, _vault, redeem_result), "redeem not concluded"
+        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(loan, _vault, payment_token, redeem_result.result)
 
     interest: uint256 = base._compute_settlement_interest(loan)
     protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
@@ -721,68 +724,6 @@ def liquidate_loan(loan: base.Loan):
         is_delegate_call=True
     )
 
-@external
-def call_loan(loan: base.Loan):
-
-    """
-    @notice Call a loan.
-    @param loan The loan to be called.
-    """
-
-    raw_call(
-        liquidation_addr,
-        abi_encode(
-            loan,
-            method_id=method_id("call_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256))"),
-        ),
-        is_delegate_call=True
-    )
-    # assert base._is_loan_valid(loan), "invalid loan"
-    # assert base._check_user(loan.lender), "not lender"
-
-    # assert loan.call_eligibility > 0, "loan not callable"
-    # assert loan.call_time == 0, "loan already called"
-    # assert block.timestamp >= loan.start_time + loan.call_eligibility, "call eligibility not reached"
-    # assert not base._is_loan_defaulted(loan), "loan defaulted"
-
-    # updated_loan: base.Loan = base.Loan(
-    #     id=loan.id,
-    #     offer_id=loan.offer_id,
-    #     offer_tracing_id=loan.offer_tracing_id,
-    #     initial_amount=loan.initial_amount,
-    #     amount=loan.amount,
-    #     apr=loan.apr,
-    #     payment_token=loan.payment_token,
-    #     maturity=loan.maturity,
-    #     start_time=loan.start_time,
-    #     accrual_start_time=loan.accrual_start_time,
-    #     borrower=loan.borrower,
-    #     lender=loan.lender,
-    #     collateral_token=loan.collateral_token,
-    #     collateral_amount=loan.collateral_amount,
-    #     min_collateral_amount=loan.min_collateral_amount,
-    #     origination_fee_amount=loan.origination_fee_amount,
-    #     protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
-    #     protocol_settlement_fee=loan.protocol_settlement_fee,
-    #     partial_liquidation_fee=loan.partial_liquidation_fee,
-    #     full_liquidation_fee=loan.full_liquidation_fee,
-    #     call_eligibility=loan.call_eligibility,
-    #     call_window=loan.call_window,
-    #     liquidation_ltv= loan.liquidation_ltv,
-    #     oracle_addr=loan.oracle_addr,
-    #     initial_ltv= loan.initial_ltv,
-    #     call_time=block.timestamp,
-    #     vault_id=loan.vault_id,
-    #     redeem_start=loan.redeem_start,
-    #     redeem_residual_collateral=loan.redeem_residual_collateral,
-    # )
-    # base.loans[loan.id] = base._loan_state_hash(updated_loan)
-    # log LoanCalled(
-    #     id=loan.id,
-    #     borrower=loan.borrower,
-    #     lender=loan.lender,
-    #     call_time=updated_loan.call_time,
-    # )
 
 
 @external
@@ -921,6 +862,58 @@ def remove_collateral_from_loan(loan: base.Loan, collateral_amount: uint256):
         new_ltv=new_ltv
     )
 
+
+@external
+def extend_loan(
+    loan: base.Loan,
+    offer: base.SignedLoanExtensionOffer,
+    new_maturity: uint256,
+):
+
+    """
+    @notice Extend a loan.
+    @dev All loan parameters remain the same except the maturity which is extended to the new maturity. Must be called by the borrower and the offer must be signed by the lender.
+    @param loan The current loan.
+    @param offer The signed offer for the loan extension.
+    @param new_maturity The new maturity timestamp for the loan.
+    """
+
+    raw_call(
+        refinance_addr,
+        abi_encode(
+            loan,
+            offer,
+            new_maturity,
+            offer_sig_domain_separator,
+            method_id=method_id("extend_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((bytes32,uint256,uint256),(uint256,uint256,uint256)),uint256,bytes32)"),
+        ),
+        is_delegate_call=True
+    )
+
+
+
+@external
+def extend_loan_lender(loan: base.Loan, new_maturity: uint256):
+
+    """
+    @notice Extend a loan.
+    @dev All loan parameters remain the same except the maturity which is extended to the new maturity. Must be called by the lender.
+    @param loan The current loan.
+    @param new_maturity The new maturity timestamp for the loan.
+    """
+
+    raw_call(
+        refinance_addr,
+        abi_encode(
+            loan,
+            new_maturity,
+            method_id=method_id("extend_loan_lender((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),uint256)"),
+        ),
+        is_delegate_call=True
+    )
+
+
+
 @external
 def revoke_offer(offer: base.SignedOffer):
 
@@ -989,19 +982,6 @@ def is_loan_redeemed(loan: base.Loan) -> bool:
     """
 
     return base._is_loan_redeemed(loan)
-
-
-@view
-@external
-def _is_loan_redeem_concluded(loan: base.Loan, _vault: vault.Vault) -> bool:
-    """
-    @notice Check if a loan redeem is completed.
-    @param loan The loan to check.
-    @param _vault The vault associated with the loan.
-    @return True if the loan redeem is completed, false otherwise.
-    """
-
-    return base._is_loan_redeem_concluded(loan, _vault)
 
 
 @view
