@@ -400,7 +400,7 @@ def extend_loan(
     assert new_maturity > loan.maturity, "new maturity le current"
     assert offer.offer.loan_id == loan.id, "offer loan id mismatch"
     assert offer.offer.original_maturity == loan.maturity, "offer maturity mismatch"
-    assert offer.offer.new_maturity <= new_maturity, "new maturity gt offer"
+    assert new_maturity <= offer.offer.new_maturity, "new maturity gt offer"
 
     new_loan: base.Loan = base.Loan(
         id=loan.id,
