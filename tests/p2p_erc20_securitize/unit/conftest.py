@@ -229,11 +229,13 @@ def p2p_lending_securitize_erc20_contract_def(boa_env):
                 paid_interest=0,
                 paid_protocol_settlement_fee_amount=0
             )
-            log LoanCalled(
-                id=empty(bytes32),
-                borrower=empty(address),
+            log LoanMaturityExtended(
+                loan_id=empty(bytes32),
+                original_maturity=0,
+                new_maturity=0,
                 lender=empty(address),
-                call_time=0
+                borrower=empty(address),
+                caller=empty(address)
             )
 
     """)

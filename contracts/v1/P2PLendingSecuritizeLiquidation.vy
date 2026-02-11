@@ -145,6 +145,7 @@ def partially_liquidate_loan(
 @external
 def liquidate_loan(
     loan: base.Loan,
+    redeem_result: base.SignedRedeemResult,
 
     payment_token: address,
     collateral_token: address,
@@ -155,7 +156,6 @@ def liquidate_loan(
     payment_token_decimals: uint256,
     offer_sig_domain_separator: bytes32,
     vault_impl_addr: address,
-    redeem_result: base.SignedRedeemResult,
 ):
 
     """
@@ -167,7 +167,7 @@ def liquidate_loan(
     # assert base._is_loan_defaulted(loan), "loan not defaulted"
     liquidator: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
     current_interest: uint256 = 0
-    in_vault_collateral: uint256 = 0
+    in_vault_collateral: uint256 = loan.collateral_amount
     in_vault_payment_token: uint256 = 0
 
     is_loan_redeemed: bool = base._is_loan_redeemed(loan)
@@ -223,7 +223,7 @@ def liquidate_loan(
     remaining_collateral_value: uint256 = remaining_collateral * rate.numerator * payment_token_decimals // (rate.denominator * collateral_token_decimals)
     protocol_settlement_fee_amount: uint256 = min(loan.protocol_settlement_fee * current_interest // BPS, remaining_collateral_value)
     shortfall: uint256 = outstanding_debt - remaining_collateral_value if remaining_collateral_value < outstanding_debt else 0
-    extcall _vault.withdraw_funds(payment_token, in_vault_payment_token)
+    extcall _vault.withdraw_funds(payment_token, in_vault_payment_token + liquidation_fee)
 
 
     # payment_token: outstanding_debt (incl protocol_settlement_fee_amount) + liquidation_fee
@@ -267,7 +267,7 @@ def liquidate_loan(
             base._transfer_funds(liquidator, base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
 
         base._send_funds(liquidator, liquidation_fee, payment_token)
-        base._send_collateral(liquidator, loan.collateral_amount, _vault)
+        base._send_collateral(liquidator, remaining_collateral, _vault)
 
     base.loans[loan.id] = empty(bytes32)
 

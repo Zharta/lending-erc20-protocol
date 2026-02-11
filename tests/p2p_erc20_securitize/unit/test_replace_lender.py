@@ -9,6 +9,7 @@ from ..conftest_base import (
     Offer,
     SecuritizeLoan,
     SignedOffer,
+    SignedRedeemResult,
     calc_ltv,
     compute_liquidity_key,
     compute_securitize_loan_hash,
@@ -19,6 +20,8 @@ from ..conftest_base import (
     sign_kyc,
     sign_offer,
 )
+
+EMPTY_REDEEM_RESULT = SignedRedeemResult()
 
 BPS = 10000
 DAY = 86400
@@ -77,8 +80,8 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
         min_collateral_amount=0,
         max_iltv=8000,
         available_liquidity=principal,
-        call_eligibility=1 * DAY,
-        call_window=1 * DAY,
+        call_eligibility=0,
+        call_window=0,
         liquidation_ltv=9000,
         oracle_addr=oracle.address,
         expiration=now + 100,
@@ -202,7 +205,7 @@ def test_replace_loan_lender_reverts_if_loan_already_settled(
     amount_to_settle = loan.amount + interest
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
-    p2p_usdc_weth.settle_loan(loan, sender=loan.borrower)
+    p2p_usdc_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
 
     with boa.reverts("invalid loan"):
         usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
@@ -370,22 +373,6 @@ def test_replace_loan_lender_reverts_if_oracle_address_invalid(
         p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
 
 
-def test_replace_loan_lender_reverts_if_call_window_is_zero(
-    p2p_usdc_weth, ongoing_loan_usdc_weth, lender2_key, usdc, now, offer_usdc_weth2, kyc_lender2
-):
-    loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
-    amount_to_settle = loan.amount + interest
-
-    invalid_offer = replace_namedtuple_field(offer_usdc_weth2.offer, call_eligibility=1, call_window=0)
-    signed_invalid_offer = sign_offer(invalid_offer, lender2_key, p2p_usdc_weth.address)
-
-    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
-
-    with boa.reverts("call window is 0"):
-        p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
-
-
 def test_replace_loan_lender_reverts_if_min_collateral_and_max_iltv_are_zero(
     p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, lender2_key, now, offer_usdc_weth2, kyc_lender2
 ):
@@ -494,95 +481,6 @@ def test_replace_loan_lender_reverts_if_lender_kyc_not_correct(
         print(f"{kyc_lender=}")
         with boa.reverts("KYC validation fail"):
             p2p_usdc_weth.replace_loan_lender(loan, offer_usdc_weth2, 0, kyc_lender, sender=loan.lender)
-
-
-def test_replace_loan_lender_reverts_if_call_window_is_shorter(
-    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, lender2_key, now, offer_usdc_weth2, kyc_lender2
-):
-    loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
-    amount_to_settle = loan.amount + interest
-
-    invalid_offer = replace_namedtuple_field(
-        offer_usdc_weth2.offer, call_window=loan.call_window - 1, call_eligibility=loan.call_eligibility
-    )
-    signed_invalid_offer = sign_offer(invalid_offer, lender2_key, p2p_usdc_weth.address)
-
-    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
-
-    with boa.reverts("repayment time lt old loan"):
-        p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
-
-
-def test_replace_loan_lender_reverts_if_loan_becomes_callable(
-    p2p_usdc_weth,
-    weth,
-    usdc,
-    lender2_key,
-    now,
-    offer_usdc_weth2,
-    kyc_lender2,
-    borrower,
-    kyc_borrower,
-    lender,
-    lender_key,
-    kyc_lender,
-    offer_usdc_weth,
-):
-    offer = replace_namedtuple_field(offer_usdc_weth.offer, call_eligibility=0, call_window=0)
-    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
-    principal = offer.principal
-    collateral_amount = int(1e18)
-    lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
-
-    weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
-    usdc.mint(lender, lender_approval)
-    usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
-
-    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
-    loan = SecuritizeLoan(
-        id=loan_id,
-        offer_id=compute_signed_offer_id(signed_offer),
-        offer_tracing_id=offer.tracing_id,
-        initial_amount=principal,
-        amount=principal,
-        apr=offer.apr,
-        payment_token=offer.payment_token,
-        collateral_token=offer.collateral_token,
-        maturity=now + offer.duration,
-        start_time=now,
-        accrual_start_time=now,
-        borrower=borrower,
-        lender=lender,
-        collateral_amount=collateral_amount,
-        min_collateral_amount=offer.min_collateral_amount,
-        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
-        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
-        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
-        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
-        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
-        call_eligibility=0,
-        call_window=0,
-        liquidation_ltv=offer.liquidation_ltv,
-        oracle_addr=offer.oracle_addr,
-        initial_ltv=offer.max_iltv,
-        call_time=0,
-        vault_id=0,  # First vault for this borrower in this test
-        redeem_start=0,
-        redeem_residual_collateral=0,
-    )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
-    amount_to_settle = loan.amount + interest
-
-    invalid_offer = replace_namedtuple_field(offer_usdc_weth2.offer, call_eligibility=loan.maturity - now, call_window=1)
-    signed_invalid_offer = sign_offer(invalid_offer, lender2_key, p2p_usdc_weth.address)
-
-    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
-
-    with boa.reverts("call window lt old loan"):
-        p2p_usdc_weth.replace_loan_lender(loan, signed_invalid_offer, 0, kyc_lender2, sender=loan.lender)
 
 
 def _max_interest_delta(

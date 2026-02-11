@@ -231,25 +231,6 @@ def test_create_loan_reverts_if_oracle_address_invalid(
         p2p_usdc_weth.create_loan(signed_offer, offer.principal, 1, kyc_borrower, kyc_lender, sender=borrower)
 
 
-def test_create_loan_reverts_if_call_window_is_zero(
-    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender
-):
-    offer = Offer(
-        principal=1000,
-        payment_token=p2p_usdc_weth.payment_token(),
-        collateral_token=p2p_usdc_weth.collateral_token(),
-        duration=100,
-        call_eligibility=1,
-        call_window=0,  # zero call window
-        expiration=now + 100,
-        lender=lender,
-    )
-    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
-
-    with boa.reverts("call window is 0"):
-        p2p_usdc_weth.create_loan(signed_offer, offer.principal, 1, kyc_borrower, kyc_lender, sender=borrower)
-
-
 def test_create_loan_reverts_if_min_collateral_and_max_iltv_are_zero(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender
 ):

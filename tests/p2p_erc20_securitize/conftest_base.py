@@ -70,7 +70,7 @@ class Offer(NamedTuple):
     tracing_id: bytes = ZERO_BYTES32
 
 
-Signature = namedtuple("Signature", ["v", "r", "s"], defaults=[0, ZERO_BYTES32, ZERO_BYTES32])
+Signature = namedtuple("Signature", ["v", "r", "s"], defaults=[0, 0, 0])
 
 SignedOffer = namedtuple("SignedOffer", ["offer", "signature"], defaults=[Offer(), Signature()])
 
@@ -78,6 +78,22 @@ WalletValidation = namedtuple("WalletValidation", ["wallet", "expiration_time"],
 
 SignedWalletValidation = namedtuple(
     "SignedWalletValidation", ["validation", "signature"], defaults=[WalletValidation(), Signature()]
+)
+
+RedeemResult = namedtuple(
+    "RedeemResult",
+    ["vault", "collateral_redeemed", "payment_redeemed", "timestamp", "redeem_wallet"],
+    defaults=[ZERO_ADDRESS, 0, 0, 0, ZERO_ADDRESS],
+)
+
+SignedRedeemResult = namedtuple("SignedRedeemResult", ["result", "signature"], defaults=[RedeemResult(), Signature()])
+
+LoanExtensionOffer = namedtuple(
+    "LoanExtensionOffer", ["loan_id", "original_maturity", "new_maturity"], defaults=[ZERO_BYTES32, 0, 0]
+)
+
+SignedLoanExtensionOffer = namedtuple(
+    "SignedLoanExtensionOffer", ["offer", "signature"], defaults=[LoanExtensionOffer(), Signature()]
 )
 
 
@@ -259,6 +275,61 @@ def sign_kyc(wallet: str, timestamp: int, signer_key: str, verifying_contract: s
     signature = Signature(signed_msg.v, signed_msg.r, signed_msg.s)
 
     return SignedWalletValidation(WalletValidation(**wallet_validation), signature)
+
+
+def sign_extension_offer(offer: LoanExtensionOffer, lender_key: str, verifying_contract: str) -> SignedLoanExtensionOffer:
+    typed_data = {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+            "LoanExtensionOffer": [
+                {"name": "loan_id", "type": "bytes32"},
+                {"name": "original_maturity", "type": "uint256"},
+                {"name": "new_maturity", "type": "uint256"},
+            ],
+        },
+        "primaryType": "LoanExtensionOffer",
+        "domain": {
+            "name": "Zharta",
+            "version": "1",
+            "chainId": boa.eval("chain.id"),
+            "verifyingContract": verifying_contract,
+        },
+        "message": offer._asdict(),
+    }
+    signable_msg = encode_typed_data(full_message=typed_data)
+    signed_msg = Account.from_key(lender_key).sign_message(signable_msg)
+    lender_signature = Signature(signed_msg.v, signed_msg.r, signed_msg.s)
+
+    return SignedLoanExtensionOffer(offer, lender_signature)
+
+
+def sign_redeem_result(result: RedeemResult, owner_key: str) -> SignedRedeemResult:
+    """
+    Sign a RedeemResult with the owner's private key.
+    Matches the contract's _validate_redeem_result_sig:
+        keccak256(abi_encode(concat("\x19\x00", keccak256(abi_encode(redeem_result.result)))))
+    """
+    # ABI encode the result struct
+    encoded_result = encode(
+        ["(address,uint256,uint256,uint256,address)"],
+        [(result.vault, result.collateral_redeemed, result.payment_redeemed, result.timestamp, result.redeem_wallet)],
+    )
+    # Hash the encoded result
+    inner_hash = keccak(encoded_result)
+    # Prefix with \x19\x00 and hash again
+    prefixed = b"\x19\x00" + inner_hash
+    message_hash = keccak(encode(["bytes"], [prefixed]))
+
+    # Sign with eth_account (recoverable signature)
+    signed = Account.from_key(owner_key).unsafe_sign_hash(message_hash)
+    signature = Signature(signed.v, signed.r, signed.s)
+
+    return SignedRedeemResult(result, signature)
 
 
 # Utility functions

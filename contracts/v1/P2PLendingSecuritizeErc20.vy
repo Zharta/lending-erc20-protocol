@@ -699,7 +699,7 @@ def partially_liquidate_loan(loan: base.Loan):
 
 
 @external
-def liquidate_loan(loan: base.Loan):
+def liquidate_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
 
     """
     @notice Fully liquidates a defaulted loan. Can be called by anyone.
@@ -710,6 +710,7 @@ def liquidate_loan(loan: base.Loan):
         liquidation_addr,
         abi_encode(
             loan,
+            redeem_result,
             payment_token,
             collateral_token,
             oracle_addr,
@@ -719,11 +720,10 @@ def liquidate_loan(loan: base.Loan):
             payment_token_decimals,
             offer_sig_domain_separator,
             vault_impl_addr,
-            method_id=method_id("liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+            method_id=method_id("liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256,address),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         is_delegate_call=True
     )
-
 
 
 @external
