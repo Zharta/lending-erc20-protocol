@@ -24,7 +24,8 @@
             "properties_addresses": {}
         },
         "liquidation_vaulted_impl": {
-            "address": "0x34c35cBF7162335529a06ABB91aaAbc8DcEd00Cc",
+            "abi_key": "4792b85331f6a5fd511fc7052e3d8e5e515ca9ea",
+            "address": "0xA311A5e55939bA90c97fD5B4f77ff0508E36eb61",
             "contract": "LiquidationVaultedImpl",
             "properties": {},
             "properties_addresses": {}
@@ -149,7 +150,7 @@
         },
         "usdc_acred_vaulted": {
             "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x235e4c91234FEfBd04a63F658Efd89e96bCb6719",
+            "address": "0x196543f8014f62F0169690720FfE5454e04Dc2C9",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
@@ -173,7 +174,7 @@
             "properties_addresses": {
                 "collateral_token": "0x17418038ecF73BA4026c4f428547BF099706F27B",
                 "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
-                "liquidation_impl": "0x34c35cBF7162335529a06ABB91aaAbc8DcEd00Cc",
+                "liquidation_impl": "0xA311A5e55939bA90c97fD5B4f77ff0508E36eb61",
                 "oracle": "0xD6BcbbC87bFb6c8964dDc73DC3EaE6d08865d51C",
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0xF700511333209Db6b8a68bE72F90e8c73Da016a1",
@@ -184,7 +185,7 @@
         },
         "usdc_cbbtc_vaulted": {
             "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x13251507bEFe08BfD1d9d8154a680D72ecAda3E2",
+            "address": "0x5A403e30100cD628E17100A9FF7101B97F757598",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: cbBTC / USD",
             "properties": {
@@ -208,7 +209,7 @@
             "properties_addresses": {
                 "collateral_token": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
                 "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
-                "liquidation_impl": "0x34c35cBF7162335529a06ABB91aaAbc8DcEd00Cc",
+                "liquidation_impl": "0xA311A5e55939bA90c97fD5B4f77ff0508E36eb61",
                 "oracle": "0x2665701293fCbEB223D11A08D826563EDcCE423A",
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0xF700511333209Db6b8a68bE72F90e8c73Da016a1",
@@ -219,7 +220,7 @@
         },
         "usdc_wbtc_vaulted": {
             "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x8f5E0e7E33118EAE09355e26533b5bE85150D74f",
+            "address": "0x5dc4f0B9401e80a99Ff726b6078E4dbc067687ff",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: BTC / USD",
             "properties": {
@@ -243,7 +244,7 @@
             "properties_addresses": {
                 "collateral_token": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
                 "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
-                "liquidation_impl": "0x34c35cBF7162335529a06ABB91aaAbc8DcEd00Cc",
+                "liquidation_impl": "0xA311A5e55939bA90c97fD5B4f77ff0508E36eb61",
                 "oracle": "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0xF700511333209Db6b8a68bE72F90e8c73Da016a1",
@@ -254,7 +255,7 @@
         },
         "usdc_weth_vaulted": {
             "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0xf7ea0e0Bb41e5cB202D19AddD23B8af8a2A71419",
+            "address": "0x72ED8921325B3a8e487Bc93A3C8B3f14AaC21514",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: USDC / ETH",
             "properties": {
@@ -278,7 +279,7 @@
             "properties_addresses": {
                 "collateral_token": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
                 "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
-                "liquidation_impl": "0x34c35cBF7162335529a06ABB91aaAbc8DcEd00Cc",
+                "liquidation_impl": "0xA311A5e55939bA90c97fD5B4f77ff0508E36eb61",
                 "oracle": "0x986b5E1e1755e3C2440e960477f25201B0a8bbD4",
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0xF700511333209Db6b8a68bE72F90e8c73Da016a1",
