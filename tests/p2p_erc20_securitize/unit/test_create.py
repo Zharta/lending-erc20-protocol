@@ -515,6 +515,9 @@ def test_create_loan_logs_event(
     assert event.partial_liquidation_fee == p2p_usdc_weth.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
+    assert event.oracle_rate_num == oracle.latestRoundData().answer
+    assert event.oracle_rate_den == 10 ** oracle.decimals()
+    assert event.vault_addr == p2p_usdc_weth.vault_id_to_vault(borrower, 0)
 
 
 def test_create_loan_transfers_collateral_to_escrow(

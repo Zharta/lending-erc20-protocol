@@ -42,6 +42,9 @@ event LoanCreated:
     full_liquidation_fee: uint256
     offer_id: bytes32
     offer_tracing_id: bytes32
+    oracle_rate_num: uint256
+    oracle_rate_den: uint256
+
 
 event LoanPaid:
     id: bytes32
@@ -565,6 +568,8 @@ def create_loan(
         full_liquidation_fee=loan.full_liquidation_fee,
         offer_id=offer_id,
         offer_tracing_id=offer.offer.tracing_id,
+        oracle_rate_num=convertion_rate.numerator,
+        oracle_rate_den=convertion_rate.denominator,
     )
     return loan.id
 

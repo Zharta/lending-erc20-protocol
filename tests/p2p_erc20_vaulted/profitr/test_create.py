@@ -577,6 +577,8 @@ def test_create_and_settle_loan(
     assert event.partial_liquidation_fee == p2p_usdc_profitr.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
+    assert event.oracle_rate_num == oracle_profitr_usd.latestRoundData().answer
+    assert event.oracle_rate_den == 10 ** oracle_profitr_usd.decimals()
 
     assert profitr_token.balanceOf(wallet_1_vault) == collateral_amount
     assert profitr_token.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount

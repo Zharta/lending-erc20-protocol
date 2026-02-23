@@ -9,6 +9,7 @@ import pytest
 from ..conftest_base import (
     ZERO_BYTES32,
     Offer,
+    RedeemResult,
     SecuritizeLoan,
     calc_ltv,
     compute_liquidity_key,
@@ -19,6 +20,7 @@ from ..conftest_base import (
     replace_namedtuple_field,
     sign_kyc,
     sign_offer,
+    sign_redeem_result,
 )
 
 BPS = 10000
@@ -425,6 +427,7 @@ def test_redeem(
     securitize_swap,
     securitize_proxy,
     redemption_wallet,
+    owner_key,
 ):
     principals = [70000000000, 49000000000, 34300000000, 24000000000, 17000000000]
     collateral_amounts = [94000000, 66000000, 46000000, 32000000, 23000000]
@@ -558,7 +561,17 @@ def test_redeem(
         p2p_usdc_acred.eval(f"base._get_vault({loan.borrower}, {loan.vault_id}, {p2p_usdc_acred.vault_impl_addr()}).address")
         == vault
     )
-    p2p_usdc_acred.settle_loan(loan, sender=loan.borrower)
+
+    redeem_result = RedeemResult(
+        vault=vault,
+        collateral_redeemed=0,
+        payment_redeemed=redeem_usdc,
+        timestamp=boa.eval("block.timestamp"),
+        redeem_wallet=redemption_wallet,
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    p2p_usdc_acred.settle_loan(loan, signed_redeem_result, sender=loan.borrower)
 
     assert p2p_usdc_acred.loans(loan.id) == ZERO_BYTES32
 
