@@ -36,7 +36,9 @@ class EventWrapper:
 
 def get_last_event(contract: VyperContract, name: str | None = None):
     matching_events = [
-        e for e in contract.get_logs() if not isinstance(e, RawLogEntry) and (name is None or name == type(e).__name__)
+        e
+        for e in contract.get_logs(strict=False)
+        if not isinstance(e, RawLogEntry) and (name is None or name == type(e).__name__)
     ]
     return EventWrapper(matching_events[-1])
 

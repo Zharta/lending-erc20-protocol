@@ -321,6 +321,17 @@ def test_loop(
         sender=borrower,
     )
 
+    # Verify LeveragedLoanCreated event
+    event = get_last_event(securitize_proxy, "LeveragedLoanCreated")
+    loan_id = compute_loan_id(borrower, lender, now, compute_signed_offer_id(signed_offer))
+    assert event.loan_id == loan_id
+    assert event.p2p_lending_erc20 == p2p_usdc_acred.address
+    assert event.principal == principal
+    assert event.loan_collateral_amount == collateral_amount
+    assert event.aquired_collateral == collateral_to_buy
+    assert event.max_collateral_buy_value == collateral_to_buy_value
+    assert event.flash_loan_amount == collateral_to_buy_value
+
     assert acred.balanceOf(p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)) == collateral_amount
     assert acred.balanceOf(borrower) == borrower_collateral_balance_before + collateral_to_buy - collateral_amount
 
