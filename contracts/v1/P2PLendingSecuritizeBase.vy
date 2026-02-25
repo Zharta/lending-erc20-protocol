@@ -148,7 +148,6 @@ struct RedeemResult:
     collateral_redeemed: uint256
     payment_redeemed: uint256
     timestamp: uint256
-    redeem_wallet: address
 
 
 struct SignedRedeemResult:
@@ -491,8 +490,6 @@ def _is_loan_redeem_concluded(loan: Loan, _vault: vault.Vault, redeem_result: Si
     if redeem_result.result.timestamp < loan.redeem_start:
         return False
     if redeem_result.result.vault != _vault.address:
-        return False
-    if redeem_result.result.redeem_wallet != self.securitize_redemption_wallet:
         return False
     self._validate_redeem_result_sig(redeem_result)
     return True

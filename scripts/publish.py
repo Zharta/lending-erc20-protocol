@@ -42,7 +42,10 @@ def get_abi_map(context, env: Environment, chain: str) -> dict:
         config = json.load(f)
 
     contracts = {
-        f"{prefix}.{k}": v for prefix, contracts in config.items() for k, v in contracts.items() if prefix in {"common", "p2p"}
+        f"{prefix}.{k}": v
+        for prefix, contracts in config.items()
+        for k, v in contracts.items()
+        if prefix in {"common", "p2p", "proxies"}
     }
     for k, config in contracts.items():
         contract = context[k].contract

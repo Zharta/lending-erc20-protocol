@@ -578,7 +578,6 @@ def test_redeem(
         collateral_redeemed=0,
         payment_redeemed=redeem_usdc,
         timestamp=boa.eval("block.timestamp"),
-        redeem_wallet=redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
