@@ -120,6 +120,11 @@ def vault_registrar():
 
 
 @pytest.fixture(scope="session")
+def vault_registrar_contract_def(boa_env):
+    return boa.load_partial("contracts/auxiliary/VaultRegistrarMock.vy")
+
+
+@pytest.fixture(scope="session")
 def erc721_contract_def(boa_env):
     return boa.load_partial("contracts/auxiliary/ERC721.vy")
 

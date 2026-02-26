@@ -354,3 +354,225 @@ def test_set_transfer_agent_logs_event(p2p_usdc_weth, owner, transfer_agent):
     assert event.old_agent == old_agent
     assert event.new_agent == new_agent
     assert event.by == owner
+
+
+# Vault Registrar Tests
+
+
+def test_initial_state_vault_registrar_zero(p2p_usdc_weth):
+    """Test that vault_registrar is initialized to zero address by default."""
+    assert p2p_usdc_weth.vault_registrar() == ZERO_ADDRESS
+
+
+def test_constructor_with_vault_registrar(
+    p2p_lending_erc20_contract_def,
+    p2p_refinance,
+    p2p_liquidation,
+    vault_impl,
+    weth,
+    usdc,
+    oracle,
+    kyc_validator_contract,
+    owner,
+    transfer_agent,
+    vault_registrar_contract_def,
+):
+    """Test that vault_registrar is correctly initialized in constructor."""
+    # Deploy a mock registrar with the correct token (weth = collateral token)
+    mock_registrar = vault_registrar_contract_def.deploy(weth.address)
+
+    contract = p2p_lending_erc20_contract_def.deploy(
+        usdc,
+        weth,
+        oracle,
+        False,
+        kyc_validator_contract,
+        0,
+        0,
+        owner,
+        10000,
+        10000,
+        0,
+        0,
+        p2p_refinance.address,
+        p2p_liquidation.address,
+        vault_impl.address,
+        transfer_agent,
+        mock_registrar.address,
+    )
+
+    assert contract.vault_registrar() == mock_registrar.address
+
+
+def test_constructor_reverts_if_vault_registrar_token_mismatch(
+    p2p_lending_erc20_contract_def,
+    p2p_refinance,
+    p2p_liquidation,
+    vault_impl,
+    weth,
+    usdc,
+    oracle,
+    kyc_validator_contract,
+    owner,
+    transfer_agent,
+    vault_registrar_contract_def,
+):
+    """Test that constructor reverts if vault_registrar.token() doesn't match collateral_token."""
+    # Deploy a mock registrar with a DIFFERENT token (usdc instead of weth)
+    mock_registrar = vault_registrar_contract_def.deploy(usdc.address)
+
+    with boa.reverts("vault registrar token mismatch"):
+        p2p_lending_erc20_contract_def.deploy(
+            usdc,
+            weth,  # collateral_token is weth
+            oracle,
+            False,
+            kyc_validator_contract,
+            0,
+            0,
+            owner,
+            10000,
+            10000,
+            0,
+            0,
+            p2p_refinance.address,
+            p2p_liquidation.address,
+            vault_impl.address,
+            transfer_agent,
+            mock_registrar.address,  # but registrar.token() returns usdc
+        )
+
+
+def test_change_vault_registrar_reverts_if_not_owner(p2p_usdc_weth, vault_registrar_contract_def, weth):
+    """Test that change_vault_registrar reverts if called by non-owner."""
+    mock_registrar = vault_registrar_contract_def.deploy(weth.address)
+    random = boa.env.generate_address("random")
+
+    with boa.reverts():
+        p2p_usdc_weth.change_vault_registrar(mock_registrar.address, sender=random)
+
+
+def test_change_vault_registrar_reverts_if_token_mismatch(p2p_usdc_weth, owner, vault_registrar_contract_def, usdc):
+    """Test that change_vault_registrar reverts if token doesn't match collateral_token."""
+    # Deploy a mock registrar with wrong token (usdc instead of weth)
+    mock_registrar = vault_registrar_contract_def.deploy(usdc.address)
+
+    with boa.reverts("vault registrar token mismatch"):
+        p2p_usdc_weth.change_vault_registrar(mock_registrar.address, sender=owner)
+
+
+def test_change_vault_registrar(p2p_usdc_weth, owner, vault_registrar_contract_def, weth):
+    """Test that change_vault_registrar updates the registrar address."""
+    mock_registrar = vault_registrar_contract_def.deploy(weth.address)
+
+    p2p_usdc_weth.change_vault_registrar(mock_registrar.address, sender=owner)
+
+    assert p2p_usdc_weth.vault_registrar() == mock_registrar.address
+
+
+def test_change_vault_registrar_to_zero(p2p_usdc_weth, owner, vault_registrar_contract_def, weth):
+    """Test that change_vault_registrar can set registrar to zero address."""
+    # First set a non-zero registrar
+    mock_registrar = vault_registrar_contract_def.deploy(weth.address)
+    p2p_usdc_weth.change_vault_registrar(mock_registrar.address, sender=owner)
+    assert p2p_usdc_weth.vault_registrar() == mock_registrar.address
+
+    # Then set it back to zero
+    p2p_usdc_weth.change_vault_registrar(ZERO_ADDRESS, sender=owner)
+    assert p2p_usdc_weth.vault_registrar() == ZERO_ADDRESS
+
+
+def test_change_vault_registrar_logs_event(p2p_usdc_weth, owner, vault_registrar_contract_def, weth):
+    """Test that change_vault_registrar logs VaultRegistrarChanged event."""
+    mock_registrar = vault_registrar_contract_def.deploy(weth.address)
+    old_registrar = p2p_usdc_weth.vault_registrar()
+
+    p2p_usdc_weth.change_vault_registrar(mock_registrar.address, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "VaultRegistrarChanged")
+
+    assert event.old_registrar == old_registrar
+    assert event.new_registrar == mock_registrar.address
+
+
+def test_create_loan_registers_vault_with_registrar(
+    p2p_lending_erc20_contract_def,
+    p2p_refinance,
+    p2p_liquidation,
+    vault_impl,
+    weth,
+    usdc,
+    oracle,
+    kyc_validator_contract,
+    owner,
+    transfer_agent,
+    vault_registrar_contract_def,
+    borrower,
+    lender,
+    lender_key,
+    kyc_validator_key,
+):
+    """Test that create_loan registers the vault with the vault registrar."""
+    from ..conftest_base import Offer, sign_kyc, sign_offer
+
+    # Deploy a mock registrar with the correct token
+    mock_registrar = vault_registrar_contract_def.deploy(weth.address)
+
+    # Deploy contract with vault registrar
+    contract = p2p_lending_erc20_contract_def.deploy(
+        usdc,
+        weth,
+        oracle,
+        False,
+        kyc_validator_contract,
+        0,
+        0,
+        owner,
+        10000,
+        10000,
+        0,
+        0,
+        p2p_refinance.address,
+        p2p_liquidation.address,
+        vault_impl.address,
+        transfer_agent,
+        mock_registrar.address,
+    )
+
+    # Setup for loan creation
+    now = boa.eval("block.timestamp")
+    principal = 1000 * 10**6
+    collateral_amount = 10**18
+
+    offer = Offer(
+        principal=principal,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        min_collateral_amount=collateral_amount,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender,
+    )
+    signed_offer = sign_offer(offer, lender_key, contract.address)
+
+    # Fund accounts
+    usdc.mint(lender, principal)
+    weth.mint(borrower, collateral_amount)
+
+    # Approvals
+    vault_addr = contract.wallet_to_vault(borrower)
+    weth.approve(vault_addr, collateral_amount, sender=borrower)
+    usdc.approve(contract.address, principal, sender=lender)
+
+    # KYC
+    kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
+    kyc_lender = sign_kyc(lender, now, kyc_validator_key, kyc_validator_contract.address)
+
+    # Verify vault is not registered before loan creation
+    assert not mock_registrar.isRegistered(vault_addr, borrower)
+
+    # Create loan
+    contract.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    # Verify vault is registered after loan creation
+    assert mock_registrar.isRegistered(vault_addr, borrower)
