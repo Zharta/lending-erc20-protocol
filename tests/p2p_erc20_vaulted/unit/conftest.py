@@ -6,7 +6,7 @@ import boa
 import pytest
 from eth_account import Account
 
-from ..conftest_base import sign_kyc
+from ..conftest_base import ZERO_ADDRESS, sign_kyc
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -112,6 +112,11 @@ def protocol_wallet(accounts):
 @pytest.fixture(scope="session")
 def transfer_agent():
     return boa.env.generate_address("transfer_agent")
+
+
+@pytest.fixture(scope="session")
+def vault_registrar():
+    return ZERO_ADDRESS
 
 
 @pytest.fixture(scope="session")
@@ -325,6 +330,7 @@ def p2p_usdc_weth(
     vault_impl,
     owner,
     transfer_agent,
+    vault_registrar,
 ):
     return p2p_lending_erc20_contract_def.deploy(
         usdc,
@@ -343,6 +349,7 @@ def p2p_usdc_weth(
         p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
+        vault_registrar,
     )
 
 

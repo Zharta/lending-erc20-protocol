@@ -115,9 +115,18 @@
             "contract": "VaultSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
+        },
+        "acred_vault_registrar": {
+            "address": "0x9fbF77D74337FefA7D8993f507A38EDB4df620E5",
+            "contract": "VaultRegistrarMock",
+            "properties": {
+                "token_key": "common.acred"
+            },
+            "properties_addresses": {}
         }
     },
     "configs": {},
+    "proxies": {},
     "p2p": {
         "usdc_acred_d252": {
             "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
@@ -169,7 +178,8 @@
                 "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
                 "refinance_impl_key": "common.refinance_vaulted_impl",
                 "transfer_agent": "0x314BA3811129AE06Fc35894a3Bb62157028A9Fd9",
-                "vault_impl_key": "common.vault_impl"
+                "vault_impl_key": "common.vault_impl",
+                "vault_registrar_key": "common.acred_vault_registrar"
             },
             "properties_addresses": {
                 "collateral_token": "0x17418038ecF73BA4026c4f428547BF099706F27B",

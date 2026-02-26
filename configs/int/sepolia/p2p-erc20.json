@@ -1,5 +1,16 @@
 {
     "common": {
+        "acred_vault_registrar": {
+            "abi_key": "64b7143c5314f29b152297bf2d4bc10ab54fc5c7",
+            "address": "0x4D6D8866BdaFe060DC9610Aa3CAD8650C461503a",
+            "contract": "VaultRegistrarMock",
+            "properties": {
+                "token_key": "common.acred"
+            },
+            "properties_addresses": {
+                "token": "0xDAB05E3249DAE155f4Fb4e77c67EFAcc061fF004"
+            }
+        },
         "kyc": {
             "abi_key": "c9c669b817531c2dd57ea0619817312855a9935c",
             "address": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
@@ -167,8 +178,8 @@
             "version": "0"
         },
         "usdc_acred_vaulted": {
-            "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x3FB38b0574C26f425B60043f3e35Ba63A3B8bcDC",
+            "abi_key": "b5372f9c2cf1522839df3abb2ffcd8efc6cdd416",
+            "address": "0x7684bE3f3c25b0b63eA706a9066b3FFF338f179E",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
@@ -187,7 +198,8 @@
                 "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
                 "refinance_impl_key": "common.refinance_vaulted_impl",
                 "transfer_agent": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
-                "vault_impl_key": "common.vault_impl"
+                "vault_impl_key": "common.vault_impl",
+                "vault_registrar_key": "common.acred_vault_registrar"
             },
             "properties_addresses": {
                 "collateral_token": "0xDAB05E3249DAE155f4Fb4e77c67EFAcc061fF004",
@@ -196,7 +208,8 @@
                 "oracle": "0x11eaC7Ee25518860dA0df985834A82Cdf8611954",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
                 "refinance_impl": "0xCFc4981F6D318328c0CEDB01bafA7f587e73907B",
-                "vault_impl": "0xFAa6182Bf5Da73021340424e313dCB8898Efd4b3"
+                "vault_impl": "0xFAa6182Bf5Da73021340424e313dCB8898Efd4b3",
+                "vault_registrar": "0x4D6D8866BdaFe060DC9610Aa3CAD8650C461503a"
             },
             "token_symbol": "USDC",
             "version": "1"
@@ -306,5 +319,6 @@
             "token_symbol": "USDC",
             "version": "1"
         }
-    }
+    },
+    "proxies": {}
 }

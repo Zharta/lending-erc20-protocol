@@ -18,7 +18,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 24325853
+        blkid = 24541820
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 
@@ -120,6 +120,11 @@ def protocol_wallet(accounts):
 @pytest.fixture(scope="session")
 def transfer_agent():
     return boa.env.generate_address("transfer_agent")
+
+
+@pytest.fixture(scope="session")
+def acred_vault_registrar():
+    return "0x9fbF77D74337FefA7D8993f507A38EDB4df620E5"
 
 
 @pytest.fixture(scope="session")
@@ -288,6 +293,7 @@ def p2p_usdc_weth(
         p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
+        ZERO_ADDRESS,
     )
 
 

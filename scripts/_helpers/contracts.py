@@ -261,6 +261,7 @@ class P2PLendingVaultedErc20(ContractConfig):
         refinance_impl_key: str | None = None,
         liquidation_impl_key: str | None = None,
         vault_impl_key: str | None = None,
+        vault_registrar_key: str | None = None,
         protocol_upfront_fee: int,
         protocol_settlement_fee: int,
         protocol_wallet: str,
@@ -285,7 +286,10 @@ class P2PLendingVaultedErc20(ContractConfig):
                 refinance_impl_key,
                 vault_impl_key,
                 liquidation_impl_key,
-            },
+            }
+            | {vault_registrar_key}
+            if vault_registrar_key
+            else set(),
             deployment_args=[
                 payment_token_key,
                 collateral_token_key,
@@ -303,6 +307,7 @@ class P2PLendingVaultedErc20(ContractConfig):
                 liquidation_impl_key,
                 vault_impl_key,
                 transfer_agent,
+                vault_registrar_key or ZERO_ADDRESS,
             ],
         )
         if address:
@@ -442,6 +447,31 @@ class VaultImpl(ContractConfig):
             abi_key=abi_key,
             token=False,
             deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class VaultRegistrarMock(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        token_key: str,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.VaultRegistrarMock,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={token_key},
+            deployment_args=[token_key],
         )
         if address:
             self.load_contract(address)

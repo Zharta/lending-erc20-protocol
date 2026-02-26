@@ -1,0 +1,57 @@
+[
+    {
+        "inputs": [],
+        "name": "token",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "vaultAddress",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "investorWalletAddress",
+                "type": "address"
+            }
+        ],
+        "name": "isRegistered",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "vaultAddress",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "investorWalletAddress",
+                "type": "address"
+            }
+        ],
+        "name": "registerVault",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]

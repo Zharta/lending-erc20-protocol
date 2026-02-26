@@ -41,6 +41,9 @@ branch-coverage:
 unit-tests:
 	${VENV}/bin/pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_vaulted/unit tests/p2p_erc20_securitize/unit --runslow -n auto --dist loadscope
 
+failing:
+	${VENV}/bin/pytest tests/p2p_erc20_vaulted/integration --sw
+
 integration-tests:
 	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration tests/p2p_erc20_securitize/integration
 

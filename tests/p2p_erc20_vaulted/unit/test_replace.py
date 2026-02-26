@@ -729,6 +729,7 @@ def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
     lender2,
     lender2_key,
     transfer_agent,
+    vault_registrar,
 ):
     failing_erc20_code = dedent("""
 
@@ -765,6 +766,7 @@ def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
         p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
+        vault_registrar,
     )
     principal = 1000 * 10**6
     offer = Offer(

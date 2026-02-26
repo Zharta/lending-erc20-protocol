@@ -34,6 +34,12 @@ interface EIP1271Signer:
     def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
 
 
+interface VaultRegistrar:
+    def token() -> address: view
+    def isRegistered(vaultAddress: address, investorWalletAddress: address) -> bool: view
+    def registerVault(vaultAddress: address, investorWalletAddress: address): nonpayable
+
+
 # Structs
 
 BPS: constant(uint256) = 10000
@@ -141,6 +147,7 @@ event TransferFailed:
 owner: public(address)
 proposed_owner: public(address)
 transfer_agent: public(address)
+vault_registrar: public(address)
 
 
 loans: public(HashMap[bytes32, bytes32])
@@ -397,12 +404,15 @@ def _get_vault(wallet: address, vault_impl_addr: address) -> vault.Vault:
     return vault.Vault(_vault)
 
 @internal
-def _create_vault_if_needed(wallet: address, vault_impl_addr: address, payment_token: address) -> vault.Vault:
+def _create_vault_if_needed(wallet: address, vault_impl_addr: address, payment_token: address, vault_registrar: address) -> vault.Vault:
     # only creates a vault if needed
     _vault: address = self._wallet_to_vault(wallet, vault_impl_addr)
     if not _vault.is_contract:
         _vault = create_minimal_proxy_to(vault_impl_addr, salt=convert(wallet, bytes32))
         extcall vault.Vault(_vault).initialise(wallet, payment_token)
+
+        if vault_registrar != empty(address) and not staticcall VaultRegistrar(vault_registrar).isRegistered(_vault, wallet):
+            extcall VaultRegistrar(vault_registrar).registerVault(_vault, wallet)
 
     return vault.Vault(_vault)
 

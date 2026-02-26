@@ -59,7 +59,7 @@ def offer_usdc_weth(now, borrower, lender, oracle_usdc_eth, lender_key, usdc, we
         duration=100,
         origination_fee_bps=100,
         min_collateral_amount=0,
-        max_iltv=4000,
+        max_iltv=5000,
         available_liquidity=principal,
         call_eligibility=1,
         call_window=3600,
