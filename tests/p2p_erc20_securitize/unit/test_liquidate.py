@@ -934,3 +934,15 @@ def test_liquidate_redeemed_loan_by_lender(
     assert usdc.balanceOf(redeemed_loan.lender) == lender_balance_before + outstanding_debt + liquidation_fee
     assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_balance_before
     assert usdc.balanceOf(borrower) == borrower_balance_before + borrower_surplus
+
+
+def test_liquidate_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner, now):
+    loan = ongoing_loan_usdc_weth
+
+    # Default the loan first
+    boa.env.time_travel(seconds=loan.maturity - now + 1)
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.lender)

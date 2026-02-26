@@ -248,3 +248,13 @@ def test_remove_collateral_from_loan_transfers_collateral(p2p_usdc_weth, ongoing
     # Use vault_id_to_vault to get the correct vault for this loan
     assert weth.balanceOf(p2p_usdc_weth.vault_id_to_vault(borrower, vault_id)) == collateral_amount - removed_collateral
     assert weth.balanceOf(borrower) == borrower_balance_before + removed_collateral
+
+
+def test_remove_collateral_from_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner):
+    loan = ongoing_loan_usdc_weth
+    collateral_to_remove = int(0.1e18)
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.remove_collateral_from_loan(loan, collateral_to_remove, sender=loan.borrower)
