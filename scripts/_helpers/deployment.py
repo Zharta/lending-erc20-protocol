@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -28,18 +29,28 @@ class Context(Enum):
     CONSOLE = "console"
 
 
+def _parallel_create(specs: list, max_workers: int = 16) -> list:
+    def create_contract(spec):
+        key, contract_type, address, abi_key, properties = spec
+        return contracts_module.__dict__[contract_type](key=key, address=address, abi_key=abi_key, **properties)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(create_contract, spec) for spec in specs]
+        return [future.result() for future in as_completed(futures)]
+
+
 def load_contracts(env: Environment, chain: str) -> list[ContractConfig]:
     config_file = Path.cwd() / "configs" / env.name / chain / "p2p-erc20.json"
     with config_file.open(encoding="utf8") as f:
         config = json.load(f)
 
-    return [
-        contracts_module.__dict__[c["contract"]](
-            key=f"{scope}.{name}", address=c.get("address"), abi_key=c.get("abi_key"), **c.get("properties", {})
-        )
+    contract_specs = [
+        (f"{scope}.{name}", c["contract"], c.get("address"), c.get("abi_key"), c.get("properties", {}))
         for scope in ["common", "p2p", "proxies"]
         for name, c in config[scope].items()
     ]
+
+    return _parallel_create(contract_specs)
 
 
 def store_contracts(env: Environment, chain: str, contracts: list[ContractConfig]):
@@ -73,12 +84,11 @@ def load_tokens(env: Environment, chain: str) -> list[ContractConfig]:
     with config_file.open(encoding="utf8") as f:
         config = json.load(f)
 
-    return [
-        contracts_module.__dict__[c.get("contract_def", "ERC20External")](
-            key=f"common.{name}", address=c.get("address"), abi_key=c.get("abi_key")
-        )
+    token_specs = [
+        (f"common.{name}", c.get("contract_def", "ERC20External"), c.get("address"), c.get("abi_key"), {})
         for name, c in config.items()
     ]
+    return _parallel_create(token_specs)
 
 
 def load_configs(env: Environment, chain: str) -> dict:
