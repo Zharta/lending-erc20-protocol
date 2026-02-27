@@ -283,7 +283,7 @@ def test_liquidate_loan_non_redeemed_by_lender(p2p_usdc_weth, ongoing_loan_usdc_
     - Lender receives collateral directly (different code path)
     - Lender needs to approve protocol fee transfer
     - With very low oracle rate, this is a shortfall case
-    - Lender receives remaining_collateral (collateral - liquidation_fee_collateral)
+    - Lender receives full collateral
     """
     loan = ongoing_loan_usdc_weth
     liquidation_time = loan.maturity + 1
@@ -300,9 +300,9 @@ def test_liquidate_loan_non_redeemed_by_lender(p2p_usdc_weth, ongoing_loan_usdc_
     lender_weth_before = weth.balanceOf(loan.lender)
     p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.lender)
 
-    event = get_last_event(p2p_usdc_weth, "LoanLiquidated")
-    # Verify lender received remaining_collateral (collateral after liquidation_fee deducted)
-    assert weth.balanceOf(loan.lender) == lender_weth_before + event.remaining_collateral
+    assert weth.balanceOf(loan.lender) == lender_weth_before + loan.collateral_amount
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+    assert weth.balanceOf(vault_addr) == 0
 
 
 def test_liquidate_loan_deletes_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
@@ -364,9 +364,8 @@ def test_liquidate_loan_non_redeemed_transfers_collateral_to_lender_liquidator(
 def test_liquidate_loan_with_shortfall_by_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower):
     """
     For non-redeemed loans with shortfall (low oracle rate) liquidated by lender:
-    - Lender receives remaining_collateral (collateral - liquidation_fee_collateral)
+    - Lender receives remaining collateral
     - Borrower receives nothing (no surplus in shortfall case)
-    - liquidation_fee_collateral remains in vault (contract behavior)
     """
     loan = ongoing_loan_usdc_weth
     liquidation_time = loan.maturity + 1
@@ -387,14 +386,10 @@ def test_liquidate_loan_with_shortfall_by_lender(p2p_usdc_weth, ongoing_loan_usd
     # Lender liquidates to recover what they can
     p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.lender)
 
-    event = get_last_event(p2p_usdc_weth, "LoanLiquidated")
-
     # In shortfall case, lender gets remaining_collateral
-    # remaining_collateral = in_vault_collateral - liquidation_fee_collateral
-    assert weth.balanceOf(loan.lender) == lender_weth_balance_before + event.remaining_collateral
+    assert weth.balanceOf(loan.lender) == lender_weth_balance_before + loan.collateral_amount
     assert weth.balanceOf(borrower) == borrower_weth_balance_before
-    # liquidation_fee stays in vault (contract behavior)
-    assert weth.balanceOf(vault_addr) == event.liquidation_fee
+    assert weth.balanceOf(vault_addr) == 0
 
 
 def test_liquidate_loan_non_redeemed_lender_receives_payment(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
@@ -427,6 +422,10 @@ def test_liquidate_loan_non_redeemed_lender_receives_payment(p2p_usdc_weth, ongo
     # Lender received payment (minus protocol fee)
     protocol_fee = loan.protocol_settlement_fee * loan.get_interest(loan.maturity) // BPS
     assert usdc.balanceOf(loan.lender) >= lender_usdc_balance_before
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
+    assert usdc.balanceOf(vault_addr) == 0
+    assert weth.balanceOf(vault_addr) == 0
 
 
 def test_liquidate_loan_with_shortfall_lender_receives_partial_payment(
@@ -471,6 +470,10 @@ def test_liquidate_loan_with_shortfall_lender_receives_partial_payment(
 
     # Lender receives collateral value (partial debt recovery)
     assert usdc.balanceOf(loan.lender) >= lender_usdc_balance_before
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
+    assert weth.balanceOf(vault_addr) == 0
+    assert usdc.balanceOf(vault_addr) == 0
 
 
 def test_liquidate_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
@@ -713,6 +716,10 @@ def test_liquidate_redeemed_loan_with_surplus_pays_all_parties(
     assert usdc.balanceOf(liquidator) == liquidator_balance_before + liquidation_fee
     assert usdc.balanceOf(borrower) == borrower_balance_before + borrower_surplus
 
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(redeemed_loan.borrower, redeemed_loan.vault_id)
+    assert usdc.balanceOf(vault_addr) == 0
+    assert weth.balanceOf(vault_addr) == 0
+
 
 def test_liquidate_redeemed_loan_with_collateral_and_payment(
     p2p_usdc_weth,
@@ -759,6 +766,7 @@ def test_liquidate_redeemed_loan_with_collateral_and_payment(
     # Verify liquidator received collateral
     assert weth.balanceOf(liquidator) > liquidator_collateral_before
     assert weth.balanceOf(vault_addr) == 0
+    assert usdc.balanceOf(vault_addr) == 0
 
 
 def test_liquidate_redeemed_loan_logs_event_with_correct_values(
@@ -884,6 +892,10 @@ def test_liquidate_redeemed_loan_with_shortfall(
     lender_balance_after = usdc.balanceOf(loan.lender)
     assert lender_balance_after >= lender_balance_before
 
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
+    assert usdc.balanceOf(vault_addr) == 0
+    assert weth.balanceOf(vault_addr) == 0
+
 
 def test_liquidate_redeemed_loan_by_lender(
     p2p_usdc_weth,
@@ -934,6 +946,10 @@ def test_liquidate_redeemed_loan_by_lender(
     assert usdc.balanceOf(redeemed_loan.lender) == lender_balance_before + outstanding_debt + liquidation_fee
     assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_balance_before
     assert usdc.balanceOf(borrower) == borrower_balance_before + borrower_surplus
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(redeemed_loan.borrower, redeemed_loan.vault_id)
+    assert usdc.balanceOf(vault_addr) == 0
+    assert weth.balanceOf(vault_addr) == 0
 
 
 def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
@@ -1030,6 +1046,10 @@ def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
     assert payment_received == expected_payment, (
         f"Lender should receive {expected_payment} payment tokens (redeemed from vault) but received {payment_received}"
     )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
+    assert usdc.balanceOf(vault_addr) == 0
+    assert weth.balanceOf(vault_addr) == 0
 
 
 @pytest.fixture

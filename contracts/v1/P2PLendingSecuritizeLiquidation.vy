@@ -242,31 +242,47 @@ def liquidate_loan(
     borrower_collateral_delta: uint256 = 0
 
     if in_vault_payment_token >= outstanding_debt:
-        # liquidation_fee_collateral == 0
+
+        # scenario: payment tokens fully cover the debt
+        # pre: liquidation_fee_collateral == 0 (fee was fully covered by payment tokens)
+        # pre: collateral_for_debt == 0 (no collateral needed for debt)
+        # pre: in_vault_payment_token >= outstanding_debt
+
         lender_funds_delta = outstanding_debt - protocol_settlement_fee_amount
         liquidator_funds_delta = convert(liquidation_fee, int256)
         borrower_funds_delta = in_vault_payment_token - outstanding_debt
-        liquidator_collateral_delta = collateral_for_debt
-        borrower_collateral_delta = remaining_collateral - collateral_for_debt if remaining_collateral > collateral_for_debt else 0
+        # liquidator_collateral_delta = 0
+        borrower_collateral_delta = in_vault_collateral
 
         base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
 
     elif in_vault_payment_token + remaining_collateral_value >= outstanding_debt:
+
+        # scenario: payment tokens + collateral value cover the debt
+        # pre: in_vault_payment_token < outstanding_debt
+        # pre: in_vault_payment_token + remaining_collateral_value >= outstanding_debt
+        # pre: protocol_settlement_fee_amount <= current_interest < outstanding_debt
+
         lender_funds_delta = outstanding_debt - protocol_settlement_fee_amount
         liquidator_funds_delta = convert(liquidation_fee + in_vault_payment_token, int256) - convert(outstanding_debt, int256)
-        liquidator_collateral_delta = collateral_for_debt + liquidation_fee_collateral
-        borrower_collateral_delta = remaining_collateral - collateral_for_debt - liquidation_fee_collateral if remaining_collateral > collateral_for_debt + liquidation_fee_collateral else 0
         # borrower_funds_delta = 0
+        liquidator_collateral_delta = min(collateral_for_debt, remaining_collateral) + liquidation_fee_collateral
+        borrower_collateral_delta = in_vault_collateral - liquidator_collateral_delta if in_vault_collateral > liquidator_collateral_delta else 0
 
         if liquidator != loan.lender:
             base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
 
     else:
+
+        # scenario: shortfall — vault doesn't have enough to cover the debt
+        # pre: in_vault_payment_token + remaining_collateral_value < outstanding_debt
+        # pre: protocol_settlement_fee_amount <= remaining_collateral_value (from min())
+
         lender_funds_delta = remaining_collateral_value - protocol_settlement_fee_amount
         liquidator_funds_delta = convert(liquidation_fee + in_vault_payment_token, int256) - convert(remaining_collateral_value, int256)
-        liquidator_collateral_delta = remaining_collateral
-        # borrower_collateral_delta = 0
         # borrower_funds_delta = 0
+        liquidator_collateral_delta = in_vault_collateral
+        # borrower_collateral_delta = 0
 
         if liquidator != loan.lender:
             base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, remaining_collateral_value)
