@@ -1124,6 +1124,102 @@ def test_liquidate_redeemed_loan_by_lender(
     assert usdc.balanceOf(borrower) == borrower_balance_before + borrower_surplus
 
 
+def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    owner_key,
+    borrower,
+    securitize_redemption_wallet,
+):
+    """
+    ZHAR3-6: Lenders are at risk of losing their funds if they liquidate their
+    loan which was previously redeemed.
+
+    Scenario:
+    - Borrower redeems 100% of collateral for 99% of the debt
+    - No residual collateral remains
+    - Lender calls liquidate_loan() as the liquidator
+    - Falls into the shortfall else branch because
+      in_vault_payment_token + remaining_collateral_value (0) < outstanding_debt
+
+    Bug: In the shortfall branch when liquidator == lender, the contract only
+    sends liquidation_fee to the lender. The in_vault_payment_token withdrawn
+    from the vault is never sent, causing the lender to lose those funds.
+
+    Expected: lender receives in_vault_payment_token + liquidation_fee
+    """
+    loan = ongoing_loan_usdc_weth
+
+    # Redeem with no residual collateral
+    p2p_usdc_weth.redeem(loan, 0, sender=loan.borrower)
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=0,
+    )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Payment from redemption: 99% of debt (creates shortfall)
+    outstanding_debt_at_maturity = loan.amount + loan.get_interest(loan.maturity)
+    payment_redeemed = outstanding_debt_at_maturity * 99 // 100
+
+    usdc.mint(vault_addr, payment_redeemed)
+
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,
+        payment_redeemed=payment_redeemed,
+        timestamp=redeem_time + 1,
+        redeem_wallet=securitize_redemption_wallet,
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    # lender is the liquidator
+    liquidator = redeemed_loan.lender
+
+    # Make loan defaulted
+    boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
+
+    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
+    liquidation_fee = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
+
+    # in_vault_payment_token after liquidation fee deduction
+    in_vault_payment_token = payment_redeemed - liquidation_fee
+
+    # Verify we're in the shortfall branch
+    assert in_vault_payment_token < outstanding_debt
+
+    # protocol_settlement_fee_amount = min(fee, remaining_collateral_value=0) = 0
+    protocol_settlement_fee_amount = 0
+
+    liquidator_collateral_before = weth.balanceOf(liquidator)
+    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=liquidator)
+    liquidator_payment_before = usdc.balanceOf(liquidator)
+
+    p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)
+
+    assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
+
+    collateral_received = weth.balanceOf(liquidator) - liquidator_collateral_before
+    payment_received = usdc.balanceOf(liquidator) - liquidator_payment_before
+
+    assert collateral_received == 0
+
+    # Lender should receive redeemed payment tokens + liquidation fee
+    expected_payment = in_vault_payment_token + liquidation_fee - protocol_settlement_fee_amount
+    assert expected_payment > 0
+    assert payment_received == expected_payment, (
+        f"Lender should receive {expected_payment} payment tokens (redeemed from vault) but received {payment_received}"
+    )
+
+
 @pytest.fixture
 def redeemed_loan_zhar3_2(
     p2p_usdc_weth,
