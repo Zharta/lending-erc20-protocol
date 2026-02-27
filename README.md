@@ -51,6 +51,9 @@ The protocol consists of the following core contracts:
 - `P2PLendingVaultSecuritize.vy`: A vault implementation with SecuritizeSwap integration, enabling the purchase of DS tokens from stablecoins.
 - `KYCValidator.vy`: (Same as other versions) A contract responsible for validating signed KYC attestations.
 
+### Auxiliary Contracts
+- `SecuritizeRegistrarV1Connector.vy`: A bridge contract that connects P2P lending vaults to the Securitize Vault Registrar. It supports both single-vault architectures (vaulted, via `register_vault`) and multi-vault architectures (securitize, via `register_vault_with_id`). The contract maintains an allowlist of authorized P2P lending contracts and can only be managed by the owner. Borrowers call the connector to register their vaults with the external registrar.
+
 ## General considerations
 
 The current status of the protocol follows certain assumptions:
@@ -572,6 +575,7 @@ For deployments in private and test networks, mock implementations of external d
 *   `MockAggregatorV3.vy`: For the Chainlink Price Feed oracle.
 *   `MockKYCValidator.vy`: For the KYC validation contract.
 *   `MockVault.vy`: For the `P2PLendingVault` in vaulted version testing.
+*   `VaultRegistrarMock.vy`: A mock implementation of the Securitize Vault Registrar interface. Provides `registerVault` and `isRegistered` functions.
 
 ### Run the project
 

@@ -18,7 +18,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 24325853
+        blkid = 24541820
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 
@@ -223,6 +223,11 @@ def sc_wallet_contract_def(boa_env):
 @pytest.fixture(scope="session")
 def securitize_proxy_contract_def():
     return boa.load_partial("contracts/SecuritizeProxy.vy")
+
+
+@pytest.fixture(scope="session")
+def registrar_connector_def():
+    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
 
 
 @pytest.fixture

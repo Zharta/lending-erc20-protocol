@@ -89,7 +89,7 @@ def ongoing_loan_usdc_weth(
 ):
     offer = offer_usdc_weth.offer
     principal = offer.principal
-    collateral_amount = int(1e18)
+    collateral_amount = int(2e18)
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)

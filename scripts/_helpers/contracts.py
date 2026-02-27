@@ -702,6 +702,72 @@ class RefinanceSecuritizeImpl(ContractConfig):
 
 
 @dataclass
+class VaultRegistrarMock(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        token_key: str,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.VaultRegistrarMock,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={token_key},
+            deployment_args=[token_key],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class SecuritizeRegistrarV1Connector(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        vault_registrar_key: str,
+        authorized_contracts_key: str,
+        address: str | None = None,
+    ):
+        self._vault_registrar_key = vault_registrar_key
+        self._authorized_contracts_key = authorized_contracts_key
+        super().__init__(
+            key,
+            None,
+            project.SecuritizeRegistrarV1Connector,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={vault_registrar_key},
+            deployment_args=[vault_registrar_key],
+        )
+        if address:
+            self.load_contract(address)
+
+    def deployment_args_values(self, context):
+        registrar = context[self._vault_registrar_key]
+        registrar_addr = registrar.contract if isinstance(registrar, ContractConfig) else registrar
+        authorized_config = context[self._authorized_contracts_key]
+        addresses = []
+        for key, enabled in authorized_config.items():
+            if enabled:
+                resolved_key = key if key in context else f"p2p.{key}"
+                contract = context[resolved_key]
+                addr = contract.contract if isinstance(contract, ContractConfig) else contract
+                addresses.append(addr)
+        return [registrar_addr, addresses]
+
+
+@dataclass
 class VaultSecuritizeImpl(ContractConfig):
     def __init__(
         self,
