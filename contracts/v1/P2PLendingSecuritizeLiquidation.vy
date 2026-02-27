@@ -170,18 +170,29 @@ def liquidate_loan(
     in_vault_collateral: uint256 = loan.collateral_amount
     in_vault_payment_token: uint256 = 0
 
+    _vault: vault.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
     is_loan_redeemed: bool = base._is_loan_redeemed(loan)
+    if is_loan_redeemed:
+        assert base._is_loan_redeem_concluded(loan, _vault, redeem_result), "redeem not concluded"
+        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(loan, _vault, payment_token, redeem_result.result)
 
     if not base._is_loan_defaulted(loan):
-
+        assert loan.liquidation_ltv > 0, "not defaulted, partial disabled"
         current_interest = base._compute_settlement_interest(loan)
         convertion_rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
-        current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate, payment_token_decimals, collateral_token_decimals)
 
-        assert loan.liquidation_ltv > 0, "not defaulted, partial disabled"
-        assert current_ltv >= loan.liquidation_ltv, "not defaulted, ltv lt partial"
-
-        if not is_loan_redeemed:
+        if is_loan_redeemed:
+            current_ltv: uint256 = base._compute_ltv(
+                in_vault_collateral,
+                loan.amount + current_interest - in_vault_payment_token if in_vault_payment_token < loan.amount + current_interest else 0,
+                convertion_rate,
+                payment_token_decimals,
+                collateral_token_decimals
+            ) if in_vault_collateral > 0 else 0
+            assert current_ltv >= loan.liquidation_ltv, "not defaulted, ltv lt partial"
+        else:
+            current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate, payment_token_decimals, collateral_token_decimals)
+            assert current_ltv >= loan.liquidation_ltv, "not defaulted, ltv lt partial"
             principal_written_off: uint256 = 0
             collateral_claimed: uint256 = 0
             liquidation_fee: uint256 = 0
@@ -200,10 +211,6 @@ def liquidate_loan(
     else:
         current_interest = self._compute_liquidation_interest(loan)
 
-    _vault: vault.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
-    if is_loan_redeemed:
-        assert base._is_loan_redeem_concluded(loan, _vault, redeem_result), "redeem not concluded"
-        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(loan, _vault, payment_token, redeem_result.result)
 
     outstanding_debt: uint256 = loan.amount + current_interest
     rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
