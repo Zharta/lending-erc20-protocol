@@ -218,6 +218,12 @@ def liquidate_loan(
         liquidation_fee = in_vault_payment_token
         in_vault_payment_token = 0
 
+    # after this the liquidation fee is fully set:
+    # - if the loan is unredeemed, liquidation_fee == 0, liquidation_fee_collateral contains all the fee, in_vault_payment_token == 0
+    # - if the loan is redeemed and in_vault_payment_token covers the liquidation fee, liquidation_fee_collateral == 0, liquidation_fee contains all the fee and  in_vault_payment_token is reduced by the fee
+    # - otherwise, the fee is split between payment token and collateral token, with in_vault_payment_token == 0
+    # in all cases, the liquidation_fee is payable with the tokens in the vault and the liquidation_fee_collateral is payable with the collateral in the vault
+
     collateral_for_debt: uint256 = (outstanding_debt - in_vault_payment_token) * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals) if in_vault_payment_token < outstanding_debt else 0
     remaining_collateral: uint256 = in_vault_collateral - liquidation_fee_collateral
     remaining_collateral_value: uint256 = remaining_collateral * rate.numerator * payment_token_decimals // (rate.denominator * collateral_token_decimals)
