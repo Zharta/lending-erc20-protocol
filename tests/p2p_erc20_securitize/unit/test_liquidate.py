@@ -885,6 +885,72 @@ def test_liquidate_redeemed_loan_with_shortfall(
     assert lender_balance_after >= lender_balance_before
 
 
+def test_liquidate_redeemed_loan_not_defaulted_uses_adjusted_ltv(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    owner_key,
+    borrower,
+    securitize_redemption_wallet,
+):
+    """
+    Scenario:
+    - Loan: 1 WETH collateral (~3877 USDC value), 1000 USDC principal
+    - Redemption: 75% collateral redeemed, 25% residual (0.25 WETH, ~969 USDC value)
+    - Payment from redemption: 10 USDC (tiny)
+    - Original LTV: 1000 / 3877 ~ 26% < 60% threshold → rejected
+    - Adjusted LTV: (1000 - 10) / 969 ~ 102% > 60% threshold → allowed
+    """
+    loan = ongoing_loan_usdc_weth
+    residual_collateral = loan.collateral_amount // 4  # Keep 25%
+
+    # Redeem the loan
+    p2p_usdc_weth.redeem(loan, residual_collateral, sender=loan.borrower)
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=residual_collateral,
+    )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Small payment from redemption (10 USDC vs ~1000 USDC debt)
+    payment_redeemed = 10 * 10**6
+    usdc.mint(vault_addr, payment_redeemed)
+
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,
+        payment_redeemed=payment_redeemed,
+        timestamp=redeem_time + 1,
+        redeem_wallet=securitize_redemption_wallet,
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    # Verify loan hash matches
+    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
+
+    # Loan is NOT defaulted (before maturity).
+    # With the fix, the non-defaulted path uses remaining collateral and net debt for LTV:
+    #   LTV = (debt - payment) / remaining_collateral_value ~ 102% > 60% → passes
+    # Before the fix, it used original values:
+    #   LTV = debt / original_collateral_value ~ 26% < 60% → reverted "not defaulted, ltv lt partial"
+
+    # Lender as liquidator (simplest path for shortfall case)
+    protocol_fee = loan.protocol_settlement_fee * loan.get_interest(boa.env.evm.patch.timestamp) // BPS
+    usdc.approve(p2p_usdc_weth.address, protocol_fee, sender=loan.lender)
+
+    p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=loan.lender)
+
+    # Verify liquidation succeeded (loan state deleted)
+    assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
+
+
 def test_liquidate_redeemed_loan_by_lender(
     p2p_usdc_weth,
     redeemed_loan_with_payment,
