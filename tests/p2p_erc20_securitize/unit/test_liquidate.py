@@ -1122,3 +1122,94 @@ def test_liquidate_redeemed_loan_by_lender(
     assert usdc.balanceOf(redeemed_loan.lender) == lender_balance_before + outstanding_debt + liquidation_fee
     assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_balance_before
     assert usdc.balanceOf(borrower) == borrower_balance_before + borrower_surplus
+
+
+@pytest.fixture
+def redeemed_loan_zhar3_2(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    borrower,
+    now,
+    owner_key,
+    securitize_redemption_wallet,
+):
+    """
+    ZHAR3-2 PoC: Redeemed loan with 101% of debt as payment and 50% residual collateral.
+    This triggers an underflow in liquidate_loan when a third-party liquidator tries to liquidate.
+    """
+    loan = ongoing_loan_usdc_weth
+    residual_collateral = loan.collateral_amount // 2  # Keep 50% as collateral
+
+    # Redeem the loan with residual collateral
+    p2p_usdc_weth.redeem(loan, residual_collateral, sender=loan.borrower)
+
+    # Update loan state to reflect redemption
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=now,
+        redeem_residual_collateral=residual_collateral,
+    )
+
+    # Get the vault address for this loan
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Partial payment from redemption: 101% of debt
+    outstanding_debt_at_maturity = loan.amount + loan.get_interest(loan.maturity)
+    payment_redeemed = outstanding_debt_at_maturity * 101 // 100  # 101% of debt
+
+    # Mint payment tokens to vault
+    usdc.mint(vault_addr, payment_redeemed)
+
+    # Create redeem result
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,  # collateral_redeemed is from redemption, not residual
+        payment_redeemed=payment_redeemed,
+        timestamp=now + 1,
+        redeem_wallet=securitize_redemption_wallet,
+    )
+
+    return redeemed_loan, redeem_result, payment_redeemed, residual_collateral
+
+
+def test_liquidate_redeemed_loan_zhar3_2_underflow(
+    p2p_usdc_weth,
+    redeemed_loan_zhar3_2,
+    usdc,
+    weth,
+    oracle,
+    now,
+    owner_key,
+    borrower,
+):
+    """
+    ZHAR3-2: Loan liquidation underflow could lead to frozen assets.
+
+    When a redeemed loan has payment tokens covering 101% of the debt and a 3% liquidation fee,
+    the _receive_funds call in the elif branch computes:
+      outstanding_debt - in_vault_payment_token - liquidation_fee
+    where in_vault_payment_token = payment_redeemed - liquidation_fee = 98% of debt
+    and liquidation_fee = 3% of debt, causing:
+      100% - 98% - 3% = -1% -> underflow/revert
+
+    This makes the loan permanently unliquidatable by third-party liquidators.
+    """
+    redeemed_loan, redeem_result, payment_redeemed, residual_collateral = redeemed_loan_zhar3_2
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    liquidator = boa.env.generate_address("liquidator")
+
+    # Make loan defaulted
+    boa.env.time_travel(seconds=redeemed_loan.maturity - now + 1)
+
+    # Calculate expected values
+    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
+
+    # Fund liquidator with enough to cover the debt
+    usdc.mint(liquidator, outstanding_debt)
+    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=liquidator)
+
+    # This call should succeed but will revert due to underflow if ZHAR3-2 is present
+    p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)

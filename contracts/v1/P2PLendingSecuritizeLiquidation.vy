@@ -253,9 +253,11 @@ def liquidate_loan(
         base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
 
     elif in_vault_payment_token + remaining_collateral_value >= outstanding_debt:
-    # if remaining_collateral_value >= outstanding_debt:
         if liquidator != loan.lender:
-            base._receive_funds(liquidator, outstanding_debt - in_vault_payment_token - liquidation_fee, payment_token)
+            if in_vault_payment_token + liquidation_fee < outstanding_debt:
+                base._receive_funds(liquidator, outstanding_debt - in_vault_payment_token - liquidation_fee, payment_token)
+            else:
+                base._send_funds(liquidator, liquidation_fee + in_vault_payment_token - outstanding_debt, payment_token)
             base._send_funds(loan.lender, outstanding_debt - protocol_settlement_fee_amount, payment_token)
             base._send_funds(base.protocol_wallet, protocol_settlement_fee_amount, payment_token)
             base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
