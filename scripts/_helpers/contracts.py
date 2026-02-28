@@ -2,8 +2,11 @@ import json
 from dataclasses import dataclass
 
 from ape import project
+from rich import print
+from rich.markup import escape
 
 from .basetypes import ContractConfig, DeploymentContext, abi_key
+from .transactions import execute, execute_read
 
 ZERO_ADDRESS = "0x" + "00" * 20
 ZERO_BYTES32 = "0x" + "00" * 32
@@ -543,9 +546,14 @@ class SecuritizeLoop(ContractConfig):
             token=False,
             deployment_deps={p2p_contract_key, balancer_key},
             deployment_args=[p2p_contract_key, balancer_key],
+            config_deps={key: self.set_proxy_auth},
         )
+        self.p2p_contract_key = p2p_contract_key
         if address:
             self.load_contract(address)
+
+    def set_proxy_auth(self, context: DeploymentContext):
+        execute(context, self.p2p_contract_key, "set_proxy_authorization", self.key, True)  # noqa: FBT003
 
 
 @dataclass
@@ -749,7 +757,10 @@ class SecuritizeRegistrarV1Connector(ContractConfig):
             token=False,
             deployment_deps={vault_registrar_key},
             deployment_args=[vault_registrar_key],
+            config_deps={authorized_contracts_key: self.set_authorized_contracts},
         )
+        self.vault_registrar_key = vault_registrar_key
+        self.authorized_contracts_key = authorized_contracts_key
         if address:
             self.load_contract(address)
 
@@ -760,11 +771,40 @@ class SecuritizeRegistrarV1Connector(ContractConfig):
         addresses = []
         for key, enabled in authorized_config.items():
             if enabled:
-                resolved_key = key if key in context else f"p2p.{key}"
-                contract = context[resolved_key]
+                contract = context[key]
                 addr = contract.contract if isinstance(contract, ContractConfig) else contract
                 addresses.append(addr)
         return [registrar_addr, addresses]
+
+    def deployment_args_repr(self, context: DeploymentContext):
+        authorized_config = context[self._authorized_contracts_key]
+        keys = []
+        for key, enabled in authorized_config.items():
+            if enabled:
+                keys.append(key)
+        addresses = [f"[blue]{escape(c)}[/blue]" if c in context else c for c in keys]
+        return [f"[blue]{escape(self.vault_registrar_key)}[/blue]", addresses]
+
+    def set_authorized_contracts(self, context: DeploymentContext):
+        authorized_contracts = context[self.authorized_contracts_key]
+        contracts_to_update = [
+            (context[contract_key].address() if contract_key in context else contract_key, authorized)
+            for contract_key, authorized in authorized_contracts.items()
+            if (context.dryrun and not self.address()) or self.auth_needs_update(context, contract_key, authorized)
+        ]
+        if contracts_to_update:
+            execute(context, self.key, "change_authorized_contracts", contracts_to_update)
+        else:
+            print(f"Contract [blue]{escape(self.key)}[/] change_authorized_contracts with no changes, skipping update")
+
+    def auth_needs_update(self, context: DeploymentContext, contract: str, authorized: bool) -> bool:  # noqa: FBT001
+        currently_authorized = execute_read(context, self.key, "authorized_contracts", contract)
+        if currently_authorized == authorized:
+            print(
+                f"Contract [blue]{escape(self.key)}[/] authorized_contracts for {contract} is already {authorized}, skipping update"
+            )  # noqa: E501
+            return False
+        return True
 
 
 @dataclass
