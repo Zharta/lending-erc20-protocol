@@ -200,7 +200,7 @@ def buy(payment_token: address, min_ds_token_amount: uint256, stable_coin_amount
     assert ds_token_amount.ds_token_amount >= min_ds_token_amount, "ds token amount lt min"
 
     initial_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
-    extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount)
+    assert extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount), "transferFrom failed"
     extcall IERC20(payment_token).approve(securitize_swap_contract, stable_coin_amount)
     extcall SecuritizeSwap(securitize_swap_contract).swap(stable_coin_amount, min_ds_token_amount)
 
