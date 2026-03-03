@@ -328,6 +328,96 @@ def simulate_partial_liquidation(
         debt_written_off=debt_written_off,
         updated_ltv=base._compute_ltv(loan.collateral_amount - collateral_claimed - liquidation_fee, loan.amount + current_interest - debt_written_off, convertion_rate, payment_token_decimals, collateral_token_decimals)
     )
+
+
+
+@external
+def transfer_loan(
+    loan: base.Loan,
+    new_borrower: address,
+    new_borrower_kyc: base.SignedWalletValidation,
+    redeem_result: base.SignedRedeemResult,
+
+    payment_token: address,
+    collateral_token: address,
+    oracle_addr: address,
+    oracle_reverse: bool,
+    kyc_validator_addr: address,
+    collateral_token_decimals: uint256,
+    payment_token_decimals: uint256,
+    offer_sig_domain_separator: bytes32,
+    vault_impl_addr: address,
+    vault_registrar: address,
+):
+
+    assert base._is_loan_valid(loan), "invalid loan"
+    assert base._check_user(base.transfer_agent), "not transfer agent"
+
+    is_loan_redeemed: bool = base._is_loan_redeemed(loan)
+    current_vault: vault.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
+
+    if is_loan_redeemed:
+        assert base._is_loan_redeem_concluded(loan, current_vault, redeem_result), "redeem not concluded"
+
+    assert staticcall base.KYCValidator(kyc_validator_addr).check_validation(new_borrower_kyc), "KYC validation fail"
+    assert new_borrower_kyc.validation.wallet == new_borrower, "KYC validation fail"
+
+    updated_loan: base.Loan = base.Loan(
+        id=empty(bytes32),
+        offer_id=loan.offer_id,
+        offer_tracing_id=loan.offer_tracing_id,
+        initial_amount=loan.initial_amount,
+        amount=loan.amount,
+        apr=loan.apr,
+        payment_token=loan.payment_token,
+        maturity=loan.maturity,
+        start_time=loan.start_time,
+        accrual_start_time=loan.accrual_start_time,
+        borrower=new_borrower,
+        lender=loan.lender,
+        collateral_token=loan.collateral_token,
+        collateral_amount=loan.collateral_amount,
+        min_collateral_amount=loan.min_collateral_amount,
+        origination_fee_amount=loan.origination_fee_amount,
+        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
+        protocol_settlement_fee=loan.protocol_settlement_fee,
+        partial_liquidation_fee=loan.partial_liquidation_fee,
+        full_liquidation_fee=loan.full_liquidation_fee,
+        call_eligibility=loan.call_eligibility,
+        call_window=loan.call_window,
+        liquidation_ltv= loan.liquidation_ltv,
+        oracle_addr=loan.oracle_addr,
+        initial_ltv= loan.initial_ltv,
+        call_time=loan.call_time,
+        vault_id=base.vault_count[new_borrower],
+        redeem_start=loan.redeem_start,
+        redeem_residual_collateral=loan.redeem_residual_collateral,
+    )
+    updated_loan.id = base._compute_loan_id(updated_loan)
+    base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)
+    base.loans[loan.id] = empty(bytes32)
+
+    new_vault: vault.Vault = base._create_vault_if_needed(new_borrower, vault_impl_addr, collateral_token, vault_registrar)
+    base._send_collateral(
+        new_vault.address,
+        staticcall current_vault.withdrawable_balance(),
+        current_vault
+    )
+    extcall current_vault.transfer_funds(
+        loan.payment_token,
+        staticcall IERC20(loan.payment_token).balanceOf(current_vault.address),
+        new_vault.address
+    )
+
+    log main.LoanBorrowerTransferred(
+        loan_id=loan.id,
+        new_loan_id=updated_loan.id,
+        old_borrower=loan.borrower,
+        new_borrower=new_borrower,
+        lender=loan.lender,
+        vault_id=updated_loan.vault_id
+    )
+
 # Internal functions
 
 

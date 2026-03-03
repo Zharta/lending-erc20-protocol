@@ -237,6 +237,14 @@ def p2p_lending_securitize_erc20_contract_def(boa_env):
                 borrower=empty(address),
                 caller=empty(address)
             )
+            log LoanBorrowerTransferred(
+                loan_id=empty(bytes32),
+                new_loan_id=empty(bytes32),
+                old_borrower=empty(address),
+                new_borrower=empty(address),
+                lender=empty(address),
+                vault_id=0
+            )
 
     """)
     return boa.loads_partial(contents, name="P2PLendingSecuritizeErc20")

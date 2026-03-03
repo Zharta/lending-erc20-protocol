@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from textwrap import dedent
 
 import boa
@@ -167,7 +168,22 @@ def oracle_usdc_eth(oracle_contract_def, owner):
 
 @pytest.fixture(scope="session")
 def p2p_lending_securitize_erc20_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingSecuritizeErc20.vy")
+    # workaround: boa doesnt catch 'unused' events and fails, so we inject a dummy function that logs them
+    contents = Path("contracts/v1/P2PLendingSecuritizeErc20.vy").read_text(encoding="utf-8")
+    contents += dedent("""
+        @external
+        def log_stuff():
+            log LoanBorrowerTransferred(
+                loan_id=empty(bytes32),
+                new_loan_id=empty(bytes32),
+                old_borrower=empty(address),
+                new_borrower=empty(address),
+                lender=empty(address),
+                vault_id=0
+            )
+
+    """)
+    return boa.loads_partial(contents, name="P2PLendingSecuritizeErc20")
 
 
 @pytest.fixture(scope="session")
