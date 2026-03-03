@@ -456,7 +456,7 @@ def connector_def(boa_env):
 
 @pytest.fixture(scope="session")
 def connector(connector_def, vault_registrar, p2p_vaulted, p2p_securitize, owner):
-    return connector_def.deploy(
-        vault_registrar.address,
-        [p2p_vaulted.address, p2p_securitize.address],
-    )
+    c = connector_def.deploy(vault_registrar.address)
+    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
+    c.change_authorized_contract(p2p_securitize.address, True, sender=owner)
+    return c

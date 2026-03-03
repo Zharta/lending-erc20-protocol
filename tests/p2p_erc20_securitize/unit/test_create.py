@@ -54,6 +54,11 @@ def kyc_lender_sc_wallet(lender_sc_wallet, kyc_for, kyc_validator_contract):
     return kyc_for(lender_sc_wallet.address, kyc_validator_contract.address)
 
 
+@pytest.fixture
+def registrar_connector_weth(registrar_connector_def, vault_registrar_weth, p2p_usdc_weth, owner):
+    return registrar_connector_def.deploy(vault_registrar_weth.address)
+
+
 def test_create_loan_reverts_if_offer_not_signed_by_lender(
     p2p_usdc_weth,
     borrower,
@@ -783,22 +788,18 @@ def test_create_loan_creates_vault_if_needed(
     assert boa.eval(f"{borrower_vault}.is_contract")
 
 
-def test_create_vault_if_needed_registers_vault_with_registrar(p2p_usdc_weth, borrower, owner, weth):
-    vault_registrar_mock = boa.load("contracts/auxiliary/VaultRegistrarMock.vy", weth.address)
-    registrar_connector = boa.load(
-        "contracts/SecuritizeRegistrarV1Connector.vy",
-        vault_registrar_mock.address,
-        [p2p_usdc_weth.address],
-    )
-    p2p_usdc_weth.change_vault_registrar(registrar_connector.address, sender=owner)
-
+def test_create_vault_if_needed_registers_vault_with_registrar(
+    p2p_usdc_weth, borrower, vault_registrar_weth, registrar_connector_weth, owner
+):
+    registrar_connector_weth.change_authorized_contract(p2p_usdc_weth.address, True, sender=owner)
+    p2p_usdc_weth.change_vault_registrar(registrar_connector_weth.address, sender=owner)
     borrower_vault = p2p_usdc_weth.wallet_to_vault(borrower)
     assert not boa.eval(f"{borrower_vault}.is_contract")
 
     p2p_usdc_weth.create_vault_if_needed(borrower)
 
     assert boa.eval(f"{borrower_vault}.is_contract")
-    assert vault_registrar_mock.isRegistered(borrower_vault, borrower)
+    assert vault_registrar_weth.isRegistered(borrower_vault, borrower)
 
 
 def test_create_loan_works_with_lender_sc_wallet(

@@ -313,6 +313,21 @@ def securitize_vault_contract_def():
     return boa.load_partial("contracts/v1/P2PLendingVaultSecuritize.vy")
 
 
+@pytest.fixture(scope="session")
+def vault_registrar_mock_contract_def(boa_env):
+    return boa.load_partial("contracts/auxiliary/VaultRegistrarMock.vy")
+
+
+@pytest.fixture
+def vault_registrar_weth(vault_registrar_mock_contract_def, weth):
+    return vault_registrar_mock_contract_def.deploy(weth.address)
+
+
+@pytest.fixture(scope="session")
+def registrar_connector_def(boa_env):
+    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
+
+
 @pytest.fixture
 def securitize_vault_impl(securitize_vault_contract_def):
     return securitize_vault_contract_def.deploy()

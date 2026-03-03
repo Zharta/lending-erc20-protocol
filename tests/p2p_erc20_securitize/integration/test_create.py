@@ -127,3 +127,43 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
 
     liquidity_key = compute_liquidity_key(offer.lender, offer.tracing_id)
     assert p2p_usdc_weth.commited_liquidity(liquidity_key) == principal
+
+
+def test_create_loan_registers_vault_with_registrar(
+    p2p_usdc_weth,
+    borrower,
+    now,
+    lender,
+    lender_key,
+    kyc_borrower,
+    kyc_lender,
+    weth,
+    usdc,
+    oracle_usdc_eth,
+    vault_registrar_mock,
+    registrar_connector,
+):
+    vault_id = p2p_usdc_weth.vault_count(borrower)
+
+    principal = 1000 * int(1e9)
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, vault_id)
+    assert vault_registrar_mock.isRegistered(vault_addr, borrower) is True

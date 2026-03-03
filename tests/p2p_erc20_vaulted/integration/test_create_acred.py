@@ -118,7 +118,8 @@ def registrar_connector(
 ):
     TRUST_ROLE_TRANSFER_AGENT = 8
 
-    contract = registrar_connector_def.deploy(vault_registrar.address, [p2p_usdc_acred.address])
+    contract = registrar_connector_def.deploy(vault_registrar.address)
+    contract.change_authorized_contract(p2p_usdc_acred.address, True, sender=owner)
 
     vault_registrar.grantRole(vault_registrar.OPERATOR_ROLE(), contract.address, sender=vault_registrar_admin)
 

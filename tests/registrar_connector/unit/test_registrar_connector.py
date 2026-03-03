@@ -5,7 +5,7 @@ ZERO_ADDRESS = boa.eval("empty(address)")
 
 
 def test_init_version(connector):
-    assert connector.VERSION() == "SecRegV1Connector.20260127"
+    assert connector.VERSION() == "SecRegV1Connector.20260303"
 
 
 def test_init_owner(connector, owner):
@@ -22,32 +22,31 @@ def test_init_authorized_contracts(connector, p2p_vaulted, p2p_securitize):
 
 
 def test_init_empty_address_skipped(connector_def, vault_registrar, p2p_vaulted, owner):
-    c = connector_def.deploy(
-        vault_registrar.address,
-        [p2p_vaulted.address, ZERO_ADDRESS],
-    )
+    c = connector_def.deploy(vault_registrar.address)
+    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
     assert c.authorized_contracts(p2p_vaulted.address) is True
     assert c.authorized_contracts(ZERO_ADDRESS) is False
 
 
 def test_change_authorized_contracts_authorize(connector, owner):
     new_contract = boa.env.generate_address("new_contract")
-    connector.change_authorized_contracts(
-        [(new_contract, True)],
+    connector.change_authorized_contract(
+        new_contract,
+        True,
         sender=owner,
     )
     assert connector.authorized_contracts(new_contract) is True
 
 
 def test_change_authorized_contracts_deauthorize(connector_def, vault_registrar, p2p_vaulted, p2p_securitize, owner):
-    c = connector_def.deploy(
-        vault_registrar.address,
-        [p2p_vaulted.address, p2p_securitize.address],
-    )
+    c = connector_def.deploy(vault_registrar.address)
+    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
+    c.change_authorized_contract(p2p_securitize.address, True, sender=owner)
     assert c.authorized_contracts(p2p_vaulted.address) is True
 
-    c.change_authorized_contracts(
-        [(p2p_vaulted.address, False)],
+    c.change_authorized_contract(
+        p2p_vaulted.address,
+        False,
         sender=owner,
     )
     assert c.authorized_contracts(p2p_vaulted.address) is False
@@ -55,21 +54,24 @@ def test_change_authorized_contracts_deauthorize(connector_def, vault_registrar,
 
 
 def test_change_authorized_contracts_event(connector_def, vault_registrar, p2p_vaulted, owner):
-    c = connector_def.deploy(vault_registrar.address, [])
-    c.change_authorized_contracts(
-        [(p2p_vaulted.address, True)],
+    c = connector_def.deploy(vault_registrar.address)
+    c.change_authorized_contract(
+        p2p_vaulted.address,
+        True,
         sender=owner,
     )
     events = c.get_logs()
     assert len(events) == 1
     event = events[0]
-    assert event.contracts == [(p2p_vaulted.address, True)]
+    assert event.contract_address == p2p_vaulted.address
+    assert event.authorized is True
 
 
 def test_change_authorized_contracts_not_owner(connector, other):
     with boa.reverts("not owner"):
-        connector.change_authorized_contracts(
-            [(other, True)],
+        connector.change_authorized_contract(
+            other,
+            True,
             sender=other,
         )
 

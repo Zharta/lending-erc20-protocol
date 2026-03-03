@@ -134,7 +134,6 @@
             "address": "0x8dE074F445Da4b7960a52E7D10c4832e3060aC44",
             "contract": "SecuritizeRegistrarV1Connector",
             "properties": {
-                "authorized_contracts_key": "configs.registrar_authorized_contracts",
                 "vault_registrar_key": "common.acred_vault_registrar"
             },
             "properties_addresses": {
@@ -157,11 +156,6 @@
         }
     },
     "configs": {
-        "registrar_authorized_contracts": {
-            "p2p.usdc_acred": false,
-            "usdc_acred_securitize": true,
-            "usdc_acred_vaulted": true
-        }
     },
     "p2p": {
         "usdc_acred": {
@@ -215,7 +209,8 @@
                 "refinance_impl_key": "common.refinance_securitize_impl",
                 "securitize_redemption_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
                 "transfer_agent": "0x66aB6D9362d4F35596279692F0251Db635165871",
-                "vault_impl_key": "common.vault_securitize_impl"
+                "vault_impl_key": "common.vault_securitize_impl",
+                "vault_registrar_connector_key": "common.securitize_registrar_connector"
             },
             "properties_addresses": {
                 "collateral_token": "0x19870195231b87dDA13cE62950c04b1B587DeaEd",
@@ -250,7 +245,8 @@
                 "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
                 "refinance_impl_key": "common.refinance_vaulted_impl",
                 "transfer_agent": "0x66aB6D9362d4F35596279692F0251Db635165871",
-                "vault_impl_key": "common.vault_impl"
+                "vault_impl_key": "common.vault_impl",
+                "vault_registrar_connector_key": "common.securitize_registrar_connector"
             },
             "properties_addresses": {
                 "collateral_token": "0x19870195231b87dDA13cE62950c04b1B587DeaEd",
