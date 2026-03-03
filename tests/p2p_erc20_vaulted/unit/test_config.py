@@ -28,6 +28,7 @@ def test_initial_state(
     assert p2p_usdc_weth.protocol_wallet() == owner
     assert p2p_usdc_weth.max_protocol_settlement_fee() == 10000
     assert p2p_usdc_weth.partial_liquidation_fee() == 0
+    assert p2p_usdc_weth.vault_registrar() == ZERO_ADDRESS
 
     assert kyc_validator_contract.owner() == owner
     assert kyc_validator_contract.validator() == kyc_validator
@@ -354,3 +355,27 @@ def test_set_transfer_agent_logs_event(p2p_usdc_weth, owner, transfer_agent):
     assert event.old_agent == old_agent
     assert event.new_agent == new_agent
     assert event.by == owner
+
+
+def test_change_vault_registrar_reverts_if_not_owner(p2p_usdc_weth):
+    random = boa.env.generate_address("random")
+    new_registrar = boa.env.generate_address("new_registrar")
+    with boa.reverts():
+        p2p_usdc_weth.change_vault_registrar(new_registrar, sender=random)
+
+
+def test_change_vault_registrar(p2p_usdc_weth, owner):
+    new_registrar = boa.env.generate_address("new_registrar")
+    p2p_usdc_weth.change_vault_registrar(new_registrar, sender=owner)
+    assert p2p_usdc_weth.vault_registrar() == new_registrar
+
+
+def test_change_vault_registrar_logs_event(p2p_usdc_weth, owner):
+    old_registrar = p2p_usdc_weth.vault_registrar()
+    new_registrar = boa.env.generate_address("new_registrar")
+
+    p2p_usdc_weth.change_vault_registrar(new_registrar, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "VaultRegistrarChanged")
+
+    assert event.old_registrar == old_registrar
+    assert event.new_registrar == new_registrar

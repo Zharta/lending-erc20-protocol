@@ -199,6 +199,10 @@ event SecuritizeRedemptionWalletChanged:
     old_wallet: address
     new_wallet: address
 
+event VaultRegistrarChanged:
+    old_registrar: address
+    new_registrar: address
+
 
 event ProtocolFeeSet:
     old_upfront_fee: uint256
@@ -286,7 +290,8 @@ def __init__(
     _liquidation_addr: address,
     _vault_impl_addr: address,
     _transfer_agent: address,
-    _securitize_redemption_wallet: address
+    _securitize_redemption_wallet: address,
+    _vault_registrar_addr: address
 ):
 
     """
@@ -307,6 +312,7 @@ def __init__(
     @param _vault_impl_addr The address of the vault implementation contract.
     @param _transfer_agent The wallet address for the transfer agent role.
     @param _securitize_redemption_wallet The wallet address for Securitize redemptions.
+    @param _vault_registrar_addr The address of the vault registrar connector contract.
     """
 
     base.__init__()
@@ -328,6 +334,7 @@ def __init__(
     base.protocol_wallet = _protocol_wallet
     base.transfer_agent = _transfer_agent
     base.securitize_redemption_wallet = _securitize_redemption_wallet
+    base.vault_registrar = _vault_registrar_addr
     base.partial_liquidation_fee = _partial_liquidation_fee
     base.full_liquidation_fee = _full_liquidation_fee
 
@@ -492,6 +499,19 @@ def set_securitize_redemption_wallet(_address: address):
     log SecuritizeRedemptionWalletChanged(old_wallet=base.securitize_redemption_wallet, new_wallet=_address)
     base.securitize_redemption_wallet = _address
 
+@external
+def change_vault_registrar(new_vault_registrar: address):
+
+    """
+    @notice Change the vault registrar
+    @dev Changes the vault registrar to the given address and logs the event. Admin function.
+    @param new_vault_registrar The new vault registrar.
+    """
+
+    assert msg.sender == base.owner
+    log VaultRegistrarChanged(old_registrar=base.vault_registrar, new_registrar=new_vault_registrar)
+    base.vault_registrar = new_vault_registrar
+
 
 # Core functions
 
@@ -580,7 +600,7 @@ def create_loan(
     base._check_and_update_offer_state(offer, principal)
     base.loans[loan.id] = base._loan_state_hash(loan)
 
-    _vault: vault.Vault = base._create_new_vault(loan.borrower, vault_impl_addr, collateral_token)
+    _vault: vault.Vault = base._create_new_vault(loan.borrower, vault_impl_addr, collateral_token, base.vault_registrar)
     base._receive_collateral(loan.borrower, loan.collateral_amount, _vault)
     self._transfer_funds(loan.lender, loan.borrower, loan.amount - loan.origination_fee_amount)
 
@@ -1141,7 +1161,7 @@ def create_vault_if_needed(wallet: address):
     @param wallet The wallet address
     """
 
-    base._create_vault_if_needed(wallet, vault_impl_addr, collateral_token)
+    base._create_vault_if_needed(wallet, vault_impl_addr, collateral_token, base.vault_registrar)
 
 
 @external

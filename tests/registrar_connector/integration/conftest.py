@@ -249,6 +249,7 @@ def p2p_vaulted(
         p2p_vaulted_liquidation.address,
         vault_impl.address,
         transfer_agent,
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
 
 
@@ -299,6 +300,7 @@ def p2p_securitize(
         securitize_vault_impl.address,
         transfer_agent,
         securitize_redemption_wallet,
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
 
 

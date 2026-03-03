@@ -341,6 +341,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         securitize_vault_impl.address,
         transfer_agent,
         securitize_redemption_wallet,
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
     principal = 1000 * 10**6
     offer = Offer(

@@ -858,6 +858,7 @@ def test_replace_loan_lender_creates_pending_transfer_on_erc20_transfer_fail(
         p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
     principal = 1000 * 10**6
     offer = Offer(

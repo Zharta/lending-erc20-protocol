@@ -93,6 +93,7 @@ def p2p_usdc_acred(
         securitize_vault_impl.address,
         transfer_agent,
         redemption_wallet,
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
 
 

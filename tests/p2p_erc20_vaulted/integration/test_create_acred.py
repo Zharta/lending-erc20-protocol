@@ -63,12 +63,6 @@ def securitize_trust_service(securitize_owner, now):
 
 
 @pytest.fixture
-def vault_registrar_access_control(vault_registrar_access_control_def):
-    contract_def = boa.loads_abi(json.dumps(OZ_ACCESS_CONTROL_ABI))
-    return vault_registrar_access_control_def.at("0x9fbF77D74337FefA7D8993f507A38EDB4df620E5")
-
-
-@pytest.fixture
 def p2p_usdc_acred(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
@@ -101,6 +95,7 @@ def p2p_usdc_acred(
         p2p_liquidation.address,  # liquidation_addr
         vault_impl.address,  # vault_impl_addr
         transfer_agent,  # transfer_agent
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
     securitize_trust_service.addOperator("p2p_usdc_acred", contract.address, sender=securitize_owner)
     return contract
@@ -133,6 +128,8 @@ def registrar_connector(
     # securitize_trust_service.addEntity("zharta_connector", securitize_owner, sender=securitize_owner)
     # securitize_trust_service.addResource("zharta_connector", vault_registrar.address, sender=securitize_owner)
     securitize_trust_service.setRole(vault_registrar.address, TRUST_ROLE_TRANSFER_AGENT, sender=securitize_owner)
+
+    p2p_usdc_acred.change_vault_registrar(contract.address, sender=owner)
     return contract
 
 
@@ -196,7 +193,6 @@ def test_create_loan(
     origination_fee = offer.origination_fee_bps * principal // BPS
     lender_balance_before = usdc.balanceOf(lender)
 
-    registrar_connector.register_vault(p2p_usdc_acred.address, sender=borrower)
     # Create loan
     loan_id = p2p_usdc_acred.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     event = get_last_event(p2p_usdc_acred, "LoanCreated")

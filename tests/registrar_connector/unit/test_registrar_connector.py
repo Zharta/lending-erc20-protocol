@@ -30,8 +30,8 @@ def test_init_empty_address_skipped(connector_def, vault_registrar, p2p_vaulted,
     assert c.authorized_contracts(ZERO_ADDRESS) is False
 
 
-def test_change_authorized_contracts_authorize(connector, owner, accounts):
-    new_contract = accounts[5]
+def test_change_authorized_contracts_authorize(connector, owner):
+    new_contract = boa.env.generate_address("new_contract")
     connector.change_authorized_contracts(
         [(new_contract, True)],
         sender=owner,
@@ -74,36 +74,29 @@ def test_change_authorized_contracts_not_owner(connector, other):
         )
 
 
-def test_register_vault(connector, p2p_vaulted, vault_registrar, accounts):
-    borrower = accounts[0]
+def test_register_vault(connector, p2p_vaulted, vault_registrar):
+    borrower = boa.env.generate_address("borrower")
     vault_addr = p2p_vaulted.wallet_to_vault(borrower)
 
-    connector.register_vault(p2p_vaulted.address, sender=borrower)
+    connector.register_vault(vault_addr, borrower, sender=p2p_vaulted.address)
 
     assert vault_registrar.isRegistered(vault_addr, borrower) is True
 
 
-def test_register_vault_not_authorized(connector, accounts):
-    borrower = accounts[1]
-    unauthorized_contract = accounts[6]
+def test_register_vault_not_authorized(connector):
+    unauthorized = boa.env.generate_address("unauthorized")
+    vault_addr = boa.env.generate_address("vault")
+    investor = boa.env.generate_address("investor")
 
     with boa.reverts("not authorized"):
-        connector.register_vault(unauthorized_contract, sender=borrower)
+        connector.register_vault(vault_addr, investor, sender=unauthorized)
 
 
-def test_register_vault_with_id(connector, p2p_securitize, vault_registrar, accounts):
-    borrower = accounts[2]
+def test_register_vault_from_securitize(connector, p2p_securitize, vault_registrar):
+    borrower = boa.env.generate_address("securitize_borrower")
     vault_id = 0
     vault_addr = p2p_securitize.vault_id_to_vault(borrower, vault_id)
 
-    connector.register_vault_with_id(p2p_securitize.address, vault_id, sender=borrower)
+    connector.register_vault(vault_addr, borrower, sender=p2p_securitize.address)
 
     assert vault_registrar.isRegistered(vault_addr, borrower) is True
-
-
-def test_register_vault_with_id_not_authorized(connector, accounts):
-    borrower = accounts[3]
-    unauthorized_contract = accounts[7]
-
-    with boa.reverts("not authorized"):
-        connector.register_vault_with_id(unauthorized_contract, 0, sender=borrower)

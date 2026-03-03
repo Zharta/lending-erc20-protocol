@@ -15,6 +15,7 @@ interface P2PLendingContract:
     def vault_id_to_vault(wallet: address, vault_id: uint256) -> address: view
 
 interface VaultRegistrar:
+    def isRegistered(vaultAddress: address, investorWalletAddress: address) -> bool: view
     def registerVault(vaultAddress: address, investorWalletAddress: address): nonpayable
 
 
@@ -65,26 +66,15 @@ def change_authorized_contracts(contracts: DynArray[ContractAuthorization, CHANG
 
 
 @external
-def register_vault(p2p_contract: address):
+def register_vault(vault: address, investor_wallet: address):
     """
-        @notice Register a vault with the vault registrar, using the caller's wallet address to find the vault address from the P2P contract. Used for p2p contracts with a single vault per borrower.
-        @param p2p_contract The address of the P2P lending contract that the caller is interacting with. The caller's wallet address will be used to find the corresponding vault address from this contract.
-    """
-
-    wallet: address = msg.sender
-    assert self.authorized_contracts[p2p_contract], "not authorized"
-    vault: address = staticcall P2PLendingContract(p2p_contract).wallet_to_vault(wallet)
-    extcall VaultRegistrar(vault_registrar).registerVault(vault, msg.sender)
-
-@external
-def register_vault_with_id(p2p_contract: address, vault_id: uint256):
-    """
-        @notice Register a vault with the vault registrar, using the caller's wallet address and a vault ID to find the vault address from the P2P contract. Used for p2p contracts with multiple vaults per borrower.
-        @param p2p_contract The address of the P2P lending contract that the caller is interacting with. The caller's wallet address and the vault ID will be used to find the corresponding vault address from this contract.
-        @param vault_id The ID of the vault to register, used to find the corresponding vault address from the P2P contract.
+        @notice Register a vault with the vault registrar for a given investor wallet.
+        @param vault The address of the vault to register.
+        @param investor_wallet The address of the investor wallet associated with the vault.
     """
 
-    wallet: address = msg.sender
-    assert self.authorized_contracts[p2p_contract], "not authorized"
-    vault: address = staticcall P2PLendingContract(p2p_contract).vault_id_to_vault(wallet, vault_id)
-    extcall VaultRegistrar(vault_registrar).registerVault(vault, msg.sender)
+    assert self.authorized_contracts[msg.sender], "not authorized"
+    if not staticcall VaultRegistrar(vault_registrar).isRegistered(vault, investor_wallet):
+        extcall VaultRegistrar(vault_registrar).registerVault(vault, investor_wallet)
+
+

@@ -350,4 +350,5 @@ def p2p_usdc_weth(
         securitize_vault_impl.address,  # vault_impl_addr
         transfer_agent,  # transfer_agent
         securitize_redemption_wallet,  # securitize_redemption_wallet
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )

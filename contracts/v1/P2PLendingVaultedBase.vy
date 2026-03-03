@@ -33,6 +33,9 @@ interface KYCValidator:
 interface EIP1271Signer:
     def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
 
+interface VaultRegistrar:
+    def register_vault(vault: address, investor_wallet: address): nonpayable
+
 
 # Structs
 
@@ -141,6 +144,7 @@ event TransferFailed:
 owner: public(address)
 proposed_owner: public(address)
 transfer_agent: public(address)
+vault_registrar: public(address)
 
 
 loans: public(HashMap[bytes32, bytes32])
@@ -397,12 +401,14 @@ def _get_vault(wallet: address, vault_impl_addr: address) -> vault.Vault:
     return vault.Vault(_vault)
 
 @internal
-def _create_vault_if_needed(wallet: address, vault_impl_addr: address, payment_token: address) -> vault.Vault:
-    # only creates a vault if needed
+def _create_vault_if_needed(wallet: address, vault_impl_addr: address, payment_token: address, vault_registrar: address) -> vault.Vault:
     _vault: address = self._wallet_to_vault(wallet, vault_impl_addr)
     if not _vault.is_contract:
         _vault = create_minimal_proxy_to(vault_impl_addr, salt=convert(wallet, bytes32))
         extcall vault.Vault(_vault).initialise(wallet, payment_token)
+
+        if vault_registrar != empty(address):
+            extcall VaultRegistrar(vault_registrar).register_vault(_vault, wallet)
 
     return vault.Vault(_vault)
 
