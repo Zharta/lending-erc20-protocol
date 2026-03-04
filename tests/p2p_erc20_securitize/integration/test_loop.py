@@ -25,21 +25,6 @@ from ..conftest_base import (
 
 BPS = 10000
 
-SEC_REG_ACCREDITED = 2
-SEC_REG_APPROVED = 1
-
-
-@pytest.fixture
-def redemption_wallet(accounts, usdc):
-    wallet = "0xbb543C77436645C8b95B64eEc39E3C0d48D4842b"
-    usdc.transfer(wallet, int(1e12), sender=accounts[0])
-    return wallet
-
-
-@pytest.fixture
-def acred(owner, accounts, erc20_contract_def):
-    return erc20_contract_def.at("0x17418038ecF73BA4026c4f428547BF099706F27B")
-
 
 @pytest.fixture(autouse=True)
 def lender_funds(lender, usdc, owner):
@@ -57,59 +42,7 @@ def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
 
 
 @pytest.fixture
-def oracle_acred_usd(oracle_contract_def, owner):
-    return oracle_contract_def.at("0xD6BcbbC87bFb6c8964dDc73DC3EaE6d08865d51C")
-
-
-@pytest.fixture
-def p2p_usdc_acred(
-    p2p_lending_securitize_erc20_contract_def,
-    p2p_sec_refinance,
-    p2p_sec_liquidation,
-    usdc,
-    acred,
-    oracle_acred_usd,
-    kyc_validator_contract,
-    owner,
-    securitize_vault_impl,
-    transfer_agent,
-    redemption_wallet,
-):
-    return p2p_lending_securitize_erc20_contract_def.deploy(
-        usdc,
-        acred,
-        oracle_acred_usd,
-        False,
-        kyc_validator_contract,
-        0,
-        0,
-        owner,
-        10000,
-        10000,
-        0,
-        0,
-        p2p_sec_refinance.address,
-        p2p_sec_liquidation.address,
-        securitize_vault_impl.address,
-        transfer_agent,
-        redemption_wallet,
-        boa.eval("empty(address)"),  # vault_registrar_addr
-    )
-
-
-@pytest.fixture
-def securitize_owner():
-    return "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
-
-
-@pytest.fixture
-def securitize_registry(p2p_usdc_acred, securitize_owner, now):
-    contract_def = boa.load_abi("contracts/auxiliary/SecuritizeRegistryService_abi.json")
-    return contract_def.at("0x3A8E9CD2E17E1F2904b7f745Da29C9cA765Cc319")
-
-
-@pytest.fixture
-def securitize_swap(p2p_usdc_acred, securitize_registry, securitize_owner, now):
+def securitize_swap(p2p_usdc_acred, securitize_registry):
     contract_def = boa.load_abi("contracts/auxiliary/SecuritizeOnRamp_abi.json")
     return contract_def.at(securitize_registry.getDSService(1 << 14))
 
@@ -122,31 +55,15 @@ def balancer(boa_env):
 
 
 @pytest.fixture
-def securitize_proxy(securitize_proxy_contract_def, p2p_usdc_acred, balancer, securitize_registry, securitize_owner, now):
+def securitize_proxy(securitize_proxy_contract_def, p2p_usdc_acred, balancer):
     proxy = securitize_proxy_contract_def.deploy(p2p_usdc_acred.address, balancer.address)
     p2p_usdc_acred.set_proxy_authorization(proxy, True)
     return proxy
 
 
-@pytest.fixture(autouse=True)
-def sec_borrower(securitize_registry, p2p_usdc_acred, securitize_owner, now):
-    wallet = "0x81aF1E160c290E8Fff6381CCF67981f012Cf1009"
-    securitize_registry.updateInvestor(
-        "sec_borrower_vault",
-        "",
-        "PT",
-        [p2p_usdc_acred.wallet_to_vault(wallet)],
-        [SEC_REG_ACCREDITED],
-        [SEC_REG_APPROVED],
-        [now + 86400 * 365],
-        sender=securitize_owner,
-    )
-    return wallet
-
-
 def test_create_loan(
     p2p_usdc_acred,
-    sec_borrower,
+    borrower,
     lender,
     lender_key,
     kyc_lender,
@@ -157,7 +74,6 @@ def test_create_loan(
     oracle_acred_usd,
     securitize_registry,
 ):
-    borrower = sec_borrower
     principal = 1000 * int(1e9)
     collateral_amount = 95 * int(1e6)
     now = boa.eval("block.timestamp")
@@ -258,7 +174,7 @@ def test_create_loan(
 
 def test_loop(
     p2p_usdc_acred,
-    sec_borrower,
+    borrower,
     lender,
     lender_key,
     kyc_lender,
@@ -282,7 +198,6 @@ def test_loop(
     collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
     principal = sum(principals)
 
-    borrower = sec_borrower
     now = boa.eval("block.timestamp")
     offer = Offer(
         principal=principal,
@@ -349,7 +264,7 @@ def max_collateral_to_buy(borrower_collateral: int, ltv: int):
 
 def test_loop2(
     p2p_usdc_acred,
-    sec_borrower,
+    borrower,
     lender,
     lender_key,
     kyc_lender,
@@ -371,7 +286,6 @@ def test_loop2(
     collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
     principal = collateral_amount * oracle_price_num * ltv // (oracle_price_den * BPS)
 
-    borrower = sec_borrower
     now = boa.eval("block.timestamp")
     offer = Offer(
         max_iltv=ltv,
@@ -426,7 +340,7 @@ def test_loop2(
 
 def test_redeem(
     p2p_usdc_acred,
-    sec_borrower,
+    borrower,
     lender,
     lender_key,
     kyc_lender,
@@ -452,7 +366,6 @@ def test_redeem(
     collateral_to_buy_value = collateral_to_buy * oracle_price_num // oracle_price_den
     principal = sum(principals)
 
-    borrower = sec_borrower
     now = boa.eval("block.timestamp")
     offer = Offer(
         principal=principal,
