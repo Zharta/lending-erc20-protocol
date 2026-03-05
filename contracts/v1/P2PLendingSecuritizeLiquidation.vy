@@ -237,7 +237,7 @@ def liquidate_loan(
     collateral_for_debt: uint256 = (outstanding_debt - in_vault_payment_token) * rate.denominator * collateral_token_decimals // (rate.numerator * payment_token_decimals) if in_vault_payment_token < outstanding_debt else 0
     remaining_collateral: uint256 = in_vault_collateral - liquidation_fee_collateral
     remaining_collateral_value: uint256 = remaining_collateral * rate.numerator * payment_token_decimals // (rate.denominator * collateral_token_decimals)
-    protocol_settlement_fee_amount: uint256 = min(loan.protocol_settlement_fee * current_interest // BPS, remaining_collateral_value)
+    protocol_settlement_fee_amount: uint256 = min(loan.protocol_settlement_fee * current_interest // BPS, in_vault_payment_token + remaining_collateral_value)
     shortfall: uint256 = outstanding_debt - remaining_collateral_value if remaining_collateral_value < outstanding_debt else 0
     extcall _vault.withdraw_funds(payment_token, in_vault_payment_token + liquidation_fee)
 
@@ -288,8 +288,8 @@ def liquidate_loan(
         # pre: in_vault_payment_token + remaining_collateral_value < outstanding_debt
         # pre: protocol_settlement_fee_amount <= remaining_collateral_value (from min())
 
-        lender_funds_delta = remaining_collateral_value - protocol_settlement_fee_amount
-        liquidator_funds_delta = convert(liquidation_fee + in_vault_payment_token, int256) - convert(remaining_collateral_value, int256)
+        lender_funds_delta = in_vault_payment_token + remaining_collateral_value - protocol_settlement_fee_amount
+        liquidator_funds_delta = convert(liquidation_fee, int256) - convert(remaining_collateral_value, int256)
         # borrower_funds_delta = 0
         liquidator_collateral_delta = in_vault_collateral
         # borrower_collateral_delta = 0
