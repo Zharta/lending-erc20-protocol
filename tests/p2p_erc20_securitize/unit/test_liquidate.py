@@ -951,6 +951,128 @@ def test_liquidate_redeemed_loan_not_defaulted_uses_adjusted_ltv(
     assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
 
 
+def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_with_remaining_debt(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    owner_key,
+    borrower,
+    securitize_redemption_wallet,
+):
+    """
+    Scenario: All collateral redeemed, partial payment from redemption, loan not defaulted.
+    - Loan: 1 WETH collateral, 1000 USDC principal
+    - Redemption: ALL collateral redeemed (redeem_residual_collateral=0)
+    - Payment from redemption: 500 USDC (less than outstanding debt ~1000 USDC)
+    - in_vault_collateral = 0, so current_ltv = 0
+
+    Before the fix: current_ltv (0) >= liquidation_ltv (6000) was always FALSE,
+      so it reverted with "not defaulted, ltv lt partial" even though the position
+      was effectively unsecured debt.
+    After the fix: when current_ltv == 0, the code checks if remaining debt > 0
+      (i.e. loan.amount + interest > in_vault_payment_token) and allows liquidation.
+    """
+    loan = ongoing_loan_usdc_weth
+
+    # Redeem ALL collateral (no residual)
+    p2p_usdc_weth.redeem(loan, 0, sender=loan.borrower)
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=0,
+    )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Payment from redemption covers only ~50% of debt
+    outstanding_debt = loan.amount + loan.get_interest(boa.env.evm.patch.timestamp)
+    payment_redeemed = outstanding_debt // 2
+    usdc.mint(vault_addr, payment_redeemed)
+
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,
+        payment_redeemed=payment_redeemed,
+        timestamp=redeem_time + 1,
+        redeem_wallet=securitize_redemption_wallet,
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    # Verify loan hash matches
+    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
+
+    # Loan is NOT defaulted (before maturity)
+    # in_vault_collateral = 0 → current_ltv = 0
+    # remaining debt = outstanding_debt - payment_redeemed > 0 → should allow liquidation
+    # Use lender as liquidator (simplest path for no-collateral case)
+    protocol_fee = loan.protocol_settlement_fee * loan.get_interest(boa.env.evm.patch.timestamp) // BPS
+    usdc.approve(p2p_usdc_weth.address, protocol_fee, sender=loan.lender)
+
+    p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=loan.lender)
+
+    # Verify liquidation succeeded
+    assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
+
+
+def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_no_remaining_debt_reverts(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    owner_key,
+    borrower,
+    securitize_redemption_wallet,
+):
+    """
+    Scenario: All collateral redeemed, payment from redemption covers entire debt.
+    - in_vault_collateral = 0, so current_ltv = 0
+    - in_vault_payment_token >= outstanding_debt, so no remaining debt
+    - Should revert with "not defaulted, no debt" (position is fully covered)
+    """
+    loan = ongoing_loan_usdc_weth
+
+    # Redeem ALL collateral (no residual)
+    p2p_usdc_weth.redeem(loan, 0, sender=loan.borrower)
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=0,
+    )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Payment from redemption covers MORE than the outstanding debt
+    outstanding_debt = loan.amount + loan.get_interest(boa.env.evm.patch.timestamp)
+    liquidation_fee = outstanding_debt * loan.full_liquidation_fee // BPS
+    payment_redeemed = outstanding_debt + liquidation_fee + 100 * 10**6  # surplus
+    usdc.mint(vault_addr, payment_redeemed)
+
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,
+        payment_redeemed=payment_redeemed,
+        timestamp=redeem_time + 1,
+        redeem_wallet=securitize_redemption_wallet,
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    # Verify loan hash matches
+    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
+
+    # Loan is NOT defaulted, no collateral, but payment covers debt → no liquidation needed
+    with boa.reverts("not defaulted, no debt"):
+        p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=loan.lender)
+
+
 def test_liquidate_redeemed_loan_by_lender(
     p2p_usdc_weth,
     redeemed_loan_with_payment,

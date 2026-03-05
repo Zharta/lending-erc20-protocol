@@ -189,7 +189,10 @@ def liquidate_loan(
                 payment_token_decimals,
                 collateral_token_decimals
             ) if in_vault_collateral > 0 else 0
-            assert current_ltv >= loan.liquidation_ltv, "not defaulted, ltv lt partial"
+            if current_ltv > 0:
+                assert current_ltv >= loan.liquidation_ltv, "not defaulted, ltv lt partial"
+            else:
+                assert loan.amount + current_interest > in_vault_payment_token, "not defaulted, no debt"
         else:
             current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount + current_interest, convertion_rate, payment_token_decimals, collateral_token_decimals)
             assert current_ltv >= loan.liquidation_ltv, "not defaulted, ltv lt partial"
