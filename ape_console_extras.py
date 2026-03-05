@@ -703,6 +703,35 @@ def max_collateral_to_buy(borrower_collateral: int, ltv: int):
     return borrower_collateral * ltv // (BPS - ltv)
 
 
+def calc_leverage(
+    initial_collateral, ltv, origination_fee_bps, principal_token, collateral_token, oracle, *, oracle_reverse=False
+):
+    rate = oracle.latestRoundData().answer
+    oracle_decimals = 10 ** oracle.decimals()
+    if oracle_reverse:
+        rate, oracle_decimals = oracle_decimals, rate
+    principal_token_decimals = 10 ** principal_token.decimals()
+    collateral_token_decimals = 10 ** collateral_token.decimals()
+    eff_ltv_dbps = ltv * (BPS - origination_fee_bps)  # double bps == x * 1e10
+    collateral_to_buy = initial_collateral * eff_ltv_dbps // (BPS * BPS - eff_ltv_dbps)
+    collateral_to_buy_value = (
+        collateral_to_buy * rate * principal_token_decimals // (oracle_decimals * collateral_token_decimals)
+    )
+    collateral_total = initial_collateral + collateral_to_buy
+    leverage = collateral_total * BPS // initial_collateral
+    principal = collateral_total * ltv * rate * principal_token_decimals // (oracle_decimals * collateral_token_decimals * BPS)
+    principal_received = principal * (BPS - origination_fee_bps) // BPS
+    return {
+        "initial_collateral": initial_collateral,
+        "collateral_to_buy": collateral_to_buy,
+        "collateral_amount": collateral_total,
+        "leverage": leverage,
+        "principal": principal,
+        "principal_received_by_proxy": principal_received,
+        "collateral_to_buy_value": collateral_to_buy_value,
+    }
+
+
 def dump_address(address: str):
     address = address.removeprefix("0x")
     padded_hex = address.zfill(40).lower()

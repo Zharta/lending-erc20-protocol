@@ -195,7 +195,8 @@ def transfer_funds(payment_token: address, amount: uint256, wallet: address):
     """
 
     assert self._check_user(self.caller), "unauthorized"
-    assert extcall IERC20(payment_token).transfer(wallet, amount), "transfer failed"
+    if amount > 0:
+        assert extcall IERC20(payment_token).transfer(wallet, amount), "transfer failed"
 
 
 @external

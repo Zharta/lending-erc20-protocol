@@ -352,6 +352,7 @@ def transfer_loan(
 
     assert base._is_loan_valid(loan), "invalid loan"
     assert base._check_user(base.transfer_agent), "not transfer agent"
+    assert new_borrower != loan.borrower, "new borrower same as current"
 
     is_loan_redeemed: bool = base._is_loan_redeemed(loan)
     current_vault: vault.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
@@ -397,7 +398,7 @@ def transfer_loan(
     base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)
     base.loans[loan.id] = empty(bytes32)
 
-    new_vault: vault.Vault = base._create_vault_if_needed(new_borrower, vault_impl_addr, collateral_token, vault_registrar)
+    new_vault: vault.Vault = base._create_new_vault(new_borrower, vault_impl_addr, collateral_token, vault_registrar)
     base._send_collateral(
         new_vault.address,
         staticcall current_vault.withdrawable_balance(),

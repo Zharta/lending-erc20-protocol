@@ -20,6 +20,11 @@ from ethereum.ercs import IERC20Detailed
 
 from contracts.v1 import P2PLendingVaultSecuritize as vault
 
+# Workaround for allowing static calls to functions that delegate to other facets
+interface StaticSelf:
+    def _simulate_partial_liquidation(loan: base.Loan) -> base.PartialLiquidationResult: view
+
+
 event LoanCreated:
     id: bytes32
     amount: uint256
@@ -1011,15 +1016,21 @@ def is_loan_redeemed(loan: base.Loan) -> bool:
     return base._is_loan_redeemed(loan)
 
 
+@view
 @external
 def simulate_partial_liquidation(loan: base.Loan) -> base.PartialLiquidationResult:
-
     """
     @notice Simulates a partial liquidation of a loan.
     @param loan The loan to simulate a partial liquidation for.
     @return The result of the partial liquidation simulation.
     """
+    return staticcall StaticSelf(self)._simulate_partial_liquidation(loan)
 
+
+@external
+def _simulate_partial_liquidation(loan: base.Loan) -> base.PartialLiquidationResult:
+
+    assert msg.sender == self
     return abi_decode(raw_call(
         liquidation_addr,
         abi_encode(
@@ -1031,7 +1042,7 @@ def simulate_partial_liquidation(loan: base.Loan) -> base.PartialLiquidationResu
             method_id=method_id("simulate_partial_liquidation((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),address,bool,uint256,uint256)"),
         ),
         max_outsize=128,
-        is_delegate_call=True
+        is_delegate_call=True,
     ), base.PartialLiquidationResult)
 
 
@@ -1287,5 +1298,3 @@ def _receive_funds(_from: address, _amount: uint256):
 @internal
 def _transfer_funds(_from: address, _to: address, _amount: uint256):
     base._transfer_funds(_from, _to, _amount, payment_token)
-
-

@@ -1083,6 +1083,7 @@ def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base
 
     assert base._is_loan_valid(loan), "invalid loan"
     assert base._check_user(base.transfer_agent), "not transfer agent"
+    assert new_borrower != loan.borrower, "new borrower same as current"
 
     assert staticcall base.KYCValidator(kyc_validator_addr).check_validation(new_borrower_kyc), "KYC validation fail"
     assert new_borrower_kyc.validation.wallet == new_borrower, "KYC validation fail"
