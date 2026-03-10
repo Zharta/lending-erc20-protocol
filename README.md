@@ -79,6 +79,7 @@ Below are the smart contract audits performed for the protocol so far.
 | :----------: | :---------: | :--------: | ------- |
 | Hexens | v0 | Done | [hexens-zharta-oct-25-final.pdf](https://github.com/Zharta/lending-erc20-protocol/blob/main/audits/hexens-zharta-oct-25-final.pdf) |
 | Hexens | v1 | Done | [hexens-zharta-dec-25-final.pdf](https://github.com/Zharta/lending-erc20-protocol/blob/main/audits/hexens-zharta-dec-25-final.pdf) |
+| Hexens | Securitize | Done | [hexens-zharta-feb-26-final.pdf](https://github.com/Zharta/lending-erc20-protocol/blob/main/audits/hexens-zharta-feb-26-final.pdf) |
 
 
 ## Architecture

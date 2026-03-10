@@ -5,6 +5,7 @@ PYTHON=${VENV}/bin/python3
 
 CONTRACTS := $(shell find contracts -maxdepth 2 -name '*.vy' | grep -v auxiliary)
 NATSPEC := $(patsubst contracts/%, natspec/%, $(CONTRACTS:%.vy=%.json))
+SOLCJSON := $(patsubst contracts/%, solc_json/%, $(CONTRACTS:%.vy=%.json))
 PATH := ${VENV}/bin:${PATH}
 PYTHONPATH:=contracts:scripts:$(PYTHONPATH)
 
@@ -53,10 +54,13 @@ gas:
 interfaces:
 	${VENV}/bin/python scripts/build_interfaces.py contracts/*.vy
 
-docs: $(NATSPEC)
+docs: $(NATSPEC) $(SOLCJSON)
 
 natspec/%.json: %.vy
 	dirname $@ | xargs mkdir -p && ${VENV}/bin/vyper -f userdoc,devdoc $< > $@
+
+solc_json/%.json: %.vy
+	dirname $@ | xargs mkdir -p && ${VENV}/bin/vyper -f solc_json $< > $@
 
 clean:
 	rm -rf ${VENV} .cache .build __pycache__ **/__pycache__
