@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from ape import project
 
 from .basetypes import ContractConfig, DeploymentContext, abi_key
+from .transactions import execute
 
 ZERO_ADDRESS = "0x" + "00" * 20
 ZERO_BYTES32 = "0x" + "00" * 32
@@ -265,6 +266,7 @@ class P2PLendingVaultedErc20(ContractConfig):
         protocol_settlement_fee: int,
         protocol_wallet: str,
         transfer_agent: str,
+        vault_registrar_connector_key: str | None = None,
         max_protocol_upfront_fee: int,
         max_protocol_settlement_fee: int,
         partial_liquidation_fee: int,
@@ -285,7 +287,8 @@ class P2PLendingVaultedErc20(ContractConfig):
                 refinance_impl_key,
                 vault_impl_key,
                 liquidation_impl_key,
-            },
+            }
+            | ({vault_registrar_connector_key} if vault_registrar_connector_key else set()),
             deployment_args=[
                 payment_token_key,
                 collateral_token_key,
@@ -303,10 +306,23 @@ class P2PLendingVaultedErc20(ContractConfig):
                 liquidation_impl_key,
                 vault_impl_key,
                 transfer_agent,
+                vault_registrar_connector_key or ZERO_ADDRESS,
             ],
         )
+        self.vault_registrar_connector_key = vault_registrar_connector_key
         if address:
             self.load_contract(address)
+
+    def deploy(self, context: DeploymentContext):
+        super().deploy(context)
+        if self.vault_registrar_connector_key:
+            execute(
+                context,
+                self.vault_registrar_connector_key,
+                "change_authorized_contract",
+                self.key,
+                True,  # noqa: FBT003
+            )
 
 
 @dataclass
@@ -543,9 +559,14 @@ class SecuritizeLoop(ContractConfig):
             token=False,
             deployment_deps={p2p_contract_key, balancer_key},
             deployment_args=[p2p_contract_key, balancer_key],
+            config_deps={key: self.set_proxy_auth},
         )
+        self.p2p_contract_key = p2p_contract_key
         if address:
             self.load_contract(address)
+
+    def set_proxy_auth(self, context: DeploymentContext):
+        execute(context, self.p2p_contract_key, "set_proxy_authorization", self.key, True)  # noqa: FBT003
 
 
 @dataclass
@@ -610,6 +631,7 @@ class P2PLendingSecuritizeErc20(ContractConfig):
         protocol_wallet: str,
         transfer_agent: str,
         securitize_redemption_wallet: str,
+        vault_registrar_connector_key: str,
         max_protocol_upfront_fee: int,
         max_protocol_settlement_fee: int,
         partial_liquidation_fee: int,
@@ -630,6 +652,7 @@ class P2PLendingSecuritizeErc20(ContractConfig):
                 refinance_impl_key,
                 liquidation_impl_key,
                 vault_impl_key,
+                vault_registrar_connector_key,
             },
             deployment_args=[
                 payment_token_key,
@@ -649,10 +672,22 @@ class P2PLendingSecuritizeErc20(ContractConfig):
                 vault_impl_key,
                 transfer_agent,
                 securitize_redemption_wallet,
+                vault_registrar_connector_key,
             ],
         )
+        self.vault_registrar_connector_key = vault_registrar_connector_key
         if address:
             self.load_contract(address)
+
+    def deploy(self, context: DeploymentContext):
+        super().deploy(context)
+        execute(
+            context,
+            self.vault_registrar_connector_key,
+            "change_authorized_contract",
+            self.key,
+            True,  # noqa: FBT003
+        )
 
 
 @dataclass
@@ -697,6 +732,58 @@ class RefinanceSecuritizeImpl(ContractConfig):
             token=False,
             deployment_args=[],
         )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class VaultRegistrarMock(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        token_key: str,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.VaultRegistrarMock,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={token_key},
+            deployment_args=[token_key],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class SecuritizeRegistrarV1Connector(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        vault_registrar_key: str,
+        address: str | None = None,
+    ):
+        self._vault_registrar_key = vault_registrar_key
+        super().__init__(
+            key,
+            None,
+            project.SecuritizeRegistrarV1Connector,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={vault_registrar_key},
+            deployment_args=[vault_registrar_key],
+        )
+        self.vault_registrar_key = vault_registrar_key
         if address:
             self.load_contract(address)
 

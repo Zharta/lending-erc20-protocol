@@ -43,11 +43,15 @@ def flashLoan(
 ):
     fee_amounts: DynArray[uint256,FLASH_LOAN_MAX_TOKENS] = []
 
+    pre_loan_balances: DynArray[uint256,FLASH_LOAN_MAX_TOKENS] = []
+
     for i: uint256 in range(len(tokens), bound=FLASH_LOAN_MAX_TOKENS):
-        assert staticcall IERC20(tokens[i]).balanceOf(self) >= amounts[i], "insufficient balance"
+        pre_loan_balances.append(staticcall IERC20(tokens[i]).balanceOf(self))
+        assert pre_loan_balances[i] >= amounts[i], "insufficient balance"
         extcall IERC20(tokens[i]).transfer(recepient, amounts[i])
         fee_amounts.append(0)
 
     extcall IFlashLoanRecipient(recepient).receiveFlashLoan(tokens, amounts, fee_amounts, data)
+
     for i: uint256 in range(len(tokens), bound=FLASH_LOAN_MAX_TOKENS):
-        extcall IERC20(tokens[i]).transferFrom(recepient, self, amounts[i])
+        assert staticcall IERC20(tokens[i]).balanceOf(self) >= pre_loan_balances[i], "invalid post loan balance"

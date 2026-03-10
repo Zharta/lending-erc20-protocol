@@ -1,3 +1,5 @@
+from textwrap import dedent
+
 import boa
 import pytest
 
@@ -461,6 +463,75 @@ def test_partially_liquidate_loan_consistent_with_simulation(p2p_usdc_weth, ongo
     assert partial_liquidation_result.updated_ltv == calc_ltv(
         updated_loan.amount, updated_loan.collateral_amount, usdc, weth, oracle
     )
+
+
+def test_simulate_partial_liquidation_callable_via_staticcall(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(ongoing_loan_usdc_weth.amount, ongoing_loan_usdc_weth.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > ongoing_loan_usdc_weth.liquidation_ltv
+
+    helper = boa.loads(
+        dedent("""
+            # @version 0.4.3
+
+            struct Loan:
+                id: bytes32
+                offer_id: bytes32
+                offer_tracing_id: bytes32
+                initial_amount: uint256
+                amount: uint256
+                apr: uint256
+                payment_token: address
+                maturity: uint256
+                start_time: uint256
+                accrual_start_time: uint256
+                borrower: address
+                lender: address
+                collateral_token: address
+                collateral_amount: uint256
+                min_collateral_amount: uint256
+                origination_fee_amount: uint256
+                protocol_upfront_fee_amount: uint256
+                protocol_settlement_fee: uint256
+                partial_liquidation_fee: uint256
+                full_liquidation_fee: uint256
+                call_eligibility: uint256
+                call_window: uint256
+                liquidation_ltv: uint256
+                oracle_addr: address
+                initial_ltv: uint256
+                call_time: uint256
+                vault_id: uint256
+                redeem_start: uint256
+                redeem_residual_collateral: uint256
+
+            struct PartialLiquidationResult:
+                collateral_claimed: uint256
+                liquidation_fee: uint256
+                debt_written_off: uint256
+                updated_ltv: uint256
+
+            interface P2PLending:
+                def simulate_partial_liquidation(loan: Loan) -> PartialLiquidationResult: view
+
+            target: address
+
+            @deploy
+            def __init__(_target: address):
+                self.target = _target
+
+            @view
+            @external
+            def call_simulate(loan: Loan) -> PartialLiquidationResult:
+                return staticcall P2PLending(self.target).simulate_partial_liquidation(loan)
+        """),
+        p2p_usdc_weth.address,
+    )
+
+    result = helper.call_simulate(ongoing_loan_usdc_weth)
+    assert result.collateral_claimed > 0
+    assert result.debt_written_off > 0
+    assert result.updated_ltv > 0
 
 
 def test_partially_liquidate_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):

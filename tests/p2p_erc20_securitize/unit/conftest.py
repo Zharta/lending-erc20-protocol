@@ -237,6 +237,14 @@ def p2p_lending_securitize_erc20_contract_def(boa_env):
                 borrower=empty(address),
                 caller=empty(address)
             )
+            log LoanBorrowerTransferred(
+                loan_id=empty(bytes32),
+                new_loan_id=empty(bytes32),
+                old_borrower=empty(address),
+                new_borrower=empty(address),
+                lender=empty(address),
+                vault_id=0
+            )
 
     """)
     return boa.loads_partial(contents, name="P2PLendingSecuritizeErc20")
@@ -313,6 +321,21 @@ def securitize_vault_contract_def():
     return boa.load_partial("contracts/v1/P2PLendingVaultSecuritize.vy")
 
 
+@pytest.fixture(scope="session")
+def vault_registrar_mock_contract_def(boa_env):
+    return boa.load_partial("contracts/auxiliary/VaultRegistrarMock.vy")
+
+
+@pytest.fixture
+def vault_registrar_weth(vault_registrar_mock_contract_def, weth):
+    return vault_registrar_mock_contract_def.deploy(weth.address)
+
+
+@pytest.fixture(scope="session")
+def registrar_connector_def(boa_env):
+    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
+
+
 @pytest.fixture
 def securitize_vault_impl(securitize_vault_contract_def):
     return securitize_vault_contract_def.deploy()
@@ -350,4 +373,5 @@ def p2p_usdc_weth(
         securitize_vault_impl.address,  # vault_impl_addr
         transfer_agent,  # transfer_agent
         securitize_redemption_wallet,  # securitize_redemption_wallet
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )

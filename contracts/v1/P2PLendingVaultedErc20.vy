@@ -211,6 +211,10 @@ event ProxyAuthorizationChanged:
     proxy: address
     value: bool
 
+event VaultRegistrarChanged:
+    old_registrar: address
+    new_registrar: address
+
 event PendingTransfersClaimed:
     _to: address
     amount: uint256
@@ -264,7 +268,8 @@ def __init__(
     _refinance_addr: address,
     _liquidation_addr: address,
     _vault_impl_addr: address,
-    _transfer_agent: address
+    _transfer_agent: address,
+    _vault_registrar_addr: address
 ):
 
     """
@@ -284,6 +289,7 @@ def __init__(
     @param _liquidation_addr The address of the facet contract implementing the liquidation functionality.
     @param _vault_impl_addr The address of the vault implementation contract.
     @param _transfer_agent The wallet address for the transfer agent role.
+    @param _vault_registrar_addr The address of the vault registrar connector contract.
     """
 
     base.__init__()
@@ -306,6 +312,7 @@ def __init__(
     base.transfer_agent = _transfer_agent
     base.partial_liquidation_fee = _partial_liquidation_fee
     base.full_liquidation_fee = _full_liquidation_fee
+    base.vault_registrar = _vault_registrar_addr
 
     offer_sig_domain_separator = keccak256(
         abi_encode(
@@ -391,6 +398,20 @@ def change_protocol_wallet(new_protocol_wallet: address):
 
     log ProtocolWalletChanged(old_wallet=base.protocol_wallet, new_wallet=new_protocol_wallet)
     base.protocol_wallet = new_protocol_wallet
+
+
+@external
+def change_vault_registrar(new_vault_registrar: address):
+
+    """
+    @notice Change the vault registrar
+    @dev Changes the vault registrar to the given address and logs the event. Admin function.
+    @param new_vault_registrar The new vault registrar.
+    """
+
+    assert msg.sender == base.owner
+    log VaultRegistrarChanged(old_registrar=base.vault_registrar, new_registrar=new_vault_registrar)
+    base.vault_registrar = new_vault_registrar
 
 
 @external
@@ -540,7 +561,7 @@ def create_loan(
     base._check_and_update_offer_state(offer, principal)
     base.loans[loan.id] = base._loan_state_hash(loan)
 
-    _vault: vault.Vault = base._create_vault_if_needed(loan.borrower, vault_impl_addr, collateral_token)
+    _vault: vault.Vault = base._create_vault_if_needed(loan.borrower, vault_impl_addr, collateral_token, base.vault_registrar)
     base._receive_collateral(loan.borrower, loan.collateral_amount, _vault)
     self._transfer_funds(loan.lender, loan.borrower, loan.amount - loan.origination_fee_amount)
 
@@ -1046,7 +1067,7 @@ def create_vault_if_needed(wallet: address):
     @param wallet The wallet address
     """
 
-    base._create_vault_if_needed(wallet, vault_impl_addr, collateral_token)
+    base._create_vault_if_needed(wallet, vault_impl_addr, collateral_token, base.vault_registrar)
 
 
 @external
@@ -1062,6 +1083,7 @@ def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base
 
     assert base._is_loan_valid(loan), "invalid loan"
     assert base._check_user(base.transfer_agent), "not transfer agent"
+    assert new_borrower != loan.borrower, "new borrower same as current"
 
     assert staticcall base.KYCValidator(kyc_validator_addr).check_validation(new_borrower_kyc), "KYC validation fail"
     assert new_borrower_kyc.validation.wallet == new_borrower, "KYC validation fail"
@@ -1099,7 +1121,7 @@ def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base
     base.loans[loan.id] = empty(bytes32)
 
     base._send_collateral(
-        base._create_vault_if_needed(new_borrower, vault_impl_addr, collateral_token).address,
+        base._create_vault_if_needed(new_borrower, vault_impl_addr, collateral_token, base.vault_registrar).address,
         loan.collateral_amount,
         vault.Vault(base._wallet_to_vault(loan.borrower, vault_impl_addr))
     )

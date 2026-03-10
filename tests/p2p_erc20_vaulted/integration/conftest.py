@@ -18,7 +18,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 24325853
+        blkid = 24541820
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 
@@ -225,6 +225,29 @@ def securitize_proxy_contract_def():
     return boa.load_partial("contracts/SecuritizeProxy.vy")
 
 
+@pytest.fixture(scope="session")
+def registrar_connector_def():
+    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
+
+
+@pytest.fixture(scope="session")
+def vault_registrar_mock_contract_def():
+    return boa.load_partial("contracts/auxiliary/VaultRegistrarMock.vy")
+
+
+@pytest.fixture
+def vault_registrar_mock(vault_registrar_mock_contract_def, weth):
+    return vault_registrar_mock_contract_def.deploy(weth.address)
+
+
+@pytest.fixture
+def registrar_connector(registrar_connector_def, vault_registrar_mock, p2p_usdc_weth, owner):
+    connector = registrar_connector_def.deploy(vault_registrar_mock.address)
+    connector.change_authorized_contract(p2p_usdc_weth.address, True, sender=owner)
+    p2p_usdc_weth.change_vault_registrar(connector.address, sender=owner)
+    return connector
+
+
 @pytest.fixture
 def now():
     return boa.eval("block.timestamp")
@@ -288,6 +311,7 @@ def p2p_usdc_weth(
         p2p_liquidation.address,
         vault_impl.address,
         transfer_agent,
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
 
 

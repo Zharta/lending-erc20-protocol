@@ -32,8 +32,10 @@ def cli(network):
 
     changes = set()
     # changes |= {
-    #     "configs.trait_roots",
-    #     "p2p.eth_nfts",
+    # "configs.registrar_authorized_contracts",
+    # "p2p.eth_nfts",
+    # "common.securitize_registrar_connector"
+    # "proxies.securitize_loop"
     # }
 
     dm.deploy(changes, dryrun=True)

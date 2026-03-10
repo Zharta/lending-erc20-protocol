@@ -784,6 +784,18 @@ def test_create_loan_creates_vault_if_needed(
     assert boa.eval(f"{borrower_vault}.is_contract")
 
 
+def test_create_vault_if_needed_registers_vault_with_registrar(
+    p2p_usdc_weth, borrower, vault_registrar_mock, registrar_connector
+):
+    borrower_vault = p2p_usdc_weth.wallet_to_vault(borrower)
+    assert not boa.eval(f"{borrower_vault}.is_contract")
+
+    p2p_usdc_weth.create_vault_if_needed(borrower)
+
+    assert boa.eval(f"{borrower_vault}.is_contract")
+    assert vault_registrar_mock.isRegistered(borrower_vault, borrower)
+
+
 def test_create_loan_works_with_lender_sc_wallet(
     p2p_usdc_weth,
     borrower,

@@ -198,9 +198,20 @@ class SecuritizeLoan(NamedTuple):
     initial_ltv: int = 0
     call_time: int = 0
     vault_id: int = 0
+    redeem_start: int = 0
+    redeem_residual_collateral: int = 0
 
     def get_interest(self, timestamp):
         return self.apr * self.amount * (timestamp - self.accrual_start_time) // (365 * 24 * 3600 * BPS)
+
+
+RedeemResult = namedtuple(
+    "RedeemResult",
+    ["vault", "collateral_redeemed", "payment_redeemed", "timestamp"],
+    defaults=[ZERO_ADDRESS, 0, 0, 0],
+)
+
+SignedRedeemResult = namedtuple("SignedRedeemResult", ["result", "signature"], defaults=[RedeemResult(), Signature()])
 
 
 def compute_loan_hash_v0(loan: Loan):
@@ -219,6 +230,17 @@ def compute_loan_hash(loan: Loan):
     encoded = eth_abi.encode(
         [
             "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256)"
+        ],
+        [loan],
+    )
+    return boa.eval(f"""keccak256({encoded})""")
+
+
+def compute_loan_hash_securitize(loan: SecuritizeLoan):
+    print(f"compute_loan_hash_securitize {loan=}")
+    encoded = eth_abi.encode(
+        [
+            "(bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256)"
         ],
         [loan],
     )
@@ -356,12 +378,44 @@ def get_loan(loan_id: str | bytes | HexBytes) -> Loan:
     response.raise_for_status()
 
     loan_data = response.json()
-    loan = _parse_loan_data(loan_data)
+    if loan_data.get("is_leveraged", False):
+        loan = _parse_loan_data_securitize(loan_data)
+        loan_hash = compute_loan_hash_securitize(loan)
+    else:
+        loan = _parse_loan_data(loan_data)
+        loan_hash = compute_loan_hash(loan)
 
-    loan_hash = compute_loan_hash(loan)
     print(f"loan_hash: {loan_hash.hex()}")
 
     return loan
+
+
+def get_redeem_result(loan_id: str | bytes | HexBytes) -> SignedRedeemResult | None:
+    if type(loan_id) is HexBytes:
+        loan_id = loan_id.to_0x_hex()
+    elif type(loan_id) is bytes:
+        loan_id = "0x" + loan_id.hex()
+    response = requests.get(f"{ERC20_SERVICE_BASE_URL}/loans/{loan_id}/redeem-result")
+    if response.status_code != 200:
+        print(response.text)
+    response.raise_for_status()
+
+    data = response.json()
+    if response.status_code != 200:
+        print(response.text)
+        return None
+
+    result = data.get("result")
+    signature = data.get("signature")
+    return SignedRedeemResult(
+        RedeemResult(
+            result.get("vault"),
+            int(result.get("collateral_redeemed")),
+            int(result.get("payment_redeemed")),
+            int(result.get("timestamp")),
+        ),  # noqa: E501
+        Signature(int(signature.get("v")), HexBytes(signature.get("r")), HexBytes(signature.get("s"))),
+    )
 
 
 def get_loans(**filters) -> list[Loan]:
@@ -524,6 +578,15 @@ def _parse_loan_data(loan_data: dict) -> Loan:
         oracle_addr=loan_data["oracle_addr"],
         initial_ltv=int(loan_data["initial_ltv"]),
         call_time=int(loan_data.get("call_time") or 0),
+    )
+
+
+def _parse_loan_data_securitize(loan_data: dict) -> SecuritizeLoan:
+    return SecuritizeLoan(
+        **_parse_loan_data(loan_data)._asdict(),
+        vault_id=int(loan_data["vault_id"]),
+        redeem_start=int(loan_data["redeem_start"]),
+        redeem_residual_collateral=int(loan_data.get("redeem_residual_collateral") or 0),
     )
 
 
@@ -701,6 +764,35 @@ def calc_deltas(loan: Loan, offer: Offer, principal: int, contract, timestamp: i
 
 def max_collateral_to_buy(borrower_collateral: int, ltv: int):
     return borrower_collateral * ltv // (BPS - ltv)
+
+
+def calc_leverage(
+    initial_collateral, ltv, origination_fee_bps, principal_token, collateral_token, oracle, *, oracle_reverse=False
+):
+    rate = oracle.latestRoundData().answer
+    oracle_decimals = 10 ** oracle.decimals()
+    if oracle_reverse:
+        rate, oracle_decimals = oracle_decimals, rate
+    principal_token_decimals = 10 ** principal_token.decimals()
+    collateral_token_decimals = 10 ** collateral_token.decimals()
+    eff_ltv_dbps = ltv * (BPS - origination_fee_bps)  # double bps == x * 1e10
+    collateral_to_buy = initial_collateral * eff_ltv_dbps // (BPS * BPS - eff_ltv_dbps)
+    collateral_to_buy_value = (
+        collateral_to_buy * rate * principal_token_decimals // (oracle_decimals * collateral_token_decimals)
+    )
+    collateral_total = initial_collateral + collateral_to_buy
+    leverage = collateral_total * BPS // initial_collateral
+    principal = collateral_total * ltv * rate * principal_token_decimals // (oracle_decimals * collateral_token_decimals * BPS)
+    principal_received = principal * (BPS - origination_fee_bps) // BPS
+    return {
+        "initial_collateral": initial_collateral,
+        "collateral_to_buy": collateral_to_buy,
+        "collateral_amount": collateral_total,
+        "leverage": leverage,
+        "principal": principal,
+        "principal_received_by_proxy": principal_received,
+        "collateral_to_buy_value": collateral_to_buy_value,
+    }
 
 
 def dump_address(address: str):

@@ -19,6 +19,7 @@ interface Vault:
     def withdraw(amount: uint256, wallet: address): nonpayable
     def withdrawable_balance() -> uint256: view
     def withdraw_funds(payment_token: address, amount: uint256): nonpayable
+    def transfer_funds(payment_token: address, amount: uint256, wallet: address): nonpayable
 
 struct DsTokenAmountResult:
     ds_token_amount: uint256
@@ -181,6 +182,21 @@ def withdraw_funds(payment_token: address, amount: uint256):
 
     assert self._check_user(self.caller), "unauthorized"
     assert extcall IERC20(payment_token).transfer(self.caller, amount), "transfer failed"
+
+
+@external
+def transfer_funds(payment_token: address, amount: uint256, wallet: address):
+    """
+    @notice Transfer specified funds from the vault to a specified wallet.
+    @dev Transfers the specified amount of payment tokens from the vault to the specified wallet.
+    @param payment_token The address of the payment token to withdraw.
+    @param amount The amount of tokens to withdraw.
+    @param wallet The address of the wallet to which tokens will be transferred.
+    """
+
+    assert self._check_user(self.caller), "unauthorized"
+    if amount > 0:
+        assert extcall IERC20(payment_token).transfer(wallet, amount), "transfer failed"
 
 
 @external

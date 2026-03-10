@@ -51,6 +51,9 @@ The protocol consists of the following core contracts:
 - `P2PLendingVaultSecuritize.vy`: A vault implementation with SecuritizeSwap integration, enabling the purchase of DS tokens from stablecoins.
 - `KYCValidator.vy`: (Same as other versions) A contract responsible for validating signed KYC attestations.
 
+### Auxiliary Contracts
+- `SecuritizeRegistrarV1Connector.vy`: A bridge contract that connects P2P lending vaults to the Securitize Vault Registrar. The P2P lending contracts (both vaulted and securitize) call the connector's `register_vault(vault, investor_wallet)` function automatically during vault creation. The contract maintains an allowlist of authorized P2P lending contracts and can only be managed by the owner.
+
 ## General considerations
 
 The current status of the protocol follows certain assumptions:
@@ -416,7 +419,7 @@ The `P2PLendingVaultedErc20` contract serves as the main entry point for the vau
 
 ##### State variables (inherited from `P2PLendingVaultedBase`)
 
-(Similar to non-vaulted `P2PLendingBase`, but its internal collateral functions (`_send_collateral`, `_receive_collateral`) now interact with vaults.)
+(Similar to non-vaulted `P2PLendingBase`, but its internal collateral functions (`_send_collateral`, `_receive_collateral`) now interact with vaults. Adds `vault_registrar` state variable for automatic vault registration with the Securitize Vault Registrar during vault creation.)
 
 ##### Relevant External Functions (`P2PLendingVaultedErc20.vy`)
 
@@ -444,6 +447,7 @@ The `P2PLendingVaultedErc20` contract serves as the main entry point for the vau
 | `propose_owner` | Owner | Nonpayable | Proposes a new owner for the contract |
 | `claim_ownership` | Proposed Owner | Nonpayable | Claims ownership of the contract |
 | `set_transfer_agent` | Owner/Transfer Agent | Nonpayable | Sets the transfer agent address |
+| `change_vault_registrar` | Owner | Nonpayable | Changes the vault registrar connector address |
 | `current_ltv` | Any | View | Gets the current LTV of a loan |
 | `is_loan_defaulted` | Any | View | Checks if a loan is defaulted |
 | `simulate_partial_liquidation` | Any | View | Simulates the outcome of a partial liquidation |
@@ -472,6 +476,7 @@ The `P2PLendingSecuritizeErc20` contract extends the vaulted architecture for Se
 | --- | --- | :-: | --- |
 | `vault_count` | `public(HashMap[address, uint256])` | Yes | Number of vaults created per borrower |
 | `securitize_redemption_wallet` | `public(address)` | Yes | Wallet address for Securitize redemptions |
+| `vault_registrar` | `public(address)` | Yes | Address of the vault registrar connector |
 
 ##### Relevant External Functions (`P2PLendingSecuritizeErc20.vy`)
 
@@ -489,6 +494,7 @@ The `P2PLendingSecuritizeErc20` contract extends the vaulted architecture for Se
 | `replace_loan` | Borrower | Nonpayable | Replaces a loan (not allowed on redeemed loans) |
 | `replace_loan_lender` | Lender | Nonpayable | Replaces a loan as lender (not allowed on redeemed loans) |
 | `set_securitize_redemption_wallet` | Owner | Nonpayable | Sets the redemption wallet address |
+| `change_vault_registrar` | Owner | Nonpayable | Changes the vault registrar connector address |
 | `wallet_to_vault` | Any | View | Gets the latest vault address for a wallet |
 | `vault_id_to_vault` | Any | View | Gets a specific vault address by ID |
 | `is_loan_redeemed` | Any | View | Checks if a loan has started redemption |
@@ -572,6 +578,7 @@ For deployments in private and test networks, mock implementations of external d
 *   `MockAggregatorV3.vy`: For the Chainlink Price Feed oracle.
 *   `MockKYCValidator.vy`: For the KYC validation contract.
 *   `MockVault.vy`: For the `P2PLendingVault` in vaulted version testing.
+*   `VaultRegistrarMock.vy`: A mock implementation of the Securitize Vault Registrar interface. Provides `registerVault` and `isRegistered` functions.
 
 ### Run the project
 

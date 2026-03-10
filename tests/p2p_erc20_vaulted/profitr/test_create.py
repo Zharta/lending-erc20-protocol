@@ -241,6 +241,7 @@ def p2p_usdc_profitr(
         p2p_liquidation.address,
         profitr_vault_impl.address,
         transfer_agent,
+        boa.eval("empty(address)"),  # vault_registrar_addr
     )
 
 
