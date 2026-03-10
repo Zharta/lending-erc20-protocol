@@ -22,7 +22,7 @@ interface Vault:
 implements: Vault
 
 
-VERSION: public(constant(String[30])) = "P2PLendingVault.20260113"
+VERSION: public(constant(String[30])) = "P2PLendingVault.20260310"
 
 # Structs
 
