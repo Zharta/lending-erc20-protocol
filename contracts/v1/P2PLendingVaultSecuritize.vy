@@ -208,7 +208,8 @@ def buy(payment_token: address, min_ds_token_amount: uint256, stable_coin_amount
     self.pending_transfers_total += ds_token_amount.ds_token_amount
 
     remaining_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
-    extcall IERC20(payment_token).transfer(msg.sender, remaining_balance - initial_balance)
+    if remaining_balance > initial_balance:
+        extcall IERC20(payment_token).transfer(msg.sender, remaining_balance - initial_balance)
 
 @internal
 def _check_user(user: address) -> bool:
