@@ -118,19 +118,6 @@
             "properties": {},
             "properties_addresses": {}
         },
-        "securitize_loop": {
-            "abi_key": "5347634a608bfe1f978cb0b0fe17ca307b07f18b",
-            "address": "0xeA1b473c7bDC79368a60e2998109F52e3674430E",
-            "contract": "SecuritizeLoop",
-            "properties": {
-                "balancer_key": "common.balancer",
-                "p2p_contract_key": "p2p.usdc_acred_securitize"
-            },
-            "properties_addresses": {
-                "balancer": "0xF69C97118847848E939E5c2E2913F779D6311ed8",
-                "p2p_contract": "0xafC3e1d450FBa3396347605841DBb174cD8F5022"
-            }
-        },
         "vault_impl": {
             "abi_key": "bf92cf472bd60d19aa44189558803ad83f5e9e7f",
             "address": "0x0A186Bb7c80d1f0B62b22DB83A01769B4559Fb31",
@@ -150,12 +137,12 @@
     "p2p": {
         "usdc_acred": {
             "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
-            "address": "0xb4158fb74227f9Cb1B69E493d0401556c9bC8625",
+            "address": "0x69A4c3B58BffB11A86Befe3f85C80Cb9a2D5B3f6",
             "contract": "P2PLendingV0Securitize",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
                 "borrower": "0x52C5599257A5c9FE268d27BAAD9C1f2B220D5F25",
-                "collateral_token_key": "common.acred",
+                "collateral_token_key": "common.acred_with_swap",
                 "kyc_validator_key": "common.kyc",
                 "max_protocol_settlement_fee": 1000,
                 "max_protocol_upfront_fee": 1000,
@@ -168,7 +155,7 @@
                 "refinance_impl_key": "common.refinance_v0_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0x29f52C105ade90F928Caf22D1355801AA4D0202c",
+                "collateral_token": "0x19870195231b87dDA13cE62950c04b1B587DeaEd",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "oracle": "0x036611CaA5aDBF21C0699C9A30C5715adB2DC3BE",
                 "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
@@ -178,8 +165,8 @@
             "version": "0"
         },
         "usdc_acred_securitize": {
-            "abi_key": "59fb6096f059273f7654875d7e9310a311a4e067",
-            "address": "0xafC3e1d450FBa3396347605841DBb174cD8F5022",
+            "abi_key": "74bbccc5ab6e07d542eb7a5d64073dc17cd5a4b7",
+            "address": "0x2020F52681a2676eF40130aDe2f93ff8574CE98e",
             "contract": "P2PLendingSecuritizeErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
@@ -215,11 +202,11 @@
         },
         "usdc_acred_vaulted": {
             "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x1c4D583CD163B41418782c350f34d9915E8C3638",
+            "address": "0xb3D9810f921C2f55CD8C5f5AAeb80d82c5A04433",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
-                "collateral_token_key": "common.acred",
+                "collateral_token_key": "common.acred_with_swap",
                 "full_liquidation_fee": 1000,
                 "kyc_validator_key": "common.kyc",
                 "liquidation_impl_key": "common.liquidation_vaulted_impl",
@@ -237,7 +224,7 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0x29f52C105ade90F928Caf22D1355801AA4D0202c",
+                "collateral_token": "0x19870195231b87dDA13cE62950c04b1B587DeaEd",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "liquidation_impl": "0xfbf39Be4a1fD1880eD9a098bBeA486bb823AcE97",
                 "oracle": "0x036611CaA5aDBF21C0699C9A30C5715adB2DC3BE",
@@ -351,6 +338,22 @@
                 "vault_impl": "0x0A186Bb7c80d1f0B62b22DB83A01769B4559Fb31"
             },
             "token_symbol": "USDC",
+            "version": "1"
+        }
+    },
+    "proxies": {
+        "securitize_loop": {
+            "abi_key": "b0d386806a77f24cc3636b1596d47647d2bf94f3",
+            "address": "0xadC332B1F89d4610A650bD9A5D9ECB2F8b6D5f29",
+            "contract": "SecuritizeLoop",
+            "properties": {
+                "balancer_key": "common.balancer",
+                "p2p_contract_key": "p2p.usdc_acred_securitize"
+            },
+            "properties_addresses": {
+                "balancer": "0xF69C97118847848E939E5c2E2913F779D6311ed8",
+                "p2p_contract": "0x2020F52681a2676eF40130aDe2f93ff8574CE98e"
+            },
             "version": "1"
         }
     }

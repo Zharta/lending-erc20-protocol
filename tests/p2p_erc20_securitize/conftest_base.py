@@ -36,7 +36,9 @@ class EventWrapper:
 
 def get_last_event(contract: VyperContract, name: str | None = None):
     matching_events = [
-        e for e in contract.get_logs() if not isinstance(e, RawLogEntry) and (name is None or name == type(e).__name__)
+        e
+        for e in contract.get_logs(strict=False)
+        if not isinstance(e, RawLogEntry) and (name is None or name == type(e).__name__)
     ]
     return EventWrapper(matching_events[-1])
 
@@ -82,8 +84,8 @@ SignedWalletValidation = namedtuple(
 
 RedeemResult = namedtuple(
     "RedeemResult",
-    ["vault", "collateral_redeemed", "payment_redeemed", "timestamp", "redeem_wallet"],
-    defaults=[ZERO_ADDRESS, 0, 0, 0, ZERO_ADDRESS],
+    ["vault", "collateral_redeemed", "payment_redeemed", "timestamp"],
+    defaults=[ZERO_ADDRESS, 0, 0, 0],
 )
 
 SignedRedeemResult = namedtuple("SignedRedeemResult", ["result", "signature"], defaults=[RedeemResult(), Signature()])
@@ -316,8 +318,8 @@ def sign_redeem_result(result: RedeemResult, owner_key: str) -> SignedRedeemResu
     """
     # ABI encode the result struct
     encoded_result = encode(
-        ["(address,uint256,uint256,uint256,address)"],
-        [(result.vault, result.collateral_redeemed, result.payment_redeemed, result.timestamp, result.redeem_wallet)],
+        ["(address,uint256,uint256,uint256)"],
+        [(result.vault, result.collateral_redeemed, result.payment_redeemed, result.timestamp)],
     )
     # Hash the encoded result
     inner_hash = keccak(encoded_result)

@@ -44,7 +44,11 @@ event LoanCreated:
     full_liquidation_fee: uint256
     offer_id: bytes32
     offer_tracing_id: bytes32
+    oracle_rate_num: uint256
+    oracle_rate_den: uint256
     vault_id: uint256
+    vault_addr: address
+
 
 event LoanPaid:
     id: bytes32
@@ -607,7 +611,10 @@ def create_loan(
         full_liquidation_fee=loan.full_liquidation_fee,
         offer_id=offer_id,
         offer_tracing_id=offer.offer.tracing_id,
-        vault_id=loan.vault_id
+        oracle_rate_num=convertion_rate.numerator,
+        oracle_rate_den=convertion_rate.denominator,
+        vault_id=loan.vault_id,
+        vault_addr=_vault.address,
     )
     return loan.id
 
@@ -720,7 +727,7 @@ def liquidate_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
             payment_token_decimals,
             offer_sig_domain_separator,
             vault_impl_addr,
-            method_id=method_id("liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256,address),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+            method_id=method_id("liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         is_delegate_call=True
     )

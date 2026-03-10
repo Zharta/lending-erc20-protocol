@@ -809,11 +809,16 @@ def contract_sizes():
         contract_size(path)
 
 
-def ape_init_extras():
-    globals()["dm"] = dm
-    globals()["owner"] = dm.owner
+def ape_init_extras(**namespace):  # noqa: ARG001
+    extras = {
+        "dm": dm,
+        "owner": dm.owner,
+    }
     for k, v in dm.context.contracts.items():
-        globals()[k.replace(".", "_").replace("-", "_")] = v.contract
-        print(k.replace(".", "_"), v.contract)
+        key = k.replace(".", "_").replace("-", "_")
+        extras[key] = v.contract
+        print(key, v.contract)
     for k, v in dm.context.config.items():
-        globals()[k.replace(".", "_").replace("-", "_")] = v
+        key = k.replace(".", "_").replace("-", "_")
+        extras[key] = v
+    return extras

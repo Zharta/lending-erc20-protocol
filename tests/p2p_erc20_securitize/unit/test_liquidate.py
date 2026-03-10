@@ -606,7 +606,6 @@ def redeemed_loan_with_payment(
         collateral_redeemed=0,  # All collateral was converted to payment
         payment_redeemed=payment_redeemed,
         timestamp=now + 1,  # After redeem_start
-        redeem_wallet=securitize_redemption_wallet,
     )
 
     return redeemed_loan, redeem_result, payment_redeemed
@@ -655,7 +654,6 @@ def redeemed_loan_with_collateral(
         collateral_redeemed=0,  # collateral_redeemed is from redemption, not residual
         payment_redeemed=payment_redeemed,
         timestamp=now + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
 
     return redeemed_loan, redeem_result, payment_redeemed, residual_collateral
@@ -870,7 +868,6 @@ def test_liquidate_redeemed_loan_with_shortfall(
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,  # After redeem_start
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 

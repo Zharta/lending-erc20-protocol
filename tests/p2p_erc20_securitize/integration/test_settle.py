@@ -5,6 +5,7 @@ from ..conftest_base import (
     ZERO_BYTES32,
     Offer,
     SecuritizeLoan,
+    SignedRedeemResult,
     compute_liquidity_key,
     compute_securitize_loan_hash,
     compute_signed_offer_id,
@@ -57,8 +58,8 @@ def offer_usdc_weth(now, borrower, lender, oracle_usdc_eth, lender_key, usdc, we
         min_collateral_amount=0,
         max_iltv=8000,
         available_liquidity=principal,
-        call_eligibility=10,
-        call_window=10,
+        call_eligibility=0,
+        call_window=0,
         liquidation_ltv=0,
         oracle_addr=oracle_usdc_eth.address,
         expiration=now + 100,
@@ -154,7 +155,7 @@ def test_settle_loan_non_redeemed(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, w
     vault_balance_before = weth.balanceOf(vault_addr)
     initial_protocol_wallet_balance = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
 
-    p2p_usdc_weth.settle_loan(loan, sender=loan.borrower)
+    p2p_usdc_weth.settle_loan(loan, SignedRedeemResult(), sender=loan.borrower)
     event = get_last_event(p2p_usdc_weth, "LoanPaid")
 
     assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32

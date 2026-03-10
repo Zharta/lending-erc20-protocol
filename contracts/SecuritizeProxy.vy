@@ -63,12 +63,22 @@ struct CallbackData:
     borrower_kyc: base.SignedWalletValidation
     lender_kyc: base.SignedWalletValidation
 
+
+event LeveragedLoanCreated:
+    loan_id: bytes32
+    p2p_lending_erc20: address
+    principal: uint256
+    loan_collateral_amount: uint256
+    aquired_collateral: uint256
+    max_collateral_buy_value: uint256
+    flash_loan_amount: uint256
+
+
 BPS: constant(uint256) = 10000
 SEC_SWAP_SERVICE_ID: constant(uint256) = 1<<14
 
 p2p_lending_erc20: public(immutable(address))
 flash_lender: public(immutable(address))
-
 
 @deploy
 def __init__(_p2p_lending_erc20: address, _flash_lender: address):
@@ -106,7 +116,7 @@ def receiveFlashLoan(
         extcall P2PLendingSecuritizeErc20.__at__(p2p_lending_erc20).create_vault_if_needed(callback_data.borrower)
     extcall vault.__at__(borrower_vault).buy(payment_token, callback_data.collateral_to_buy, callback_data.collateral_max_spend)
 
-    self._create_loan(
+    loan_id: bytes32 = self._create_loan(
         callback_data.offer,
         callback_data.principal,
         callback_data.collateral_amount,
@@ -116,6 +126,16 @@ def receiveFlashLoan(
 
     assert (staticcall IERC20(payment_token).balanceOf(callback_data.borrower)) >= amounts[0], "Insufficient balance"
     extcall IERC20(payment_token).transferFrom(callback_data.borrower, flash_lender, amounts[0])
+
+    log LeveragedLoanCreated(
+        loan_id = loan_id,
+        p2p_lending_erc20 = p2p_lending_erc20,
+        principal = callback_data.principal,
+        loan_collateral_amount = callback_data.collateral_amount,
+        aquired_collateral = callback_data.collateral_to_buy,
+        max_collateral_buy_value = callback_data.collateral_max_spend,
+        flash_loan_amount = amounts[0]
+    )
 
 
 
