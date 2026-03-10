@@ -26,7 +26,7 @@ from contracts.v1 import P2PLendingVaultedErc20 as main
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
-VERSION: public(constant(String[30])) = "P2PLendingRefinance.20260113"
+VERSION: public(constant(String[30])) = "P2PLendingRefinance.20260310"
 
 
 
