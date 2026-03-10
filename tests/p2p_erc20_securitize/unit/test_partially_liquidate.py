@@ -481,3 +481,21 @@ def test_partially_liquidate_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ongoin
 
     with boa.reverts("loan redeemed"):
         p2p_usdc_weth.partially_liquidate_loan(redeemed_loan, sender=loan.borrower)
+
+
+def test_partially_liquidate_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner):
+    loan = ongoing_loan_usdc_weth
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.partially_liquidate_loan(loan, sender=loan.lender)
+
+
+def test_simulate_partial_liquidation_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner):
+    loan = ongoing_loan_usdc_weth
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.simulate_partial_liquidation(loan)

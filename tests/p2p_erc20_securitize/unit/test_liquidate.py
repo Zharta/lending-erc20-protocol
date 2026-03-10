@@ -1159,6 +1159,18 @@ def test_liquidate_redeemed_loan_by_lender(
     assert weth.balanceOf(vault_addr) == 0
 
 
+def test_liquidate_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner, now):
+    loan = ongoing_loan_usdc_weth
+
+    # Default the loan first
+    boa.env.time_travel(seconds=loan.maturity - now + 1)
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.lender)
+
+
 def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
     p2p_usdc_weth,
     ongoing_loan_usdc_weth,
@@ -2058,3 +2070,4 @@ def test_liquidate_non_redeemed_shortfall_lender_gets_all_collateral(
 
     # Protocol receives fee
     assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + protocol_settlement_fee_amount
+

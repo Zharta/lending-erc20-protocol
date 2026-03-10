@@ -769,3 +769,32 @@ def test_replace_loan_lender_reverts_if_loan_redeemed(
 
     with boa.reverts("loan redeemed"):
         p2p_usdc_weth.replace_loan_lender(redeemed_loan, offer_usdc_weth2, 0, kyc_lender2, sender=loan.lender)
+
+
+def test_replace_loan_lender_reverts_if_oracle_answer_zero(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner, lender2, lender2_key, usdc, weth, now, kyc_lender2
+):
+    loan = ongoing_loan_usdc_weth
+
+    new_offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=8000,
+        available_liquidity=loan.amount,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\2",
+    )
+    signed_new_offer = sign_offer(new_offer, lender2_key, p2p_usdc_weth.address)
+    usdc.approve(p2p_usdc_weth.address, loan.amount * 2, sender=lender2)
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.replace_loan_lender(loan, signed_new_offer, 0, kyc_lender2, sender=loan.lender)
