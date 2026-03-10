@@ -24,11 +24,6 @@ def accounts(boa_env):
 
 
 @pytest.fixture(scope="session")
-def owner_account():
-    return Account.create()
-
-
-@pytest.fixture(scope="session")
 def owner(owner_account, boa_env):
     boa.env.eoa = owner_account.address
     boa.env.set_balance(owner_account.address, 10**21)

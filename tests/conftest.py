@@ -1,4 +1,10 @@
 import pytest
+from eth_account import Account
+
+
+@pytest.fixture(scope="session")
+def owner_account():
+    return Account.create()
 
 
 def pytest_addoption(parser):
