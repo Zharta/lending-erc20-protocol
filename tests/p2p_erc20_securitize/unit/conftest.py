@@ -295,7 +295,7 @@ def usdc(weth9_contract_def, owner):
 
 
 @pytest.fixture
-def oracle(oracle_contract_def):
+def oracle(oracle_contract_def, owner):
     rate = 387780390000
     decimals = 8
     return oracle_contract_def.deploy(decimals, rate)
