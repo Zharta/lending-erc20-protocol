@@ -250,7 +250,7 @@ def test_add_collateral_to_loan_transfers_collateral(p2p_usdc_weth, ongoing_loan
     assert weth.balanceOf(vault_addr) == collateral_amount + additional_collateral
 
 
-def test_add_collateral_to_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, owner):
+def test_add_collateral_to_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle):
     loan = ongoing_loan_usdc_weth
     additional_collateral = int(0.1e18)
     vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
@@ -258,7 +258,7 @@ def test_add_collateral_to_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ong
     weth.deposit(value=additional_collateral, sender=loan.borrower)
     weth.approve(vault_addr, additional_collateral, sender=loan.borrower)
 
-    oracle.set_rate(0, sender=owner)
+    oracle.set_rate(0, sender=oracle.owner())
 
     with boa.reverts("invalid oracle rate"):
         p2p_usdc_weth.add_collateral_to_loan(loan, additional_collateral, sender=loan.borrower)

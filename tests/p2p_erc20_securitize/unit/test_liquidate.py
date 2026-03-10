@@ -948,7 +948,6 @@ def test_liquidate_redeemed_loan_not_defaulted_uses_adjusted_ltv(
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -1019,7 +1018,6 @@ def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_with_remaining_de
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -1081,7 +1079,6 @@ def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_no_remaining_debt
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -1221,7 +1218,6 @@ def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -1320,7 +1316,6 @@ def redeemed_loan_zhar3_2(
         collateral_redeemed=0,  # collateral_redeemed is from redemption, not residual
         payment_redeemed=payment_redeemed,
         timestamp=now + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
 
     return redeemed_loan, redeem_result, payment_redeemed, residual_collateral
@@ -1602,7 +1597,6 @@ def test_liquidate_redeemed_combined_coverage_third_party_exact_balances(
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -1740,7 +1734,6 @@ def test_liquidate_redeemed_shortfall_third_party_exact_balances(
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -1846,7 +1839,6 @@ def test_liquidate_redeemed_surplus_protocol_fee_properly_applied(
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -1928,7 +1920,6 @@ def test_liquidate_redeemed_combined_coverage_lender_as_liquidator(
         collateral_redeemed=0,
         payment_redeemed=payment_redeemed,
         timestamp=redeem_time + 1,
-        redeem_wallet=securitize_redemption_wallet,
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
@@ -2067,4 +2058,3 @@ def test_liquidate_non_redeemed_shortfall_lender_gets_all_collateral(
 
     # Protocol receives fee
     assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + protocol_settlement_fee_amount
-

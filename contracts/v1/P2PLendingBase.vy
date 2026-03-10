@@ -343,16 +343,16 @@ def _check_offer_validity(offer: SignedOffer, payment_token: address, collateral
 @view
 @internal
 def _get_oracle_rate(oracle_addr: address, oracle_reverse: bool) -> UInt256Rational:
-    convertion_rate_numerator: uint256 = 0
-    convertion_rate_denominator: uint256 = 0
+    answer: int256 = (staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer
+    assert answer > 0, "invalid oracle rate"
     if oracle_reverse:
         return UInt256Rational(
             numerator=10 ** convert(staticcall AggregatorV3Interface(oracle_addr).decimals(), uint256),
-            denominator=convert((staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer, uint256)
+            denominator=convert(answer, uint256)
         )
     else:
         return UInt256Rational(
-            numerator=convert((staticcall AggregatorV3Interface(oracle_addr).latestRoundData()).answer, uint256),
+            numerator=convert(answer, uint256),
             denominator=10 ** convert(staticcall AggregatorV3Interface(oracle_addr).decimals(), uint256)
         )
 
