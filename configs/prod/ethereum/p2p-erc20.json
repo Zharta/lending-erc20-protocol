@@ -1,5 +1,15 @@
 {
     "common": {
+        "acred_vault_registrar": {
+            "abi_key": "64b7143c5314f29b152297bf2d4bc10ab54fc5c7",
+            "address": "0x9fbF77D74337FefA7D8993f507A38EDB4df620E5",
+            "contract": "VaultRegistrarMock",
+            "properties": {
+                "token_key": "common.acred"
+            },
+            "properties_addresses": {
+            }
+        },
         "balancer": {
             "abi_key": "65bb6dd0e302236a169d3f06dfc1a1025c9f1882",
             "address": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
@@ -18,7 +28,7 @@
         },
         "liquidation_securitize_impl": {
             "abi_key": "af3fa2477bf961123ea91b2d51106b537f096094",
-            "address": "0x279fC5356B427275eeEA326c0Ff62bd1101bDE32",
+            "address": "",
             "contract": "LiquidationSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
@@ -71,7 +81,7 @@
         },
         "refinance_securitize_impl": {
             "abi_key": "78caf3554d584d6709b0b05170a28e7939000e30",
-            "address": "0xDf96D685E40DBF018917aEb1F4Db6fF6d1BFE704",
+            "address": "",
             "contract": "RefinanceSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
@@ -89,17 +99,14 @@
             "properties": {},
             "properties_addresses": {}
         },
-        "securitize_loop": {
-            "abi_key": "5347634a608bfe1f978cb0b0fe17ca307b07f18b",
-            "address": "0xee6749205063aB603e695a5EC96D8Bea6E794fBf",
-            "contract": "SecuritizeLoop",
+        "securitize_registrar_connector": {
+            "abi_key": "44eaa4f47d4ad3ac40b2029cfd75c18fb86ffa01",
+            "address": "",
+            "contract": "SecuritizeRegistrarV1Connector",
             "properties": {
-                "balancer_key": "common.balancer",
-                "p2p_contract_key": "p2p.usdc_acred_securitize"
+                "vault_registrar_key": "common.acred_vault_registrar"
             },
             "properties_addresses": {
-                "balancer": "0xBA12222222228d8Ba445958a75a0704d566BF2C8",
-                "p2p_contract": "0xa554B9A8576b2940C7535fCA1855bCb154e67E48"
             }
         },
         "vault_impl": {
@@ -111,7 +118,7 @@
         },
         "vault_securitize_impl": {
             "abi_key": "091947ac846186381751f75014e9213a6df80f7d",
-            "address": "0x1814b0B5468274E83dE72c5Fe8Ff6df03A0De070",
+            "address": "",
             "contract": "VaultSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
@@ -147,6 +154,36 @@
             },
             "token_symbol": "USDC",
             "version": "0"
+        },
+        "usdc_acred_securitize": {
+            "abi_key": "a9d1a39fa9d7570bff67a8199d2b22eb1b31edb7",
+            "address": "",
+            "contract": "P2PLendingSecuritizeErc20",
+            "oracle_name": "RedStone Feed: ACRED / USD",
+            "properties": {
+                "collateral_token_key": "common.acred",
+                "full_liquidation_fee": 500,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_securitize_impl",
+                "max_protocol_settlement_fee": 5000,
+                "max_protocol_upfront_fee": 5000,
+                "oracle_key": "common.oracle_acred_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 400,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
+                "refinance_impl_key": "common.refinance_securitize_impl",
+                "securitize_redemption_wallet": "0xbb543C77436645C8b95B64eEc39E3C0d48D4842b",
+                "transfer_agent": "0x314BA3811129AE06Fc35894a3Bb62157028A9Fd9",
+                "vault_impl_key": "common.vault_securitize_impl",
+                "vault_registrar_connector_key": "common.securitize_registrar_connector"
+            },
+            "properties_addresses": {
+            },
+            "token_symbol": "USDC",
+            "version": "1"
         },
         "usdc_acred_vaulted": {
             "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
@@ -288,5 +325,19 @@
             "token_symbol": "USDC",
             "version": "1"
         }
-    }
+    },
+    "proxies": {
+        "securitize_loop": {
+            "abi_key": "b0d386806a77f24cc3636b1596d47647d2bf94f3",
+            "address": "",
+            "contract": "SecuritizeLoop",
+            "properties": {
+                "balancer_key": "common.balancer",
+                "p2p_contract_key": "p2p.usdc_acred_securitize"
+            },
+            "properties_addresses": {
+            },
+            "version": "1"
+        }
+     }
 }
