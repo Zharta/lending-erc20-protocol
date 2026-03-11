@@ -1,5 +1,36 @@
 {
     "common": {
+        "acred_vault_registrar": {
+            "abi_key": "64b7143c5314f29b152297bf2d4bc10ab54fc5c7",
+            "address": "0x53895fEed57DE40b56C4E285e29bc4a97EE77DD9",
+            "contract": "VaultRegistrarMock",
+            "properties": {
+                "token_key": "common.acred_with_swap"
+            },
+            "properties_addresses": {
+                "token": "0x1d5023d67cCB29C5e3Ea51a99AF9EA071e7bdCc0"
+            }
+        },
+        "acred_with_swap": {
+            "abi_key": "5fff8c2be0fd6ce8eadbb36cd72f4c71cfe87b8b",
+            "address": "0x1d5023d67cCB29C5e3Ea51a99AF9EA071e7bdCc0",
+            "contract": "Acred",
+            "properties": {
+                "oracle_key": "common.oracle_acred_usd",
+                "stablecoin_key": "common.usdc"
+            },
+            "properties_addresses": {
+                "oracle": "0x11eaC7Ee25518860dA0df985834A82Cdf8611954",
+                "stablecoin": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2"
+            }
+        },
+        "balancer": {
+            "abi_key": "65bb6dd0e302236a169d3f06dfc1a1025c9f1882",
+            "address": "0xc14f7c50059984E8C9709185c1edAC7A3FF761E4",
+            "contract": "Balancer",
+            "properties": {},
+            "properties_addresses": {}
+        },
         "kyc": {
             "abi_key": "c9c669b817531c2dd57ea0619817312855a9935c",
             "address": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
@@ -10,15 +41,15 @@
             "properties_addresses": {}
         },
         "liquidation_securitize_impl": {
-            "abi_key": "e2cba613b59ba31cd4a55d9350b81ed48b75feda",
-            "address": "0x4eBeB59AEc32CFCa417E1ea737A3D5D8259984eA",
+            "abi_key": "1eb8834aadc9e1ffbc42226a9b41048a1ad2f9f6",
+            "address": "0x6bc1AD663e33F2e4261d813d4681A345cA0350Ff",
             "contract": "LiquidationSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
         },
         "liquidation_vaulted_impl": {
-            "abi_key": "fe3e9e3a58ff259fabeb433d050d0f80f1b41830",
-            "address": "0x342deEDbcfC619AD010E13726C258A917cc3EB6d",
+            "abi_key": "1f49721fdfcc3e86874b72f64853caab7a7aa98f",
+            "address": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
             "contract": "LiquidationVaultedImpl",
             "properties": {},
             "properties_addresses": {}
@@ -64,8 +95,8 @@
             "properties_addresses": {}
         },
         "refinance_securitize_impl": {
-            "abi_key": "943b3df61d0a84129ed221d66b14fe86327ddf7f",
-            "address": "0x3553a1cd2315A3828bB70EF80Ddf2203f132C005",
+            "abi_key": "7f2cc83a78b7f580923e6e9a81eae2b4e26afb24",
+            "address": "0x7C5027a1F23CE365e0165C8f5BC54c9714D8F38a",
             "contract": "RefinanceSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
@@ -78,22 +109,33 @@
             "properties_addresses": {}
         },
         "refinance_vaulted_impl": {
-            "abi_key": "e67f06d90a0466d774e78e5586920950004f1d70",
-            "address": "0xCFc4981F6D318328c0CEDB01bafA7f587e73907B",
+            "abi_key": "7f29ea89d77434532a3c2289df3b6cfcc8c5b55c",
+            "address": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
             "contract": "RefinanceVaultedImpl",
             "properties": {},
             "properties_addresses": {}
         },
+        "securitize_registrar_connector": {
+            "abi_key": "44eaa4f47d4ad3ac40b2029cfd75c18fb86ffa01",
+            "address": "0xA9779226Af9D53d7E503896Dc5a44050f0D5b13C",
+            "contract": "SecuritizeRegistrarV1Connector",
+            "properties": {
+                "vault_registrar_key": "common.acred_vault_registrar"
+            },
+            "properties_addresses": {
+                "vault_registrar": "0x53895fEed57DE40b56C4E285e29bc4a97EE77DD9"
+            }
+        },
         "vault_impl": {
             "abi_key": "d1a14f70994b15f4446092f85ae8d69ae2c7db72",
-            "address": "0xFAa6182Bf5Da73021340424e313dCB8898Efd4b3",
+            "address": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2",
             "contract": "VaultImpl",
             "properties": {},
             "properties_addresses": {}
         },
         "vault_securitize_impl": {
-            "abi_key": "091947ac846186381751f75014e9213a6df80f7d",
-            "address": "0x2F1b33C8A0235d2940100b4959a6D4c4E2534Eb4",
+            "abi_key": "59b5aacc5b1937f68ee9b28b274df5f4ccb58e22",
+            "address": "0xB4680C993287F01D2f0117a02160b400B589455e",
             "contract": "VaultSecuritizeImpl",
             "properties": {},
             "properties_addresses": {}
@@ -103,12 +145,12 @@
     "p2p": {
         "usdc_acred": {
             "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
-            "address": "0xcf992C9828854e1954d792073cd76856AED988e0",
+            "address": "0xA6dF5F68cfBe674Cd3A5b1DE28A1Dfbeb6B6c211",
             "contract": "P2PLendingV0Securitize",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
                 "borrower": "0x52C5599257A5c9FE268d27BAAD9C1f2B220D5F25",
-                "collateral_token_key": "common.acred",
+                "collateral_token_key": "common.acred_with_swap",
                 "kyc_validator_key": "common.kyc",
                 "max_protocol_settlement_fee": 1000,
                 "max_protocol_upfront_fee": 1000,
@@ -121,7 +163,7 @@
                 "refinance_impl_key": "common.refinance_v0_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0xDAB05E3249DAE155f4Fb4e77c67EFAcc061fF004",
+                "collateral_token": "0x1d5023d67cCB29C5e3Ea51a99AF9EA071e7bdCc0",
                 "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
                 "oracle": "0x11eaC7Ee25518860dA0df985834A82Cdf8611954",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
@@ -131,12 +173,12 @@
             "version": "0"
         },
         "usdc_acred_securitize": {
-            "abi_key": "59fb6096f059273f7654875d7e9310a311a4e067",
-            "address": "0x89c4db23dF08dD871eEC1487A190760c6cBE628c",
+            "abi_key": "a9d1a39fa9d7570bff67a8199d2b22eb1b31edb7",
+            "address": "0x0343D3477E95Ac98583A3B95af8735A94706afa8",
             "contract": "P2PLendingSecuritizeErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
-                "collateral_token_key": "common.acred",
+                "collateral_token_key": "common.acred_with_swap",
                 "full_liquidation_fee": 1000,
                 "kyc_validator_key": "common.kyc",
                 "liquidation_impl_key": "common.liquidation_securitize_impl",
@@ -152,27 +194,29 @@
                 "refinance_impl_key": "common.refinance_securitize_impl",
                 "securitize_redemption_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
                 "transfer_agent": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
-                "vault_impl_key": "common.vault_securitize_impl"
+                "vault_impl_key": "common.vault_securitize_impl",
+                "vault_registrar_connector_key": "common.securitize_registrar_connector"
             },
             "properties_addresses": {
-                "collateral_token": "0xDAB05E3249DAE155f4Fb4e77c67EFAcc061fF004",
+                "collateral_token": "0x1d5023d67cCB29C5e3Ea51a99AF9EA071e7bdCc0",
                 "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
-                "liquidation_impl": "0x4eBeB59AEc32CFCa417E1ea737A3D5D8259984eA",
+                "liquidation_impl": "0x6bc1AD663e33F2e4261d813d4681A345cA0350Ff",
                 "oracle": "0x11eaC7Ee25518860dA0df985834A82Cdf8611954",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
-                "refinance_impl": "0x3553a1cd2315A3828bB70EF80Ddf2203f132C005",
-                "vault_impl": "0x2F1b33C8A0235d2940100b4959a6D4c4E2534Eb4"
+                "refinance_impl": "0x7C5027a1F23CE365e0165C8f5BC54c9714D8F38a",
+                "vault_impl": "0xB4680C993287F01D2f0117a02160b400B589455e",
+                "vault_registrar_connector": "0xA9779226Af9D53d7E503896Dc5a44050f0D5b13C"
             },
             "token_symbol": "USDC",
-            "version": "0"
+            "version": "1"
         },
         "usdc_acred_vaulted": {
-            "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x3FB38b0574C26f425B60043f3e35Ba63A3B8bcDC",
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0xd261e99762dfC4e83b7D89E81eab1B8bDE6dce2C",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
             "properties": {
-                "collateral_token_key": "common.acred",
+                "collateral_token_key": "common.acred_with_swap",
                 "full_liquidation_fee": 1000,
                 "kyc_validator_key": "common.kyc",
                 "liquidation_impl_key": "common.liquidation_vaulted_impl",
@@ -190,20 +234,20 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0xDAB05E3249DAE155f4Fb4e77c67EFAcc061fF004",
+                "collateral_token": "0x1d5023d67cCB29C5e3Ea51a99AF9EA071e7bdCc0",
                 "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
-                "liquidation_impl": "0x342deEDbcfC619AD010E13726C258A917cc3EB6d",
+                "liquidation_impl": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
                 "oracle": "0x11eaC7Ee25518860dA0df985834A82Cdf8611954",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
-                "refinance_impl": "0xCFc4981F6D318328c0CEDB01bafA7f587e73907B",
-                "vault_impl": "0xFAa6182Bf5Da73021340424e313dCB8898Efd4b3"
+                "refinance_impl": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
+                "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_cbbtc_vaulted": {
-            "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x8B23067343551e96E184c1d89246587F3e274bb1",
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0xf5ddE4164D13B6108C7eB09D03bAbFF6596741Ca",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: cbBTC / USD",
             "properties": {
@@ -227,18 +271,18 @@
             "properties_addresses": {
                 "collateral_token": "0xf7249d03cB1742B42437934583AAa8956a7A6cDD",
                 "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
-                "liquidation_impl": "0x342deEDbcfC619AD010E13726C258A917cc3EB6d",
+                "liquidation_impl": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
                 "oracle": "0xc01B9c013617E9AA0aBc863D797Cc484f609BF7F",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
-                "refinance_impl": "0xCFc4981F6D318328c0CEDB01bafA7f587e73907B",
-                "vault_impl": "0xFAa6182Bf5Da73021340424e313dCB8898Efd4b3"
+                "refinance_impl": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
+                "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_wbtc_vaulted": {
-            "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0x32f7337334BD25749Dd3B6A3D24B3248D8894B6D",
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0x81E16a0820BF00ae915d26EF2A8C1B4E28B204B7",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: BTC / USD",
             "properties": {
@@ -262,18 +306,18 @@
             "properties_addresses": {
                 "collateral_token": "0x930937403B4c341b1fBb78A152188BdEB49a95E2",
                 "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
-                "liquidation_impl": "0x342deEDbcfC619AD010E13726C258A917cc3EB6d",
+                "liquidation_impl": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
                 "oracle": "0x7Fc7B58Ca79D79349E3330448825E5ccafbE9c3a",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
-                "refinance_impl": "0xCFc4981F6D318328c0CEDB01bafA7f587e73907B",
-                "vault_impl": "0xFAa6182Bf5Da73021340424e313dCB8898Efd4b3"
+                "refinance_impl": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
+                "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "usdc_weth_vaulted": {
-            "abi_key": "f0664e6cb83b32d0cff12679e6e0a2b2c8095656",
-            "address": "0xe555859E957F7a9f0F4E29cF6C86cB45ca85E4de",
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0x1FF613b024eC0735BB65910DFf11E93F3bAF1891",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: USDC / ETH",
             "properties": {
@@ -297,13 +341,29 @@
             "properties_addresses": {
                 "collateral_token": "0xB7603602860a4816154F2A3bA4d6aBDDd8937b84",
                 "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
-                "liquidation_impl": "0x342deEDbcfC619AD010E13726C258A917cc3EB6d",
+                "liquidation_impl": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
                 "oracle": "0x878a0f68CFBe7CCA1dF9D9071Ca8D9bF47782204",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
-                "refinance_impl": "0xCFc4981F6D318328c0CEDB01bafA7f587e73907B",
-                "vault_impl": "0xFAa6182Bf5Da73021340424e313dCB8898Efd4b3"
+                "refinance_impl": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
+                "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
             },
             "token_symbol": "USDC",
+            "version": "1"
+        }
+    },
+    "proxies": {
+        "securitize_loop": {
+            "abi_key": "b0d386806a77f24cc3636b1596d47647d2bf94f3",
+            "address": "0x81aAc2Ce0299ddA9363b2a4Ee5dDA1cADAf009ad",
+            "contract": "SecuritizeLoop",
+            "properties": {
+                "balancer_key": "common.balancer",
+                "p2p_contract_key": "p2p.usdc_acred_securitize"
+            },
+            "properties_addresses": {
+                "balancer": "0xc14f7c50059984E8C9709185c1edAC7A3FF761E4",
+                "p2p_contract": "0x0343D3477E95Ac98583A3B95af8735A94706afa8"
+            },
             "version": "1"
         }
     }
