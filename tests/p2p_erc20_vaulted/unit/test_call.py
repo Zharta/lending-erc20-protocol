@@ -273,7 +273,7 @@ def test_call_loan_reverts_if_loan_defaulted(p2p_usdc_weth, ongoing_loan_usdc_we
         p2p_usdc_weth.call_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.lender)
 
 
-def test_call_loan_reverts_with_unauth_proxy(p2p_usdc_weth, ongoing_loan_usdc_weth, now, usdc, p2p_erc20_proxy):
+def test_call_loan_reverts_if_proxy_not_authorized(p2p_usdc_weth, ongoing_loan_usdc_weth, now, usdc, p2p_erc20_proxy):
     with boa.reverts("not lender"):
         p2p_erc20_proxy.call_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.lender)
 
@@ -313,13 +313,15 @@ def test_call_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, now, usdc):
     assert event.call_time == now + ongoing_loan_usdc_weth.call_eligibility
 
 
-def test_call_loan_defaults_loan_after_call_window(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
+def test_call_loan_defaults_loan_after_call_window(p2p_usdc_weth, ongoing_loan_usdc_weth, now, usdc):
     time_to_call = ongoing_loan_usdc_weth.start_time + ongoing_loan_usdc_weth.call_eligibility
     boa.env.time_travel(seconds=time_to_call - now)
 
     p2p_usdc_weth.call_loan(ongoing_loan_usdc_weth, sender=ongoing_loan_usdc_weth.lender)
 
-    time_to_default = time_to_call + ongoing_loan_usdc_weth.call_window
-    boa.env.time_travel(seconds=time_to_default)
+    updated_loan = replace_namedtuple_field(ongoing_loan_usdc_weth, call_time=time_to_call)
 
-    assert p2p_usdc_weth.is_loan_defaulted(ongoing_loan_usdc_weth)
+    boa.env.time_travel(seconds=ongoing_loan_usdc_weth.call_window + 1)
+
+    with boa.reverts("loan defaulted"):
+        p2p_usdc_weth.settle_loan(updated_loan, sender=updated_loan.borrower)

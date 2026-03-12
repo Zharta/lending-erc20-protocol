@@ -242,11 +242,6 @@ def p2p_lending_erc20_proxy_contract_def(boa_env):
     return boa.load_partial("tests/stubs/P2PErc20Proxy.vy")
 
 
-@pytest.fixture(scope="session")
-def sc_wallet_contract_def(boa_env):
-    return boa.load_partial("tests/stubs/SCWallet.vy")
-
-
 @pytest.fixture
 def now():
     return boa.eval("block.timestamp")
@@ -258,17 +253,6 @@ def kyc_for(kyc_validator_contract_def, kyc_validator_key, now):
         return sign_kyc(wallet, now, kyc_validator_key, verifier)
 
     return sign_func
-
-
-@pytest.fixture(scope="module")
-def empty_contract_def(boa_env):
-    return boa.loads_partial(
-        dedent(
-            """
-        dummy: uint256
-     """
-        )
-    )
 
 
 @pytest.fixture

@@ -129,16 +129,6 @@ def oracle_contract_def(boa_env):
 
 
 @pytest.fixture(scope="session")
-def p2p_lending_securitize_refinance_contract_def(boa_env):
-    return boa.load_partial("contracts/v1/P2PLendingSecuritizeRefinance.vy")
-
-
-@pytest.fixture(scope="session")
-def p2p_lending_securitize_liquidation_contract_def(boa_env):
-    return boa.load_partial("contracts/v1/P2PLendingSecuritizeLiquidation.vy")
-
-
-@pytest.fixture(scope="session")
 def p2p_lending_securitize_erc20_contract_def(boa_env):
     # workaround: boa doesnt catch 'unused' events and fails, so we inject a dummy function that logs them
     contents = Path("contracts/v1/P2PLendingSecuritizeErc20.vy").read_text(encoding="utf-8")
@@ -251,11 +241,6 @@ def kyc_validator_contract_def(boa_env):
 
 
 @pytest.fixture(scope="session")
-def sc_wallet_contract_def(boa_env):
-    return boa.load_partial("tests/stubs/SCWallet.vy")
-
-
-@pytest.fixture(scope="session")
 def p2p_lending_erc20_proxy_contract_def(boa_env):
     return boa.load_partial("tests/stubs/P2PSecuritizeErc20Proxy.vy")
 
@@ -271,17 +256,6 @@ def kyc_for(kyc_validator_contract_def, kyc_validator_key, now):
         return sign_kyc(wallet, expiration or now, kyc_validator_key, verifier)
 
     return sign_func
-
-
-@pytest.fixture(scope="module")
-def empty_contract_def(boa_env):
-    return boa.loads_partial(
-        dedent(
-            """
-        dummy: uint256
-     """
-        )
-    )
 
 
 @pytest.fixture
@@ -309,16 +283,6 @@ def p2p_sec_refinance(p2p_lending_securitize_refinance_contract_def):
 @pytest.fixture
 def p2p_sec_liquidation(p2p_lending_securitize_liquidation_contract_def):
     return p2p_lending_securitize_liquidation_contract_def.deploy()
-
-
-@pytest.fixture(scope="session")
-def securitize_vault_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingVaultSecuritize.vy")
-
-
-@pytest.fixture(scope="session")
-def vault_registrar_mock_contract_def(boa_env):
-    return boa.load_partial("contracts/auxiliary/VaultRegistrarMock.vy")
 
 
 @pytest.fixture

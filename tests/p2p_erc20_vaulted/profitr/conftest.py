@@ -216,14 +216,3 @@ def p2p_refinance(p2p_lending_refinance_contract_def):
 @pytest.fixture
 def p2p_liquidation(p2p_lending_liquidation_contract_def):
     return p2p_lending_liquidation_contract_def.deploy()
-
-
-@pytest.fixture
-def empty_contract_def():
-    return boa.loads_partial(
-        dedent(
-            """
-        dummy: uint256
-     """
-        )
-    )

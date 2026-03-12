@@ -67,7 +67,7 @@ def test_change_authorized_contracts_event(connector_def, vault_registrar, p2p_v
     assert event.authorized is True
 
 
-def test_change_authorized_contracts_not_owner(connector, other):
+def test_change_authorized_contracts_reverts_if_not_owner(connector, other):
     with boa.reverts("not owner"):
         connector.change_authorized_contract(
             other,
@@ -85,7 +85,7 @@ def test_register_vault(connector, p2p_vaulted, vault_registrar):
     assert vault_registrar.isRegistered(vault_addr, borrower) is True
 
 
-def test_register_vault_not_authorized(connector):
+def test_register_vault_reverts_if_not_authorized(connector):
     unauthorized = boa.env.generate_address("unauthorized")
     vault_addr = boa.env.generate_address("vault")
     investor = boa.env.generate_address("investor")

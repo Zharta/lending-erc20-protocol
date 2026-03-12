@@ -296,7 +296,9 @@ def test_partially_liquidate_loan_works_with_proxy(
     assert event.id == ongoing_loan_usdc_weth.id
 
 
-def test_partial_liquidate_works_when_liquidator_is_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
+def test_partially_liquidate_loan_works_when_liquidator_is_lender(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now
+):
     loan = ongoing_loan_usdc_weth
     liquidator = loan.lender
     oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
@@ -528,10 +530,21 @@ def test_simulate_partial_liquidation_callable_via_staticcall(p2p_usdc_weth, ong
         p2p_usdc_weth.address,
     )
 
+    principal_written_off, collateral_claimed, liquidation_fee = calc_partial_liquidation(
+        ongoing_loan_usdc_weth, usdc, weth, oracle, now
+    )
+    expected_updated_ltv = calc_ltv(
+        ongoing_loan_usdc_weth.amount + ongoing_loan_usdc_weth.get_interest(now) - principal_written_off,
+        ongoing_loan_usdc_weth.collateral_amount - collateral_claimed - liquidation_fee,
+        usdc,
+        weth,
+        oracle,
+    )
+
     result = helper.call_simulate(ongoing_loan_usdc_weth)
-    assert result.collateral_claimed > 0
-    assert result.debt_written_off > 0
-    assert result.updated_ltv > 0
+    assert result.collateral_claimed == collateral_claimed
+    assert result.debt_written_off == principal_written_off
+    assert result.updated_ltv == expected_updated_ltv
 
 
 def test_partially_liquidate_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
@@ -570,3 +583,27 @@ def test_simulate_partial_liquidation_reverts_if_oracle_answer_zero(p2p_usdc_wet
 
     with boa.reverts("invalid oracle rate"):
         p2p_usdc_weth.simulate_partial_liquidation(loan)
+
+
+def test_partially_liquidate_loan_lender_as_liquidator_skips_usdc_transfer(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now
+):
+    """Covers branch: if liquidator != loan.lender FALSE path (no USDC transfer when lender is liquidator)"""
+    loan = ongoing_loan_usdc_weth
+    liquidator = loan.lender
+    oracle.set_rate(int(oracle.rate() / 2.5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv
+
+    principal_written_off, collateral_claimed, liquidation_fee = calc_partial_liquidation(loan, usdc, weth, oracle, now)
+    assert principal_written_off > 0  # precondition: meaningful liquidation
+
+    lender_usdc_before = usdc.balanceOf(liquidator)
+    lender_weth_before = weth.balanceOf(liquidator)
+
+    p2p_usdc_weth.partially_liquidate_loan(loan, sender=liquidator)
+
+    # When liquidator == lender, no USDC transfer happens (receive_funds + send_funds skipped)
+    assert usdc.balanceOf(liquidator) == lender_usdc_before
+    # Lender still receives collateral
+    assert weth.balanceOf(liquidator) == lender_weth_before + collateral_claimed + liquidation_fee

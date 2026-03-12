@@ -120,16 +120,6 @@ def securitize_redemption_wallet():
     return boa.env.generate_address("securitize_redemption_wallet")
 
 
-@pytest.fixture(scope="session")
-def erc20_contract_def():
-    return boa.load_abi("tests/stubs/USDC_abi.json")
-
-
-@pytest.fixture(scope="session")
-def weth9_contract_def():
-    return boa.load_abi("tests/stubs/WETH9_abi.json")
-
-
 @pytest.fixture
 def weth(weth9_contract_def, owner, accounts):
     weth = weth9_contract_def.at("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
@@ -167,11 +157,6 @@ def usdc(owner, accounts, erc20_contract_def):
     return erc20
 
 
-@pytest.fixture(scope="session")
-def oracle_contract_def():
-    return boa.load_abi("tests/stubs/ChainlinkAggregator_abi.json")
-
-
 @pytest.fixture
 def oracle_usdc_eth(oracle_contract_def, owner):
     return oracle_contract_def.at("0x986b5E1e1755e3C2440e960477f25201B0a8bbD4")
@@ -207,6 +192,93 @@ def p2p_lending_securitize_erc20_contract_def():
     contents += dedent("""
         @external
         def log_stuff():
+            log LoanLiquidated(
+                id=empty(bytes32),
+                borrower=empty(address),
+                lender=empty(address),
+                liquidator=empty(address),
+                outstanding_debt=0,
+                collateral_for_debt=0,
+                remaining_collateral=0,
+                remaining_collateral_value=0,
+                shortfall=0,
+                liquidation_fee=0,
+                protocol_settlement_fee_amount=0
+            )
+            log LoanPartiallyLiquidated(
+                id=empty(bytes32),
+                borrower=empty(address),
+                lender=empty(address),
+                written_off=0,
+                collateral_claimed=0,
+                liquidation_fee=0,
+                updated_amount=0,
+                updated_collateral_amount=0,
+                updated_accrual_start_time=0,
+                liquidator=empty(address),
+                old_ltv=0,
+                new_ltv=0
+            )
+            log LoanReplaced(
+                id=empty(bytes32),
+                amount=0,
+                apr=0,
+                maturity=0,
+                start_time=0,
+                borrower=empty(address),
+                lender=empty(address),
+                collateral_amount=0,
+                min_collateral_amount=0,
+                call_eligibility=0,
+                call_window=0,
+                liquidation_ltv=0,
+                initial_ltv=0,
+                origination_fee_amount=0,
+                protocol_upfront_fee_amount=0,
+                protocol_settlement_fee=0,
+                partial_liquidation_fee=0,
+                full_liquidation_fee=0,
+                offer_id=empty(bytes32),
+                offer_tracing_id=empty(bytes32),
+                original_loan_id=empty(bytes32),
+                paid_principal=0,
+                paid_interest=0,
+                paid_protocol_settlement_fee_amount=0
+            )
+            log LoanReplacedByLender(
+                id=empty(bytes32),
+                amount=0,
+                apr=0,
+                maturity=0,
+                start_time=0,
+                borrower=empty(address),
+                lender=empty(address),
+                collateral_amount=0,
+                min_collateral_amount=0,
+                call_eligibility=0,
+                call_window=0,
+                liquidation_ltv=0,
+                initial_ltv=0,
+                origination_fee_amount=0,
+                protocol_upfront_fee_amount=0,
+                protocol_settlement_fee=0,
+                partial_liquidation_fee=0,
+                full_liquidation_fee=0,
+                offer_id=empty(bytes32),
+                offer_tracing_id=empty(bytes32),
+                original_loan_id=empty(bytes32),
+                paid_principal=0,
+                paid_interest=0,
+                paid_protocol_settlement_fee_amount=0
+            )
+            log LoanMaturityExtended(
+                loan_id=empty(bytes32),
+                original_maturity=0,
+                new_maturity=0,
+                lender=empty(address),
+                borrower=empty(address),
+                caller=empty(address)
+            )
             log LoanBorrowerTransferred(
                 loan_id=empty(bytes32),
                 new_loan_id=empty(bytes32),
@@ -218,31 +290,6 @@ def p2p_lending_securitize_erc20_contract_def():
 
     """)
     return boa.loads_partial(contents, name="P2PLendingSecuritizeErc20")
-
-
-@pytest.fixture(scope="session")
-def p2p_lending_securitize_refinance_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingSecuritizeRefinance.vy")
-
-
-@pytest.fixture(scope="session")
-def p2p_lending_securitize_liquidation_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingSecuritizeLiquidation.vy")
-
-
-@pytest.fixture(scope="session")
-def securitize_vault_contract_def():
-    return boa.load_partial("contracts/v1/P2PLendingVaultSecuritize.vy")
-
-
-@pytest.fixture(scope="session")
-def kyc_validator_contract_def():
-    return boa.load_partial("contracts/KYCValidator.vy")
-
-
-@pytest.fixture(scope="session")
-def securitize_proxy_contract_def():
-    return boa.load_partial("contracts/SecuritizeProxy.vy")
 
 
 @pytest.fixture
@@ -397,14 +444,3 @@ def p2p_usdc_acred(
     )
     registrar_connector.change_authorized_contract(contract.address, True, sender=owner)
     return contract
-
-
-@pytest.fixture
-def empty_contract_def():
-    return boa.loads_partial(
-        dedent(
-            """
-        dummy: uint256
-     """
-        )
-    )

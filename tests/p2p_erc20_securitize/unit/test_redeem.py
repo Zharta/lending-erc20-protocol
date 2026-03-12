@@ -280,7 +280,7 @@ def test_redeem_marks_loan_as_redeemed(p2p_usdc_weth, ongoing_loan_usdc_weth, no
     assert p2p_usdc_weth.is_loan_redeemed(updated_loan)
 
 
-def test_add_collateral_reverts_after_redeem(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, now):
+def test_add_collateral_to_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, now):
     # First redeem the loan
     p2p_usdc_weth.redeem(ongoing_loan_usdc_weth, 0, sender=ongoing_loan_usdc_weth.borrower)
 
@@ -306,7 +306,7 @@ def test_add_collateral_reverts_after_redeem(p2p_usdc_weth, ongoing_loan_usdc_we
         p2p_usdc_weth.add_collateral_to_loan(redeemed_loan, additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
 
 
-def test_remove_collateral_reverts_after_redeem(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
+def test_remove_collateral_from_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
     # First redeem the loan with some residual
     residual = ongoing_loan_usdc_weth.collateral_amount // 2
     p2p_usdc_weth.redeem(ongoing_loan_usdc_weth, residual, sender=ongoing_loan_usdc_weth.borrower)

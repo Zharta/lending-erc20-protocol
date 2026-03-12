@@ -9,6 +9,8 @@ from ..conftest_base import (
     SecuritizeLoan,
     SignedRedeemResult,
     calc_collateral_from_ltv,
+    calc_full_liquidation,
+    calc_full_liquidation_redeemed,
     calc_ltv,
     compute_securitize_loan_hash,
     compute_signed_offer_id,
@@ -272,9 +274,73 @@ def test_liquidate_loan_not_defaulted_works_if_partial_liquidation_not_possible(
     protocol_fee = loan.protocol_settlement_fee * current_interest // BPS
     usdc.approve(p2p_usdc_weth.address, protocol_fee, sender=loan.lender)
 
+    liquidation = calc_full_liquidation(loan, usdc, weth, oracle, now)
+    lender_weth_before = weth.balanceOf(loan.lender)
+
     p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.lender)
     event = get_last_event(p2p_usdc_weth, "LoanLiquidated")
     assert event.id == loan.id
+
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert weth.balanceOf(loan.lender) == lender_weth_before + liquidation.send_to_liquidator
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+    assert weth.balanceOf(vault_addr) == 0
+
+
+def test_liquidate_loan_not_defaulted_non_redeemed_by_third_party(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower
+):
+    """
+    Covers branch: non-defaulted, non-redeemed, third-party liquidator (liquidator != lender).
+    When partial liquidation can't restore health and third party liquidates:
+    - Liquidator pays remaining_collateral_value to receive all collateral
+    - Lender receives remaining_collateral_value - protocol_fee
+    - Shortfall case since oracle rate is very low
+    """
+    loan = ongoing_loan_usdc_weth
+    oracle.set_rate(int(oracle.rate() / 5), sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv > loan.liquidation_ltv  # precondition
+
+    liquidator = boa.env.generate_address("liquidator")
+
+    # Calculate expected values
+    rate_num = oracle.latestRoundData().answer
+    rate_den = 10 ** oracle.decimals()
+    pay_dec = 10 ** usdc.decimals()
+    coll_dec = 10 ** weth.decimals()
+
+    current_interest = loan.get_interest(boa.env.evm.patch.timestamp)
+    outstanding_debt = loan.amount + current_interest
+
+    # Non-redeemed: in_vault_payment_token = 0, fee from collateral
+    liquidation_fee_value = outstanding_debt * loan.full_liquidation_fee // BPS
+    liquidation_fee_collateral = min(
+        loan.collateral_amount,
+        liquidation_fee_value * rate_den * coll_dec // (rate_num * pay_dec),
+    )
+    remaining_collateral = loan.collateral_amount - liquidation_fee_collateral
+    remaining_collateral_value = remaining_collateral * rate_num * pay_dec // (rate_den * coll_dec)
+    protocol_settlement_fee_amount = min(
+        loan.protocol_settlement_fee * current_interest // BPS,
+        remaining_collateral_value,
+    )
+
+    # Shortfall: liquidator pays remaining_collateral_value, receives all collateral
+    usdc.mint(liquidator, remaining_collateral_value)
+    usdc.approve(p2p_usdc_weth.address, remaining_collateral_value, sender=liquidator)
+
+    lender_balance_before = usdc.balanceOf(loan.lender)
+    liquidator_weth_before = weth.balanceOf(liquidator)
+
+    p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=liquidator)
+
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert usdc.balanceOf(loan.lender) == lender_balance_before + remaining_collateral_value - protocol_settlement_fee_amount
+    assert weth.balanceOf(liquidator) == liquidator_weth_before + loan.collateral_amount
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+    assert weth.balanceOf(vault_addr) == 0
 
 
 def test_liquidate_loan_non_redeemed_by_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower):
@@ -328,7 +394,6 @@ def test_liquidate_loan_non_redeemed_transfers_collateral_to_lender_liquidator(
     For non-redeemed Securitize loans liquidated by lender:
     - Lender receives collateral_for_debt + liquidation_fee_collateral
     - With high collateral value (surplus case), borrower gets remainder
-    - Note: Due to contract logic, liquidation_fee_collateral may remain in vault
     """
     loan = ongoing_loan_usdc_weth
     liquidation_time = loan.maturity + 1
@@ -338,27 +403,54 @@ def test_liquidate_loan_non_redeemed_transfers_collateral_to_lender_liquidator(
     # With higher oracle rate, collateral value exceeds debt
     oracle.set_rate(oracle.rate() * 2, sender=oracle.owner())
 
+    # Compute expected values matching the contract's exact integer division order.
+    # Non-redeemed: in_vault_payment_token = 0, in_vault_collateral = loan.collateral_amount
+    # Contract computes liquidation_fee (value) first, then converts to collateral.
+    rate_num = oracle.latestRoundData().answer
+    rate_den = 10 ** oracle.decimals()
+    pay_dec = 10 ** usdc.decimals()
+    coll_dec = 10 ** weth.decimals()
+
+    current_interest = loan.get_interest(loan.maturity)
+    outstanding_debt = loan.amount + current_interest
+
+    # Contract: liquidation_fee = outstanding_debt * full_liquidation_fee // BPS (in payment value)
+    # Then: liquidation_fee_collateral = min(collateral, (fee - 0) * rate_den * coll_dec // (rate_num * pay_dec))
+    # Then: liquidation_fee = 0, in_vault_payment_token = 0
+    liquidation_fee_value = outstanding_debt * loan.full_liquidation_fee // BPS
+    liquidation_fee_collateral = min(
+        loan.collateral_amount,
+        liquidation_fee_value * rate_den * coll_dec // (rate_num * pay_dec),
+    )
+
+    remaining_collateral = loan.collateral_amount - liquidation_fee_collateral
+    remaining_collateral_value = remaining_collateral * rate_num * pay_dec // (rate_den * coll_dec)
+    assert remaining_collateral_value >= outstanding_debt  # precondition: surplus
+
+    collateral_for_debt = outstanding_debt * rate_den * coll_dec // (rate_num * pay_dec)
+    protocol_settlement_fee_amount = min(loan.protocol_settlement_fee * current_interest // BPS, remaining_collateral_value)
+
+    # Surplus branch (in_vault_payment_token + remaining_collateral_value >= outstanding_debt):
+    # liquidator_collateral_delta = min(collateral_for_debt, remaining_collateral) + liquidation_fee_collateral
+    # borrower_collateral_delta = in_vault_collateral - liquidator_collateral_delta
+    expected_lender_collateral = min(collateral_for_debt, remaining_collateral) + liquidation_fee_collateral
+    expected_borrower_collateral = loan.collateral_amount - expected_lender_collateral
+    assert expected_borrower_collateral > 0  # precondition: borrower gets something back
+
     # Calculate protocol settlement fee for lender to approve
-    protocol_fee = loan.protocol_settlement_fee * loan.get_interest(loan.maturity) // BPS
-    usdc.approve(p2p_usdc_weth.address, protocol_fee, sender=loan.lender)
+    usdc.approve(p2p_usdc_weth.address, protocol_settlement_fee_amount, sender=loan.lender)
 
     borrower_weth_balance_before = weth.balanceOf(borrower)
     lender_weth_balance_before = weth.balanceOf(loan.lender)
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
-    vault_balance_before = weth.balanceOf(vault_addr)
 
     # Lender liquidates their own loan
     p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.lender)
 
-    # Verify collateral distribution
-    # Lender gets: collateral_for_debt + liquidation_fee (collateral form)
-    # Borrower gets: remaining_collateral - collateral_for_debt - liquidation_fee (if surplus)
-    lender_received = weth.balanceOf(loan.lender) - lender_weth_balance_before
-    borrower_received = weth.balanceOf(borrower) - borrower_weth_balance_before
-    vault_remaining = weth.balanceOf(vault_addr)
-
-    # All collateral should be accounted for
-    assert lender_received + borrower_received + vault_remaining == vault_balance_before
+    # Verify individual collateral distribution with exact expected amounts
+    assert weth.balanceOf(loan.lender) == lender_weth_balance_before + expected_lender_collateral
+    assert weth.balanceOf(borrower) == borrower_weth_balance_before + expected_borrower_collateral
+    assert weth.balanceOf(vault_addr) == 0
 
 
 def test_liquidate_loan_with_shortfall_by_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now, borrower):
@@ -408,9 +500,7 @@ def test_liquidate_loan_non_redeemed_lender_receives_payment(p2p_usdc_weth, ongo
 
     # Calculate expected payment from liquidator
     outstanding_debt = loan.amount + loan.get_interest(loan.maturity)
-    liquidation_fee = outstanding_debt * loan.full_liquidation_fee // BPS
 
-    protocol_wallet = p2p_usdc_weth.protocol_wallet()
     lender_usdc_balance_before = usdc.balanceOf(loan.lender)
 
     # Fund and approve liquidator
@@ -420,8 +510,9 @@ def test_liquidate_loan_non_redeemed_lender_receives_payment(p2p_usdc_weth, ongo
     p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=liquidator)
 
     # Lender received payment (minus protocol fee)
+    # Non-redeemed surplus: lender_funds_delta = outstanding_debt - protocol_settlement_fee_amount
     protocol_fee = loan.protocol_settlement_fee * loan.get_interest(loan.maturity) // BPS
-    assert usdc.balanceOf(loan.lender) >= lender_usdc_balance_before
+    assert usdc.balanceOf(loan.lender) == lender_usdc_balance_before + outstanding_debt - protocol_fee
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
     assert usdc.balanceOf(vault_addr) == 0
@@ -447,29 +538,38 @@ def test_liquidate_loan_with_shortfall_lender_receives_partial_payment(
 
     lender_usdc_balance_before = usdc.balanceOf(loan.lender)
 
-    # Calculate expected payment from liquidator (collateral value minus fee)
-    rate = oracle.latestRoundData().answer
-    oracle_decimals = 10 ** oracle.decimals()
-    payment_token_decimals = 10 ** usdc.decimals()
-    collateral_token_decimals = 10 ** weth.decimals()
+    # Calculate expected values following contract logic for non-redeemed shortfall
+    rate_num = oracle.latestRoundData().answer
+    rate_den = 10 ** oracle.decimals()
+    pay_dec = 10 ** usdc.decimals()
+    coll_dec = 10 ** weth.decimals()
 
-    remaining_collateral_value = (
-        loan.collateral_amount * rate * payment_token_decimals // (oracle_decimals * collateral_token_decimals)
-    )
     outstanding_debt = loan.amount + loan.get_interest(loan.maturity)
-    liquidation_fee = outstanding_debt * loan.full_liquidation_fee // BPS
+    current_interest = loan.get_interest(loan.maturity)
 
-    # Liquidator needs to pay: remaining_collateral_value - liquidation_fee
-    liquidator_payment = remaining_collateral_value - liquidation_fee if remaining_collateral_value > liquidation_fee else 0
+    # Non-redeemed: in_vault_payment_token = 0, fee taken entirely from collateral
+    liquidation_fee_payment = outstanding_debt * loan.full_liquidation_fee // BPS
+    liquidation_fee_collateral = min(
+        loan.collateral_amount,
+        liquidation_fee_payment * rate_den * coll_dec // (rate_num * pay_dec),
+    )
+    remaining_collateral = loan.collateral_amount - liquidation_fee_collateral
+    remaining_collateral_value = remaining_collateral * rate_num * pay_dec // (rate_den * coll_dec)
+    protocol_settlement_fee_amount = min(
+        loan.protocol_settlement_fee * current_interest // BPS,
+        remaining_collateral_value,
+    )
 
-    # Fund and approve liquidator
-    usdc.mint(liquidator, liquidator_payment)
-    usdc.approve(p2p_usdc_weth.address, liquidator_payment, sender=liquidator)
+    # Shortfall branch: liquidator pays remaining_collateral_value
+    usdc.mint(liquidator, remaining_collateral_value)
+    usdc.approve(p2p_usdc_weth.address, remaining_collateral_value, sender=liquidator)
 
     p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=liquidator)
 
-    # Lender receives collateral value (partial debt recovery)
-    assert usdc.balanceOf(loan.lender) >= lender_usdc_balance_before
+    # Shortfall: lender_funds_delta = remaining_collateral_value - protocol_settlement_fee_amount
+    assert (
+        usdc.balanceOf(loan.lender) == lender_usdc_balance_before + remaining_collateral_value - protocol_settlement_fee_amount
+    )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
     assert weth.balanceOf(vault_addr) == 0
@@ -687,6 +787,16 @@ def test_liquidate_redeemed_loan_with_surplus_pays_all_parties(
     # Make loan defaulted
     boa.env.time_travel(seconds=redeemed_loan.maturity - now + 1)
 
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=0,
+    )
+    assert liq.in_vault_payment_token >= liq.outstanding_debt  # precondition: surplus scenario
+
     # Get balances before liquidation
     lender_balance_before = usdc.balanceOf(redeemed_loan.lender)
     borrower_balance_before = usdc.balanceOf(borrower)
@@ -696,27 +806,11 @@ def test_liquidate_redeemed_loan_with_surplus_pays_all_parties(
     # Liquidate
     p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)
 
-    # Calculate expected values
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-
-    # in_vault_payment after fee deduction = payment_redeemed - liquidation_fee
-    in_vault_payment_after_fee = payment_redeemed - liquidation_fee
-
-    # Protocol fee is capped at in_vault_payment_token + remaining_collateral_value
-    protocol_settlement_fee_amount = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment_after_fee + 0,  # remaining_collateral_value = 0
-    )
-
-    borrower_surplus = in_vault_payment_after_fee - outstanding_debt
-
     # Verify distributions
-    assert usdc.balanceOf(redeemed_loan.lender) == lender_balance_before + outstanding_debt - protocol_settlement_fee_amount
-    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_balance_before + protocol_settlement_fee_amount
-    assert usdc.balanceOf(liquidator) == liquidator_balance_before + liquidation_fee
-    assert usdc.balanceOf(borrower) == borrower_balance_before + borrower_surplus
+    assert usdc.balanceOf(redeemed_loan.lender) == lender_balance_before + liq.lender_funds_delta
+    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_balance_before + liq.protocol_settlement_fee_amount
+    assert usdc.balanceOf(liquidator) == liquidator_balance_before + liq.liquidator_funds_delta
+    assert usdc.balanceOf(borrower) == borrower_balance_before + liq.borrower_funds_delta
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(redeemed_loan.borrower, redeemed_loan.vault_id)
     assert usdc.balanceOf(vault_addr) == 0
@@ -745,28 +839,32 @@ def test_liquidate_redeemed_loan_with_collateral_and_payment(
     # Make loan defaulted
     boa.env.time_travel(seconds=redeemed_loan.maturity - now + 1)
 
-    # Calculate expected values
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=residual_collateral,
+    )
+    # Precondition: scenario 2 (payment + collateral cover debt)
+    assert liq.in_vault_payment_token < liq.outstanding_debt
+    assert liq.in_vault_payment_token + liq.remaining_collateral_value >= liq.outstanding_debt
 
-    # For this fixture, liquidation_fee > in_vault_payment_token,
-    # so liquidation_fee is partially taken from payment, rest from collateral
-    # Let's verify this by checking balances
     liquidator_collateral_before = weth.balanceOf(liquidator)
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, redeemed_loan.vault_id)
 
-    # Liquidator needs to fund the shortfall
-    # The exact amount depends on the contract logic
-    usdc.mint(liquidator, outstanding_debt)
-    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=liquidator)
+    # Fund liquidator (overfund to ensure sufficient)
+    usdc.mint(liquidator, liq.outstanding_debt)
+    usdc.approve(p2p_usdc_weth.address, liq.outstanding_debt, sender=liquidator)
 
     p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)
 
     # Verify loan is deleted
     assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
 
-    # Verify liquidator received collateral
-    assert weth.balanceOf(liquidator) > liquidator_collateral_before
+    # Verify liquidator received exact collateral amount
+    assert weth.balanceOf(liquidator) == liquidator_collateral_before + liq.liquidator_collateral_delta
     assert weth.balanceOf(vault_addr) == 0
     assert usdc.balanceOf(vault_addr) == 0
 
@@ -789,37 +887,28 @@ def test_liquidate_redeemed_loan_logs_event_with_correct_values(
     # Make loan defaulted
     boa.env.time_travel(seconds=redeemed_loan.maturity - now + 1)
 
-    p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)
-
-    # Calculate expected values
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-    in_vault_payment = payment_redeemed - liquidation_fee
-
-    # For redeemed loans with no collateral:
-    # - remaining_collateral = 0
-    # - remaining_collateral_value = 0
-    # - protocol_settlement_fee_amount = min(fee, in_vault_payment + 0)
-    # - shortfall = outstanding_debt - remaining_collateral_value = outstanding_debt
-    #   (shortfall is based on collateral value, NOT payment tokens)
-    protocol_settlement_fee_amount = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment + 0,
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=0,
     )
+
+    p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)
 
     event = get_last_event(p2p_usdc_weth, "LoanLiquidated")
     assert event.id == redeemed_loan.id
     assert event.borrower == redeemed_loan.borrower
     assert event.lender == redeemed_loan.lender
     assert event.liquidator == liquidator
-    assert event.outstanding_debt == outstanding_debt
-    assert event.remaining_collateral == 0
-    assert event.remaining_collateral_value == 0
-    # Note: shortfall = outstanding_debt - remaining_collateral_value = outstanding_debt (since remaining_collateral_value=0)
-    # This reflects that the collateral can't cover the debt. The payment tokens DO cover the debt in this case.
-    assert event.shortfall == outstanding_debt
-    assert event.protocol_settlement_fee_amount == protocol_settlement_fee_amount
+    assert event.outstanding_debt == liq.outstanding_debt
+    assert event.remaining_collateral == liq.remaining_collateral
+    assert event.remaining_collateral_value == liq.remaining_collateral_value
+    # shortfall is based on collateral value, NOT payment tokens
+    assert event.shortfall == liq.shortfall
+    assert event.protocol_settlement_fee_amount == liq.protocol_settlement_fee_amount
 
 
 def test_liquidate_redeemed_loan_with_shortfall(
@@ -858,7 +947,6 @@ def test_liquidate_redeemed_loan_with_shortfall(
 
     # Small payment (much less than debt) - creates shortfall
     outstanding_debt_at_maturity = loan.amount + loan.get_interest(loan.maturity)
-    liquidation_fee = outstanding_debt_at_maturity * loan.full_liquidation_fee // BPS
     payment_redeemed = outstanding_debt_at_maturity // 10  # Only 10% of debt
 
     usdc.mint(vault_addr, payment_redeemed)
@@ -874,31 +962,36 @@ def test_liquidate_redeemed_loan_with_shortfall(
     # Make loan defaulted
     boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
 
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=0,
+    )
+    assert liq.shortfall > 0  # precondition: shortfall scenario
+
     # For shortfall with no collateral, use lender as liquidator to avoid underflow
-    # The lender branch calls _transfer_funds which requires approval (even for 0)
-    # protocol_settlement_fee_amount = min(fee, remaining_collateral_value=0) = 0
     usdc.approve(p2p_usdc_weth.address, 0, sender=loan.lender)
 
-    lender_balance_before = usdc.balanceOf(loan.lender)
-
     # Verify loan hash matches before liquidation
-    expected_hash = compute_securitize_loan_hash(redeemed_loan)
-    actual_hash = p2p_usdc_weth.loans(redeemed_loan.id)
-    assert expected_hash == actual_hash, "Loan hash mismatch before liquidation"
+    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
 
     lender_balance_before = usdc.balanceOf(loan.lender)
+    protocol_wallet = p2p_usdc_weth.protocol_wallet()
+    protocol_balance_before = usdc.balanceOf(protocol_wallet)
 
     p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=loan.lender)
 
     # Verify loan deleted
     assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
 
-    # In the shortfall case with lender as liquidator and no collateral:
-    # - Lender receives the liquidation_fee from vault's payment tokens
-    # - The remaining payment (7% of debt) stays in contract (this appears to be a contract quirk)
-    # Verify lender received at least the liquidation_fee
-    lender_balance_after = usdc.balanceOf(loan.lender)
-    assert lender_balance_after >= lender_balance_before
+    # Since liquidator == lender: net = lender_funds_delta + liquidator_funds_delta
+    expected_lender_net = liq.lender_funds_delta + liq.liquidator_funds_delta
+
+    assert usdc.balanceOf(loan.lender) == lender_balance_before + expected_lender_net
+    assert usdc.balanceOf(protocol_wallet) == protocol_balance_before + liq.protocol_settlement_fee_amount
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
     assert usdc.balanceOf(vault_addr) == 0
@@ -1110,6 +1203,16 @@ def test_liquidate_redeemed_loan_by_lender(
     # Make loan defaulted
     boa.env.time_travel(seconds=redeemed_loan.maturity - now + 1)
 
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=0,
+    )
+    assert liq.in_vault_payment_token >= liq.outstanding_debt  # precondition: surplus scenario
+
     lender_balance_before = usdc.balanceOf(redeemed_loan.lender)
     protocol_balance_before = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
     borrower_balance_before = usdc.balanceOf(borrower)
@@ -1120,33 +1223,11 @@ def test_liquidate_redeemed_loan_by_lender(
     # Verify loan deleted
     assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
 
-    # Calculate expected values
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-
-    # in_vault_payment after fee deduction
-    in_vault_payment_after_fee = payment_redeemed - liquidation_fee
-    borrower_surplus = in_vault_payment_after_fee - outstanding_debt
-
-    # Protocol fee is capped at in_vault_payment_token + remaining_collateral_value
-    protocol_settlement_fee_amount = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment_after_fee + 0,  # remaining_collateral_value = 0
-    )
-
-    # For lender as liquidator with surplus case:
-    # - lender_funds_delta = outstanding_debt - protocol_fee
-    # - liquidator_funds_delta = liquidation_fee
-    # - Combined: outstanding_debt - protocol_fee + liquidation_fee
-    # - Protocol receives: protocol_fee
-    # - Borrower receives: surplus
-    assert (
-        usdc.balanceOf(redeemed_loan.lender)
-        == lender_balance_before + outstanding_debt + liquidation_fee - protocol_settlement_fee_amount
-    )
-    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_balance_before + protocol_settlement_fee_amount
-    assert usdc.balanceOf(borrower) == borrower_balance_before + borrower_surplus
+    # For lender as liquidator: combined = lender_funds_delta + liquidator_funds_delta
+    expected_lender_net = liq.lender_funds_delta + liq.liquidator_funds_delta
+    assert usdc.balanceOf(redeemed_loan.lender) == lender_balance_before + expected_lender_net
+    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_balance_before + liq.protocol_settlement_fee_amount
+    assert usdc.balanceOf(borrower) == borrower_balance_before + liq.borrower_funds_delta
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(redeemed_loan.borrower, redeemed_loan.vault_id)
     assert usdc.balanceOf(vault_addr) == 0
@@ -1165,7 +1246,7 @@ def test_liquidate_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loa
         p2p_usdc_weth.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.lender)
 
 
-def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
+def test_liquidate_redeemed_loan_lender_receives_redeemed_payment(
     p2p_usdc_weth,
     ongoing_loan_usdc_weth,
     usdc,
@@ -1227,24 +1308,20 @@ def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
     # Make loan defaulted
     boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
 
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-
-    # in_vault_payment_token after liquidation fee deduction
-    in_vault_payment_token = payment_redeemed - liquidation_fee
-
-    # Verify we're in the shortfall branch
-    assert in_vault_payment_token < outstanding_debt
-
-    # Protocol fee is capped at in_vault_payment_token + remaining_collateral_value
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    protocol_settlement_fee_amount = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment_token + 0,  # remaining_collateral_value = 0
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=0,
     )
+    # Verify we're in the shortfall branch
+    assert liq.in_vault_payment_token < liq.outstanding_debt
+    assert liq.in_vault_payment_token + liq.remaining_collateral_value < liq.outstanding_debt
 
     liquidator_collateral_before = weth.balanceOf(liquidator)
-    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=liquidator)
+    usdc.approve(p2p_usdc_weth.address, liq.outstanding_debt, sender=liquidator)
     liquidator_payment_before = usdc.balanceOf(liquidator)
 
     p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)
@@ -1256,12 +1333,8 @@ def test_zhar3_6_lender_loses_redeemed_funds_on_liquidation(
 
     assert collateral_received == 0
 
-    # Lender (as liquidator) should receive redeemed payment tokens + liquidation fee - protocol fee
-    # In shortfall with lender-as-liquidator:
-    # - lender_funds_delta = in_vault_payment_token + 0 - protocol_fee
-    # - liquidator_funds_delta = liquidation_fee - 0 = liquidation_fee
-    # - Combined: in_vault_payment_token + liquidation_fee - protocol_fee
-    expected_payment = in_vault_payment_token + liquidation_fee - protocol_settlement_fee_amount
+    # Lender (as liquidator): combined = lender_funds_delta + liquidator_funds_delta
+    expected_payment = liq.lender_funds_delta + liq.liquidator_funds_delta
     assert expected_payment > 0
     assert payment_received == expected_payment, (
         f"Lender should receive {expected_payment} payment tokens (redeemed from vault) but received {payment_received}"
@@ -1321,7 +1394,7 @@ def redeemed_loan_zhar3_2(
     return redeemed_loan, redeem_result, payment_redeemed, residual_collateral
 
 
-def test_liquidate_redeemed_loan_zhar3_2_underflow(
+def test_liquidate_redeemed_loan_no_underflow_when_payment_covers_debt(
     p2p_usdc_weth,
     redeemed_loan_zhar3_2,
     usdc,
@@ -1343,7 +1416,7 @@ def test_liquidate_redeemed_loan_zhar3_2_underflow(
 
     This makes the loan permanently unliquidatable by third-party liquidators.
     """
-    redeemed_loan, redeem_result, payment_redeemed, residual_collateral = redeemed_loan_zhar3_2
+    redeemed_loan, redeem_result, _, _ = redeemed_loan_zhar3_2
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
     liquidator = boa.env.generate_address("liquidator")
@@ -1413,14 +1486,11 @@ def test_liquidate_non_redeemed_shortfall_third_party_exact_balances(
         0 + remaining_collateral_value,  # in_vault_payment_token = 0
     )
 
-    # Branch 3 deltas:
+    # Branch 3 deltas (shortfall, third-party liquidator, non-redeemed):
     # lender_funds_delta = 0 + remaining_collateral_value - protocol_fee
     # liquidator_funds_delta = liquidation_fee - remaining_collateral_value (negative: liquidator pays)
     # liquidator_collateral_delta = in_vault_collateral (ALL collateral)
     # borrower_collateral_delta = 0
-
-    liquidator_funds_delta = liquidation_fee - remaining_collateral_value  # this is negative if fee < collateral_value
-    liquidator_pays = remaining_collateral_value - liquidation_fee if remaining_collateral_value > liquidation_fee else 0
 
     # Fund liquidator
     usdc.mint(liquidator, outstanding_debt)
@@ -1459,6 +1529,11 @@ def test_liquidate_non_redeemed_shortfall_third_party_exact_balances(
 
     # Verify lender received no collateral (shortfall case)
     assert weth.balanceOf(loan.lender) == lender_weth_before
+
+    # Verify liquidator USDC balance: for non-redeemed shortfall, liquidation_fee (payment token) = 0
+    # after the contract's fee-split logic (full fee goes to collateral), so liquidator_funds_delta = -remaining_collateral_value.  # noqa: E501
+    # Liquidator pays remaining_collateral_value (which goes to lender/protocol) and receives no payment tokens back.
+    assert usdc.balanceOf(liquidator) == liquidator_usdc_before - remaining_collateral_value
 
 
 def test_liquidate_non_redeemed_surplus_third_party_exact_balances(
@@ -1604,60 +1679,21 @@ def test_liquidate_redeemed_combined_coverage_third_party_exact_balances(
 
     boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
 
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee_raw = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-
-    # Liquidation fee: deducted from payment tokens first
-    if liquidation_fee_raw <= payment_redeemed:
-        liquidation_fee = liquidation_fee_raw
-        liquidation_fee_collateral = 0
-        in_vault_payment_token = payment_redeemed - liquidation_fee
-    else:
-        rate = oracle.latestRoundData().answer
-        oracle_decimals = 10 ** oracle.decimals()
-        ptd = 10 ** usdc.decimals()
-        ctd = 10 ** weth.decimals()
-        liquidation_fee_collateral = min(
-            residual_collateral,
-            (liquidation_fee_raw - payment_redeemed) * oracle_decimals * ctd // (rate * ptd),
-        )
-        liquidation_fee = payment_redeemed
-        in_vault_payment_token = 0
-
-    rate = oracle.latestRoundData().answer
-    oracle_decimals = 10 ** oracle.decimals()
-    ptd = 10 ** usdc.decimals()
-    ctd = 10 ** weth.decimals()
-
-    remaining_collateral = residual_collateral - liquidation_fee_collateral
-    remaining_collateral_value = remaining_collateral * rate * ptd // (oracle_decimals * ctd)
-
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=residual_collateral,
+    )
     # Confirm we're in branch 2
-    assert in_vault_payment_token < outstanding_debt
-    assert in_vault_payment_token + remaining_collateral_value >= outstanding_debt
-
-    collateral_for_debt = (
-        (outstanding_debt - in_vault_payment_token) * oracle_decimals * ctd // (rate * ptd)
-        if in_vault_payment_token < outstanding_debt
-        else 0
-    )
-    protocol_settlement_fee_amount = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment_token + remaining_collateral_value,
-    )
-
-    # Branch 2 deltas:
-    lender_funds_delta = outstanding_debt - protocol_settlement_fee_amount
-    liquidator_funds_delta = liquidation_fee + in_vault_payment_token - outstanding_debt  # signed
-    liquidator_collateral_delta = min(collateral_for_debt, remaining_collateral) + liquidation_fee_collateral
-    borrower_collateral_delta = (
-        residual_collateral - liquidator_collateral_delta if residual_collateral > liquidator_collateral_delta else 0
-    )
+    assert liq.in_vault_payment_token < liq.outstanding_debt
+    assert liq.in_vault_payment_token + liq.remaining_collateral_value >= liq.outstanding_debt
 
     # Fund liquidator
-    usdc.mint(liquidator, outstanding_debt)
-    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=liquidator)
+    usdc.mint(liquidator, liq.outstanding_debt)
+    usdc.approve(p2p_usdc_weth.address, liq.outstanding_debt, sender=liquidator)
 
     lender_usdc_before = usdc.balanceOf(redeemed_loan.lender)
     borrower_usdc_before = usdc.balanceOf(borrower)
@@ -1676,20 +1712,17 @@ def test_liquidate_redeemed_combined_coverage_third_party_exact_balances(
     assert usdc.balanceOf(vault_addr) == 0
 
     # Verify lender received outstanding_debt - protocol_fee
-    assert usdc.balanceOf(redeemed_loan.lender) == lender_usdc_before + lender_funds_delta
+    assert usdc.balanceOf(redeemed_loan.lender) == lender_usdc_before + liq.lender_funds_delta
 
     # Verify protocol received fee
-    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + protocol_settlement_fee_amount
+    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + liq.protocol_settlement_fee_amount
 
     # Verify liquidator balance changes
-    if liquidator_funds_delta < 0:
-        assert usdc.balanceOf(liquidator) == liquidator_usdc_before + liquidator_funds_delta  # net negative
-    else:
-        assert usdc.balanceOf(liquidator) == liquidator_usdc_before + liquidator_funds_delta
-    assert weth.balanceOf(liquidator) == liquidator_weth_before + liquidator_collateral_delta
+    assert usdc.balanceOf(liquidator) == liquidator_usdc_before + liq.liquidator_funds_delta
+    assert weth.balanceOf(liquidator) == liquidator_weth_before + liq.liquidator_collateral_delta
 
     # Verify borrower received surplus collateral
-    assert weth.balanceOf(borrower) == borrower_weth_before + borrower_collateral_delta
+    assert weth.balanceOf(borrower) == borrower_weth_before + liq.borrower_collateral_delta
     assert usdc.balanceOf(borrower) == borrower_usdc_before  # no payment surplus in branch 2
 
 
@@ -1741,28 +1774,16 @@ def test_liquidate_redeemed_shortfall_third_party_exact_balances(
 
     boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
 
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee_raw = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-
-    # Fee fully covered by payment tokens (30% of debt > 3% fee)
-    liquidation_fee = liquidation_fee_raw
-    in_vault_payment_token = payment_redeemed - liquidation_fee
-    remaining_collateral_value = 0  # no collateral
-
-    # Confirm we're in branch 3 (shortfall)
-    assert in_vault_payment_token + remaining_collateral_value < outstanding_debt
-
-    protocol_settlement_fee_amount = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment_token + remaining_collateral_value,
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=0,
     )
-
-    # Branch 3 deltas:
-    lender_funds_delta = in_vault_payment_token + remaining_collateral_value - protocol_settlement_fee_amount
-    # liquidator_funds_delta = liquidation_fee - remaining_collateral_value = liquidation_fee (positive)
-    # liquidator_collateral_delta = 0 (no collateral in vault)
-    # borrower_collateral_delta = 0
+    # Confirm we're in branch 3 (shortfall)
+    assert liq.in_vault_payment_token + liq.remaining_collateral_value < liq.outstanding_debt
 
     lender_usdc_before = usdc.balanceOf(redeemed_loan.lender)
     borrower_usdc_before = usdc.balanceOf(borrower)
@@ -1779,13 +1800,13 @@ def test_liquidate_redeemed_shortfall_third_party_exact_balances(
     assert usdc.balanceOf(vault_addr) == 0
 
     # Verify lender received partial payment
-    assert usdc.balanceOf(redeemed_loan.lender) == lender_usdc_before + lender_funds_delta
+    assert usdc.balanceOf(redeemed_loan.lender) == lender_usdc_before + liq.lender_funds_delta
 
     # Verify protocol received fee
-    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + protocol_settlement_fee_amount
+    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + liq.protocol_settlement_fee_amount
 
     # Verify liquidator received liquidation fee (from withdrawn vault payment tokens)
-    assert usdc.balanceOf(liquidator) == liquidator_usdc_before + liquidation_fee
+    assert usdc.balanceOf(liquidator) == liquidator_usdc_before + liq.liquidator_funds_delta
 
     # Verify borrower received nothing
     assert usdc.balanceOf(borrower) == borrower_usdc_before
@@ -1846,19 +1867,17 @@ def test_liquidate_redeemed_surplus_protocol_fee_properly_applied(
 
     boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
 
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    liq_fee = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-    in_vault_payment = payment_redeemed - liq_fee
-
-    # Calculate expected protocol fee
-    expected_protocol_fee = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment + 0,
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=0,
     )
 
     # Key assertion: protocol fee MUST be non-zero
-    assert expected_protocol_fee > 0, "Protocol fee should be non-zero for redeemed loans with payment tokens"
+    assert liq.protocol_settlement_fee_amount > 0, "Protocol fee should be non-zero for redeemed loans with payment tokens"
 
     protocol_usdc_before = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
     lender_usdc_before = usdc.balanceOf(redeemed_loan.lender)
@@ -1866,10 +1885,10 @@ def test_liquidate_redeemed_surplus_protocol_fee_properly_applied(
     p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=liquidator)
 
     # Protocol wallet received the fee
-    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + expected_protocol_fee
+    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + liq.protocol_settlement_fee_amount
 
     # Lender receives outstanding_debt minus protocol fee (NOT full outstanding_debt)
-    assert usdc.balanceOf(redeemed_loan.lender) == lender_usdc_before + outstanding_debt - expected_protocol_fee
+    assert usdc.balanceOf(redeemed_loan.lender) == lender_usdc_before + liq.lender_funds_delta
 
     # Vault is empty
     assert usdc.balanceOf(vault_addr) == 0
@@ -1925,36 +1944,17 @@ def test_liquidate_redeemed_combined_coverage_lender_as_liquidator(
 
     boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
 
-    outstanding_debt = redeemed_loan.amount + redeemed_loan.get_interest(redeemed_loan.maturity)
-    current_interest = redeemed_loan.get_interest(redeemed_loan.maturity)
-    liquidation_fee_raw = outstanding_debt * redeemed_loan.full_liquidation_fee // BPS
-
-    # Fee deducted from payment tokens
-    assert liquidation_fee_raw <= payment_redeemed
-    liquidation_fee = liquidation_fee_raw
-    in_vault_payment_token = payment_redeemed - liquidation_fee
-
-    rate = oracle.latestRoundData().answer
-    oracle_decimals = 10 ** oracle.decimals()
-    ptd = 10 ** usdc.decimals()
-    ctd = 10 ** weth.decimals()
-
-    remaining_collateral_value = residual_collateral * rate * ptd // (oracle_decimals * ctd)
-
-    # Confirm branch 2
-    assert in_vault_payment_token < outstanding_debt
-    assert in_vault_payment_token + remaining_collateral_value >= outstanding_debt
-
-    protocol_settlement_fee_amount = min(
-        redeemed_loan.protocol_settlement_fee * current_interest // BPS,
-        in_vault_payment_token + remaining_collateral_value,
+    liq = calc_full_liquidation_redeemed(
+        redeemed_loan,
+        usdc,
+        weth,
+        oracle,
+        in_vault_payment_token=payment_redeemed,
+        in_vault_collateral=residual_collateral,
     )
-
-    # For lender-as-liquidator:
-    # lender_funds_delta = outstanding_debt - protocol_fee
-    # liquidator_funds_delta = liquidation_fee + in_vault_payment - outstanding_debt
-    # Combined: liquidation_fee + in_vault_payment - protocol_fee = payment_redeemed - protocol_fee
-    expected_combined = liquidation_fee + in_vault_payment_token - protocol_settlement_fee_amount
+    # Confirm branch 2
+    assert liq.in_vault_payment_token < liq.outstanding_debt
+    assert liq.in_vault_payment_token + liq.remaining_collateral_value >= liq.outstanding_debt
 
     lender_usdc_before = usdc.balanceOf(redeemed_loan.lender)
     lender_weth_before = weth.balanceOf(redeemed_loan.lender)
@@ -1962,7 +1962,7 @@ def test_liquidate_redeemed_combined_coverage_lender_as_liquidator(
     borrower_weth_before = weth.balanceOf(borrower)
 
     # Lender might need to pay if combined is negative, or receive if positive
-    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=redeemed_loan.lender)
+    usdc.approve(p2p_usdc_weth.address, liq.outstanding_debt, sender=redeemed_loan.lender)
 
     p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=redeemed_loan.lender)
 
@@ -1974,19 +1974,15 @@ def test_liquidate_redeemed_combined_coverage_lender_as_liquidator(
     assert usdc.balanceOf(vault_addr) == 0
 
     # Verify lender (as liquidator) received combined amount
+    expected_combined = liq.lender_funds_delta + liq.liquidator_funds_delta
     assert usdc.balanceOf(redeemed_loan.lender) == lender_usdc_before + expected_combined
 
     # Verify protocol received fee
-    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + protocol_settlement_fee_amount
+    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + liq.protocol_settlement_fee_amount
 
     # Verify lender received collateral
-    collateral_for_debt = (outstanding_debt - in_vault_payment_token) * oracle_decimals * ctd // (rate * ptd)
-    liquidator_collateral_delta = min(collateral_for_debt, residual_collateral)
-    borrower_collateral_delta = (
-        residual_collateral - liquidator_collateral_delta if residual_collateral > liquidator_collateral_delta else 0
-    )
-    assert weth.balanceOf(redeemed_loan.lender) == lender_weth_before + liquidator_collateral_delta
-    assert weth.balanceOf(borrower) == borrower_weth_before + borrower_collateral_delta
+    assert weth.balanceOf(redeemed_loan.lender) == lender_weth_before + liq.liquidator_collateral_delta
+    assert weth.balanceOf(borrower) == borrower_weth_before + liq.borrower_collateral_delta
 
 
 def test_liquidate_non_redeemed_shortfall_lender_gets_all_collateral(
@@ -2058,3 +2054,113 @@ def test_liquidate_non_redeemed_shortfall_lender_gets_all_collateral(
 
     # Protocol receives fee
     assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_usdc_before + protocol_settlement_fee_amount
+
+    # Lender (as liquidator) net USDC change: combined delta = -protocol_settlement_fee_amount
+    # non-redeemed: liquidation_fee=0, so combined = 0 - remaining_collateral_value + remaining_collateral_value - protocol_fee
+    assert usdc.balanceOf(loan.lender) == lender_usdc_before - protocol_settlement_fee_amount
+
+
+def test_liquidate_loan_reverts_if_invalid_redeem_payment_amount(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    owner_key,
+    borrower,
+    securitize_redemption_wallet,
+):
+    """Liquidating a redeemed loan reverts when redeem_result.payment_redeemed exceeds vault's payment token balance."""
+    loan = ongoing_loan_usdc_weth
+
+    # Redeem the loan (sends all collateral to redemption wallet)
+    p2p_usdc_weth.redeem(loan, 0, sender=loan.borrower)
+
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=0,
+    )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Mint some payment tokens to vault (simulating partial redemption)
+    actual_payment = 100 * 10**6
+    usdc.mint(vault_addr, actual_payment)
+
+    # Create redeem result that claims more payment than vault has
+    inflated_redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,
+        payment_redeemed=actual_payment + 1,  # more than vault holds
+        timestamp=redeem_time + 1,
+    )
+    signed_redeem_result = sign_redeem_result(inflated_redeem_result, owner_key)
+
+    # Preconditions
+    assert usdc.balanceOf(vault_addr) < inflated_redeem_result.payment_redeemed
+    assert redeemed_loan.redeem_start > 0  # loan is redeemed
+
+    # Make loan defaulted so we can liquidate
+    boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
+
+    with boa.reverts("invalid redeem payment amount"):
+        p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=loan.lender)
+
+
+def test_liquidate_loan_reverts_if_invalid_redeem_collateral_amnt(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    owner_key,
+    borrower,
+    securitize_redemption_wallet,
+):
+    """Liquidating a redeemed loan reverts when redeem_result.collateral_redeemed + residual exceeds vault's collateral."""
+    loan = ongoing_loan_usdc_weth
+    residual_collateral = loan.collateral_amount // 2  # Keep 50% as residual
+
+    # Redeem with residual collateral
+    p2p_usdc_weth.redeem(loan, residual_collateral, sender=loan.borrower)
+
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=residual_collateral,
+    )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Mint some payment tokens to vault (simulating redemption)
+    usdc.mint(vault_addr, loan.amount)
+
+    # The vault's withdrawable_balance should be residual_collateral (the collateral that stayed)
+    # The contract checks: withdrawable_balance >= loan.redeem_residual_collateral + redeem_result.collateral_redeemed
+    # Claim more collateral_redeemed than what the vault actually holds minus residual
+    vault_collateral_balance = weth.balanceOf(vault_addr)
+    inflated_collateral_redeemed = vault_collateral_balance - residual_collateral + 1
+
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=inflated_collateral_redeemed,
+        payment_redeemed=loan.amount,
+        timestamp=redeem_time + 1,
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    # Precondition: the sum exceeds what the vault holds
+    assert residual_collateral + inflated_collateral_redeemed > vault_collateral_balance
+
+    # Make loan defaulted
+    boa.env.time_travel(seconds=redeemed_loan.maturity - redeem_time + 1)
+
+    with boa.reverts("invalid redeem collateral amnt"):
+        p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=loan.lender)

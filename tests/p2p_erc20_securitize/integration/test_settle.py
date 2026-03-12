@@ -151,7 +151,6 @@ def test_settle_loan_non_redeemed(p2p_usdc_acred, ongoing_loan_usdc_acred, usdc,
     offer_liquidity_before = p2p_usdc_acred.commited_liquidity(liquidity_key)
     borrower_balance_before = acred.balanceOf(loan.borrower)
     vault_addr = p2p_usdc_acred.vault_id_to_vault(loan.borrower, loan.vault_id)
-    vault_balance_before = acred.balanceOf(vault_addr)
     initial_protocol_wallet_balance = usdc.balanceOf(p2p_usdc_acred.protocol_wallet())
 
     p2p_usdc_acred.settle_loan(loan, SignedRedeemResult(), sender=loan.borrower)
@@ -168,6 +167,8 @@ def test_settle_loan_non_redeemed(p2p_usdc_acred, ongoing_loan_usdc_acred, usdc,
     assert event.origination_fee_amount == loan.origination_fee_amount
     assert event.protocol_upfront_fee_amount == loan.protocol_upfront_fee_amount
     assert event.protocol_settlement_fee_amount == protocol_fee_amount
+    assert event.in_vault_payment_token == 0  # non-redeemed loan: no payment tokens from redemption
+    assert event.in_vault_collateral == loan.collateral_amount  # non-redeemed loan: full collateral was in vault
     assert p2p_usdc_acred.commited_liquidity(liquidity_key) == offer_liquidity_before - loan.amount
 
     assert usdc.balanceOf(p2p_usdc_acred.address) == 0
@@ -175,6 +176,6 @@ def test_settle_loan_non_redeemed(p2p_usdc_acred, ongoing_loan_usdc_acred, usdc,
     assert usdc.balanceOf(loan.lender) == initial_lender_balance + amount_to_receive
     assert usdc.balanceOf(p2p_usdc_acred.protocol_wallet()) == initial_protocol_wallet_balance + protocol_fee_amount
 
-    # Securitize: for non-redeemed loans, collateral stays in vault
-    assert acred.balanceOf(vault_addr) == vault_balance_before
-    assert acred.balanceOf(loan.borrower) == borrower_balance_before
+    # Securitize: for non-redeemed loans, collateral is returned from vault to borrower
+    assert acred.balanceOf(vault_addr) == 0
+    assert acred.balanceOf(loan.borrower) == borrower_balance_before + loan.collateral_amount

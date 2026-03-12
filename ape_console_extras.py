@@ -413,7 +413,7 @@ def get_redeem_result(loan_id: str | bytes | HexBytes) -> SignedRedeemResult | N
             int(result.get("collateral_redeemed")),
             int(result.get("payment_redeemed")),
             int(result.get("timestamp")),
-        ),  # noqa: E501
+        ),
         Signature(int(signature.get("v")), HexBytes(signature.get("r")), HexBytes(signature.get("s"))),
     )
 
@@ -766,7 +766,7 @@ def max_collateral_to_buy(borrower_collateral: int, ltv: int):
     return borrower_collateral * ltv // (BPS - ltv)
 
 
-def calc_leverage(
+def calc_leverage(  # noqa: PLR0917
     initial_collateral, ltv, origination_fee_bps, principal_token, collateral_token, oracle, *, oracle_reverse=False
 ):
     rate = oracle.latestRoundData().answer

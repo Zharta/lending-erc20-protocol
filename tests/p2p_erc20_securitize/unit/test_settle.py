@@ -7,6 +7,7 @@ from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
     Offer,
+    RedeemResult,
     SecuritizeLoan,
     SignedRedeemResult,
     calc_ltv,
@@ -17,6 +18,7 @@ from ..conftest_base import (
     get_securitize_loan_mutations,
     replace_namedtuple_field,
     sign_offer,
+    sign_redeem_result,
 )
 
 # Empty redeem result for non-redeemed loans
@@ -152,6 +154,11 @@ def test_settle_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_we
             p2p_usdc_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=ongoing_loan_usdc_weth.borrower)
 
 
+def test_settle_loan_reverts_if_not_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, lender):
+    with boa.reverts("not borrower"):
+        p2p_usdc_weth.settle_loan(ongoing_loan_usdc_weth, EMPTY_REDEEM_RESULT, sender=lender)
+
+
 def test_settle_loan_reverts_if_loan_defaulted(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
     time_to_default = ongoing_loan_usdc_weth.maturity - now
     boa.env.time_travel(seconds=time_to_default + 1)
@@ -162,7 +169,7 @@ def test_settle_loan_reverts_if_loan_defaulted(p2p_usdc_weth, ongoing_loan_usdc_
 
 def test_settle_loan_reverts_if_loan_already_settled(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
@@ -175,29 +182,31 @@ def test_settle_loan_reverts_if_loan_already_settled(p2p_usdc_weth, ongoing_loan
 
 def test_settle_loan_reverts_if_funds_not_approved(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
+    usdc.approve(p2p_usdc_weth.address, amount_to_settle - 1, sender=ongoing_loan_usdc_weth.borrower)
     with boa.reverts():
-        usdc.approve(p2p_usdc_weth.address, amount_to_settle - 1, sender=ongoing_loan_usdc_weth.borrower)
         p2p_usdc_weth.settle_loan(ongoing_loan_usdc_weth, EMPTY_REDEEM_RESULT, sender=ongoing_loan_usdc_weth.borrower)
 
 
-def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
+def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
     p2p_usdc_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
 
     assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
-    assert usdc.balanceOf(p2p_usdc_weth.address) == 0
+    assert weth.balanceOf(vault_addr) == 0
 
 
 def test_settle_loan_updates_commited_liquidity(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
     liquidity_key = compute_liquidity_key(loan.lender, loan.offer_tracing_id)
@@ -210,10 +219,16 @@ def test_settle_loan_updates_commited_liquidity(p2p_usdc_weth, ongoing_loan_usdc
 
 def test_settle_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
-    amount_to_settle = loan.amount + interest
-    protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta
+    interest = loan.get_interest(settle_time)
+    protocol_fee_amount = interest * loan.protocol_settlement_fee // BPS
 
+    assert interest > 0  # precondition: non-zero interest accrued
+    assert protocol_fee_amount > 0  # precondition: non-zero protocol fee
+
+    amount_to_settle = loan.amount + interest
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
     p2p_usdc_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
 
@@ -231,8 +246,14 @@ def test_settle_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now
 
 def test_settle_loan_doesnt_transfer_excess_amount_from_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta
+    interest = loan.get_interest(settle_time)
     amount_to_settle = loan.amount + interest
+
+    assert interest > 0  # precondition: non-zero interest accrued
+
     initial_borrower_balance = usdc.balanceOf(ongoing_loan_usdc_weth.borrower)
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle + 1, sender=ongoing_loan_usdc_weth.borrower)
@@ -241,31 +262,39 @@ def test_settle_loan_doesnt_transfer_excess_amount_from_borrower(p2p_usdc_weth, 
     assert usdc.balanceOf(ongoing_loan_usdc_weth.borrower) == initial_borrower_balance - amount_to_settle
 
 
-def test_settle_loan_keeps_collateral_in_vault_for_non_redeemed_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
-    """For Securitize, non-redeemed loans keep collateral in the vault after settlement."""
+def test_settle_loan_transfers_collateral_to_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta
+    interest = loan.get_interest(settle_time)
     amount_to_settle = loan.amount + interest
 
-    # Get vault address for this loan's vault_id
     vault_addr = p2p_usdc_weth.vault_id_to_vault(loan.borrower, loan.vault_id)
-    vault_balance_before = weth.balanceOf(vault_addr)
     borrower_balance_before = weth.balanceOf(loan.borrower)
+
+    assert weth.balanceOf(vault_addr) > 0  # precondition: collateral in vault
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
     p2p_usdc_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
 
-    # Collateral stays in vault for non-redeemed Securitize loans
-    assert weth.balanceOf(vault_addr) == vault_balance_before
-    assert weth.balanceOf(loan.borrower) == borrower_balance_before
+    assert weth.balanceOf(vault_addr) == 0
+    assert weth.balanceOf(loan.borrower) == borrower_balance_before + loan.collateral_amount
 
 
 def test_settle_loan_pays_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta
+    interest = loan.get_interest(settle_time)
+    protocol_fee_amount = interest * loan.protocol_settlement_fee // BPS
     amount_to_settle = loan.amount + interest
-    protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
     amount_to_receive = loan.amount + interest - protocol_fee_amount
+
+    assert interest > 0  # precondition: non-zero interest accrued
+    assert amount_to_receive > loan.amount  # precondition: lender receives more than principal
+
     initial_lender_balance = usdc.balanceOf(loan.lender)
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
@@ -276,9 +305,16 @@ def test_settle_loan_pays_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, no
 
 def test_settle_loan_pays_protocol_fees(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta
+    interest = loan.get_interest(settle_time)
+    protocol_fee_amount = interest * loan.protocol_settlement_fee // BPS
+
+    assert interest > 0  # precondition: non-zero interest accrued
+    assert protocol_fee_amount > 0  # precondition: non-zero protocol fee
+
     amount_to_settle = loan.amount + interest
-    protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
     initial_protocol_wallet_balance = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
@@ -397,11 +433,11 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     p2p_erc20_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
 
-    interest = loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     assert p2p_erc20_weth.pending_transfers(lender) == loan.amount + interest
 
 
-def test_claim_pending_transactions(p2p_usdc_weth, usdc):
+def test_claim_pending_transfers(p2p_usdc_weth, usdc):
     user = boa.env.generate_address()
     value = 10**6
 
@@ -416,5 +452,242 @@ def test_claim_pending_transactions(p2p_usdc_weth, usdc):
     assert usdc.balanceOf(user) == value
     assert p2p_usdc_weth.pending_transfers(user) == 0
 
+
+def test_claim_pending_transfers_reverts_if_no_pending(p2p_usdc_weth, usdc):
+    user = boa.env.generate_address()
+
     with boa.reverts("no pending transfers"):
         p2p_usdc_weth.claim_pending_transfers(sender=user)
+
+
+# ============================================================================
+# REDEEMED LOAN SETTLEMENT TESTS
+# ============================================================================
+
+
+@pytest.fixture
+def redeemed_loan_for_settle(
+    p2p_usdc_weth,
+    ongoing_loan_usdc_weth,
+    usdc,
+    weth,
+    borrower,
+    now,
+    owner_key,
+    securitize_redemption_wallet,
+):
+    """
+    Create a redeemed loan with payment tokens in the vault for settlement tests.
+    Simulates: borrower redeems all collateral, Securitize converts to payment token,
+    and vault receives payment tokens covering the debt.
+    """
+    loan = ongoing_loan_usdc_weth
+    residual_collateral = 0
+
+    # Redeem the loan (sends all collateral to redemption wallet)
+    p2p_usdc_weth.redeem(loan, residual_collateral, sender=loan.borrower)
+
+    # Capture actual timestamp after redeem
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=residual_collateral,
+    )
+
+    # Get the vault address for this loan
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Simulate redemption: payment tokens deposited to vault
+    # Must cover loan.amount + interest at settlement time
+    payment_redeemed = loan.amount + loan.amount  # generous amount covering debt + interest + surplus
+
+    usdc.mint(vault_addr, payment_redeemed)
+
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,
+        payment_redeemed=payment_redeemed,
+        timestamp=redeem_time + 1,
+    )
+
+    return redeemed_loan, redeem_result, payment_redeemed
+
+
+def test_settle_loan_reverts_if_redeem_not_concluded(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
+    """Settling a redeemed loan with empty/invalid redeem_result reverts."""
+    loan = ongoing_loan_usdc_weth
+
+    # Redeem the loan
+    p2p_usdc_weth.redeem(loan, 0, sender=loan.borrower)
+
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=0,
+    )
+
+    # Verify loan is redeemed
+    assert redeemed_loan.redeem_start > 0
+
+    # Try to settle with empty redeem result — should fail because
+    # _is_loan_redeem_concluded returns False (timestamp=0 < redeem_start)
+    with boa.reverts("redeem not concluded"):
+        p2p_usdc_weth.settle_loan(redeemed_loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
+
+
+def test_settle_loan_reverts_if_invalid_redeem_payment_amount(
+    p2p_usdc_weth, redeemed_loan_for_settle, usdc, owner_key, borrower
+):
+    """Settling a redeemed loan reverts when redeem_result.payment_redeemed exceeds vault's payment token balance."""
+    redeemed_loan, redeem_result, _ = redeemed_loan_for_settle
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, redeemed_loan.vault_id)
+
+    # Create a redeem result claiming more payment tokens than the vault actually has
+    actual_vault_balance = usdc.balanceOf(vault_addr)
+    inflated_redeem_result = RedeemResult(
+        vault=redeem_result.vault,
+        collateral_redeemed=redeem_result.collateral_redeemed,
+        payment_redeemed=actual_vault_balance + 1,  # more than vault holds
+        timestamp=redeem_result.timestamp,
+    )
+    signed_redeem_result = sign_redeem_result(inflated_redeem_result, owner_key)
+
+    # Precondition: vault truly has less than claimed
+    assert usdc.balanceOf(vault_addr) < inflated_redeem_result.payment_redeemed
+
+    with boa.reverts("invalid redeem payment amount"):
+        p2p_usdc_weth.settle_loan(redeemed_loan, signed_redeem_result, sender=redeemed_loan.borrower)
+
+
+def test_settle_loan_reverts_if_invalid_redeem_collateral_amnt(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, owner_key, borrower, now
+):
+    """Settling a redeemed loan reverts when redeem_result.collateral_redeemed + residual exceeds vault's collateral."""
+    loan = ongoing_loan_usdc_weth
+    residual_collateral = loan.collateral_amount // 2  # Keep 50% as residual
+
+    # Redeem with residual collateral
+    p2p_usdc_weth.redeem(loan, residual_collateral, sender=loan.borrower)
+
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(
+        loan,
+        redeem_start=redeem_time,
+        redeem_residual_collateral=residual_collateral,
+    )
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    # Mint some payment tokens to vault (simulating partial redemption)
+    usdc.mint(vault_addr, loan.amount)
+
+    # The vault's withdrawable_balance should be residual_collateral (the collateral that stayed)
+    # The contract checks: withdrawable_balance >= loan.redeem_residual_collateral + redeem_result.collateral_redeemed
+    # So claim collateral_redeemed that pushes the sum above what the vault actually holds
+    vault_collateral_balance = weth.balanceOf(vault_addr)
+    inflated_collateral_redeemed = vault_collateral_balance - residual_collateral + 1  # just enough to exceed
+
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=inflated_collateral_redeemed,
+        payment_redeemed=loan.amount,
+        timestamp=redeem_time + 1,
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    with boa.reverts("invalid redeem collateral amnt"):
+        p2p_usdc_weth.settle_loan(redeemed_loan, signed_redeem_result, sender=loan.borrower)
+
+
+def test_settle_redeemed_loan(p2p_usdc_weth, redeemed_loan_for_settle, usdc, weth, owner_key, borrower):
+    """Happy path: settling a redeemed loan deletes loan state and empties vault."""
+    redeemed_loan, redeem_result, _ = redeemed_loan_for_settle
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, redeemed_loan.vault_id)
+
+    # Approve borrower to pay any remaining debt not covered by vault payment tokens
+    # (in this case vault has enough, so borrower may receive surplus instead)
+    usdc.approve(p2p_usdc_weth.address, redeemed_loan.amount * 2, sender=redeemed_loan.borrower)
+
+    p2p_usdc_weth.settle_loan(redeemed_loan, signed_redeem_result, sender=redeemed_loan.borrower)
+
+    # Loan state deleted
+    assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
+    # Vault emptied (collateral was already redeemed, payment tokens withdrawn)
+    assert weth.balanceOf(vault_addr) == 0
+    assert usdc.balanceOf(vault_addr) == 0
+
+
+def test_settle_redeemed_loan_pays_lender(
+    p2p_usdc_weth, redeemed_loan_for_settle, usdc, owner_key, borrower, now, protocol_fees
+):
+    """Verify lender receives correct amount when settling a redeemed loan."""
+    redeemed_loan, redeem_result, _ = redeemed_loan_for_settle
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    # Time travel a bit for non-zero interest
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta
+
+    interest = redeemed_loan.get_interest(settle_time)
+    protocol_fee_amount = interest * redeemed_loan.protocol_settlement_fee // BPS
+
+    assert interest > 0  # precondition: non-zero interest accrued
+    assert protocol_fee_amount > 0  # precondition: non-zero protocol fee
+
+    # The lender should receive: loan.amount + interest - protocol_fee
+    expected_lender_payment = redeemed_loan.amount + interest - protocol_fee_amount
+
+    lender_balance_before = usdc.balanceOf(redeemed_loan.lender)
+
+    # Approve borrower to pay any shortfall (vault has surplus, so may not need approval)
+    usdc.approve(p2p_usdc_weth.address, redeemed_loan.amount * 2, sender=redeemed_loan.borrower)
+
+    p2p_usdc_weth.settle_loan(redeemed_loan, signed_redeem_result, sender=redeemed_loan.borrower)
+
+    assert usdc.balanceOf(redeemed_loan.lender) == lender_balance_before + expected_lender_payment
+
+
+def test_settle_redeemed_loan_logs_event(
+    p2p_usdc_weth, redeemed_loan_for_settle, usdc, owner_key, borrower, now, protocol_fees
+):
+    """Verify LoanPaid event includes correct redemption-related fields for redeemed settlement."""
+    redeemed_loan, redeem_result, payment_redeemed = redeemed_loan_for_settle
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    # Time travel for non-zero interest
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta
+
+    interest = redeemed_loan.get_interest(settle_time)
+    protocol_fee_amount = interest * redeemed_loan.protocol_settlement_fee // BPS
+
+    assert interest > 0  # precondition: non-zero interest accrued
+
+    usdc.approve(p2p_usdc_weth.address, redeemed_loan.amount * 2, sender=redeemed_loan.borrower)
+
+    p2p_usdc_weth.settle_loan(redeemed_loan, signed_redeem_result, sender=redeemed_loan.borrower)
+
+    event = get_last_event(p2p_usdc_weth, "LoanPaid")
+    assert event.id == redeemed_loan.id
+    assert event.borrower == redeemed_loan.borrower
+    assert event.lender == redeemed_loan.lender
+    assert event.payment_token == redeemed_loan.payment_token
+    assert event.paid_principal == redeemed_loan.amount
+    assert event.paid_interest == interest
+    assert event.origination_fee_amount == redeemed_loan.origination_fee_amount
+    assert event.protocol_upfront_fee_amount == redeemed_loan.protocol_upfront_fee_amount
+    assert event.protocol_settlement_fee_amount == protocol_fee_amount
+    # For redeemed loans, in_vault_payment_token reflects the redemption proceeds
+    assert event.in_vault_payment_token == payment_redeemed
+    # No collateral remaining since all was redeemed (residual_collateral=0, collateral_redeemed=0)
+    # in_vault_collateral = loan.redeem_residual_collateral + redeem_result.collateral_redeemed = 0
+    assert event.in_vault_collateral == 0

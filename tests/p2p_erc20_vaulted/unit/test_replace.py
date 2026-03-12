@@ -863,3 +863,421 @@ def test_replace_loan_for_normal_offer_doesnt_revoke_offer(
     p2p_usdc_weth.replace_loan(loan, signed_offer, 0, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
 
     assert not p2p_usdc_weth.revoked_offers(compute_signed_offer_id(signed_offer))
+
+
+def test_replace_loan_reverts_if_borrower_not_allowed(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, lender2_key, usdc, now, kyc_lender2, lender2, weth, oracle
+):
+    loan = ongoing_loan_usdc_weth
+    random_borrower = boa.env.generate_address("random_borrower")
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=8000,
+        available_liquidity=loan.amount,
+        liquidation_ltv=9000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=random_borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+
+    with boa.reverts("borrower not allowed"):
+        p2p_usdc_weth.replace_loan(loan, signed_offer, 0, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_reverts_if_offer_principal_mismatch(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, lender2_key, usdc, now, kyc_lender2, lender2, weth, oracle
+):
+    loan = ongoing_loan_usdc_weth
+    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (365 * DAY * BPS)
+    outstanding_debt = loan.amount + interest
+    offer = Offer(
+        principal=outstanding_debt + 1,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=8000,
+        available_liquidity=outstanding_debt + 1,
+        liquidation_ltv=9000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+
+    with boa.reverts("offer principal mismatch"):
+        p2p_usdc_weth.replace_loan(loan, signed_offer, 0, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_reverts_if_initial_ltv_gt_max_iltv(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, lender2_key, usdc, now, kyc_lender2, lender2, weth, oracle
+):
+    loan = ongoing_loan_usdc_weth
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=1,
+        available_liquidity=loan.amount,
+        liquidation_ltv=9000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+
+    with boa.reverts("initial ltv gt max iltv"):
+        p2p_usdc_weth.replace_loan(loan, signed_offer, loan.amount, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_reverts_if_liquidation_ltv_le_initial_ltv(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, lender2_key, usdc, now, kyc_lender2, lender2, weth, oracle
+):
+    loan = ongoing_loan_usdc_weth
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=8000,
+        available_liquidity=loan.amount,
+        liquidation_ltv=8000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+
+    with boa.reverts("liquidation ltv le initial ltv"):
+        p2p_usdc_weth.replace_loan(loan, signed_offer, loan.amount, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_reverts_if_initial_ltv_too_high(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, lender2_key, usdc, now, kyc_lender2, lender2, weth, oracle
+):
+    loan = ongoing_loan_usdc_weth
+    partial_liq_fee = p2p_usdc_weth.partial_liquidation_fee()
+    high_iltv = BPS * BPS // (BPS + partial_liq_fee)
+    assert (BPS + partial_liq_fee) * high_iltv >= BPS * BPS
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=high_iltv,
+        available_liquidity=loan.amount,
+        liquidation_ltv=high_iltv + 1,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+
+    with boa.reverts("initial ltv too high"):
+        p2p_usdc_weth.replace_loan(loan, signed_offer, loan.amount, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_reverts_if_loan_already_exists(p2p_usdc_weth, ongoing_loan_usdc_weth, offer_usdc_weth, kyc_lender):
+    # ongoing_loan_usdc_weth was created from offer_usdc_weth at block.timestamp = now.
+    # Replacing it with the SAME offer in the SAME block produces the same loan_id
+    # (keccak256(borrower, lender, block.timestamp, offer_id)) and the "loan already exists"
+    # check fires BEFORE the old loan is deleted.
+    loan = ongoing_loan_usdc_weth
+    with boa.reverts("loan already exists"):
+        p2p_usdc_weth.replace_loan(
+            loan, offer_usdc_weth, loan.amount, loan.collateral_amount, kyc_lender, sender=loan.borrower
+        )
+
+
+def test_replace_loan_reverts_if_low_collateral_amount(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, lender2_key, usdc, now, kyc_lender2, lender2, weth, oracle
+):
+    loan = ongoing_loan_usdc_weth
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        min_collateral_amount=loan.collateral_amount + 1,
+        max_iltv=8000,
+        available_liquidity=loan.amount,
+        liquidation_ltv=9000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+
+    with boa.reverts("low collateral amount"):
+        p2p_usdc_weth.replace_loan(loan, signed_offer, loan.amount, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_reverts_if_oracle_answer_zero(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner, lender2, lender2_key, usdc, weth, now, kyc_lender2
+):
+    loan = ongoing_loan_usdc_weth
+    new_offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=8000,
+        available_liquidity=loan.amount,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_new_offer = sign_offer(new_offer, lender2_key, p2p_usdc_weth.address)
+    usdc.approve(p2p_usdc_weth.address, loan.amount * 2, sender=lender2)
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.replace_loan(loan, signed_new_offer, 0, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
+
+
+def test_replace_loan_with_max_iltv_zero(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now, kyc_lender2, lender2, lender2_key, oracle
+):
+    """Covers branch: if offer.offer.max_iltv == 0 (LTV derived from min_collateral_amount)"""
+    loan = ongoing_loan_usdc_weth
+    min_collateral = int(0.3e18)
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        min_collateral_amount=min_collateral,
+        max_iltv=0,
+        available_liquidity=loan.amount,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+    delta_borrower, _, delta_new_lender, _ = _calc_deltas(loan, offer, loan.amount, now, p2p_usdc_weth)
+
+    if delta_borrower < 0:
+        usdc.approve(p2p_usdc_weth.address, -delta_borrower, sender=loan.borrower)
+    if delta_new_lender < 0:
+        usdc.approve(p2p_usdc_weth.address, -delta_new_lender, sender=lender2)
+
+    new_loan_id = p2p_usdc_weth.replace_loan(
+        loan, signed_offer, loan.amount, loan.collateral_amount, kyc_lender2, sender=loan.borrower
+    )
+
+    new_principal = loan.amount
+    max_initial_ltv = calc_ltv(new_principal, min_collateral, usdc, weth, oracle)
+    expected_new_loan = Loan(
+        id=new_loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=new_principal,
+        amount=new_principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=loan.borrower,
+        lender=offer.lender,
+        collateral_token=offer.collateral_token,
+        collateral_amount=loan.collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * new_principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * new_principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=max_initial_ltv,
+        call_time=0,
+    )
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert compute_loan_hash(expected_new_loan) == p2p_usdc_weth.loans(new_loan_id)
+
+
+def test_replace_loan_with_liquidation_ltv_zero(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now, kyc_lender2, lender2, lender2_key, oracle
+):
+    """Covers branch: liquidation_ltv == 0 (no partial liquidation constraints)"""
+    loan = ongoing_loan_usdc_weth
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=8000,
+        available_liquidity=loan.amount,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender2,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender2_key, p2p_usdc_weth.address)
+    delta_borrower, _, delta_new_lender, _ = _calc_deltas(loan, offer, loan.amount, now, p2p_usdc_weth)
+
+    if delta_borrower < 0:
+        usdc.approve(p2p_usdc_weth.address, -delta_borrower, sender=loan.borrower)
+    if delta_new_lender < 0:
+        usdc.approve(p2p_usdc_weth.address, -delta_new_lender, sender=lender2)
+
+    new_loan_id = p2p_usdc_weth.replace_loan(
+        loan, signed_offer, loan.amount, loan.collateral_amount, kyc_lender2, sender=loan.borrower
+    )
+
+    new_principal = loan.amount
+    expected_new_loan = Loan(
+        id=new_loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=new_principal,
+        amount=new_principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=loan.borrower,
+        lender=offer.lender,
+        collateral_token=offer.collateral_token,
+        collateral_amount=loan.collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * new_principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * new_principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+    )
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert compute_loan_hash(expected_new_loan) == p2p_usdc_weth.loans(new_loan_id)
+
+
+def test_replace_loan_same_lender(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now, kyc_lender, lender, lender_key, oracle
+):
+    """Covers branch: if loan.lender == offer.offer.lender (same lender refinance)"""
+    loan = ongoing_loan_usdc_weth
+    offer = Offer(
+        principal=loan.amount,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        max_iltv=8000,
+        available_liquidity=loan.amount,
+        liquidation_ltv=9000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=loan.borrower,
+        tracing_id=32 * b"\3",
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    interest = loan.get_interest(now)
+    outstanding_debt = loan.amount + interest
+    protocol_settlement_fee_amount = loan.protocol_settlement_fee * interest // BPS
+    origination_fee_amount = offer.origination_fee_bps * loan.amount // BPS
+    protocol_upfront_fee_amount = p2p_usdc_weth.protocol_upfront_fee() * loan.amount // BPS
+
+    borrower_delta = loan.amount - outstanding_debt - origination_fee_amount
+    old_lender_delta = outstanding_debt - protocol_settlement_fee_amount
+    new_lender_delta = origination_fee_amount - loan.amount - protocol_upfront_fee_amount
+    lender_delta = old_lender_delta + new_lender_delta
+
+    if borrower_delta < 0:
+        usdc.approve(p2p_usdc_weth.address, -borrower_delta, sender=loan.borrower)
+    if lender_delta < 0:
+        usdc.approve(p2p_usdc_weth.address, -lender_delta, sender=lender)
+
+    initial_lender_balance = usdc.balanceOf(lender)
+    initial_borrower_balance = usdc.balanceOf(loan.borrower)
+
+    new_loan_id = p2p_usdc_weth.replace_loan(
+        loan, signed_offer, loan.amount, loan.collateral_amount, kyc_lender, sender=loan.borrower
+    )
+
+    new_principal = loan.amount
+    expected_new_loan = Loan(
+        id=new_loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=new_principal,
+        amount=new_principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=loan.borrower,
+        lender=offer.lender,
+        collateral_token=offer.collateral_token,
+        collateral_amount=loan.collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=origination_fee_amount,
+        protocol_upfront_fee_amount=protocol_upfront_fee_amount,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+    )
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert compute_loan_hash(expected_new_loan) == p2p_usdc_weth.loans(new_loan_id)
+    assert usdc.balanceOf(lender) == initial_lender_balance + lender_delta
+    assert usdc.balanceOf(loan.borrower) == initial_borrower_balance + borrower_delta

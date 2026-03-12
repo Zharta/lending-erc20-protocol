@@ -144,6 +144,11 @@ def test_settle_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_we
             p2p_usdc_weth.settle_loan(loan, sender=ongoing_loan_usdc_weth.borrower)
 
 
+def test_settle_loan_reverts_if_not_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, lender):
+    with boa.reverts("not borrower"):
+        p2p_usdc_weth.settle_loan(ongoing_loan_usdc_weth, sender=lender)
+
+
 def test_settle_loan_reverts_if_loan_defaulted(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
     time_to_default = ongoing_loan_usdc_weth.maturity - now
     boa.env.time_travel(seconds=time_to_default + 1)
@@ -393,7 +398,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     assert p2p_erc20_weth.pending_transfers(lender) == loan.amount + interest
 
 
-def test_claim_pending_transactions(p2p_usdc_weth, usdc):
+def test_claim_pending_transfers(p2p_usdc_weth, usdc):
     user = boa.env.generate_address()
     value = 10**6
 
@@ -408,6 +413,10 @@ def test_claim_pending_transactions(p2p_usdc_weth, usdc):
 
     assert usdc.balanceOf(user) == value
     assert p2p_usdc_weth.pending_transfers(user) == 0
+
+
+def test_claim_pending_transfers_reverts_if_no_pending(p2p_usdc_weth, usdc):
+    user = boa.env.generate_address()
 
     with boa.reverts("no pending transfers"):
         p2p_usdc_weth.claim_pending_transfers(sender=user)

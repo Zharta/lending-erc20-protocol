@@ -328,6 +328,17 @@ def test_loop2(
         sender=borrower,
     )
 
+    # Verify LeveragedLoanCreated event
+    event = get_last_event(securitize_proxy, "LeveragedLoanCreated")
+    loan_id = compute_loan_id(borrower, lender, now, compute_signed_offer_id(signed_offer))
+    assert event.loan_id == loan_id
+    assert event.p2p_lending_erc20 == p2p_usdc_acred.address
+    assert event.principal == principal
+    assert event.loan_collateral_amount == collateral_amount
+    assert event.aquired_collateral == collateral_to_buy
+    assert event.max_collateral_buy_value == collateral_to_buy_value
+    assert event.flash_loan_amount == collateral_to_buy_value
+
     assert acred.balanceOf(p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)) == collateral_amount
     assert acred.balanceOf(borrower) == borrower_collateral_balance_before + collateral_to_buy - collateral_amount
 
@@ -495,13 +506,48 @@ def test_redeem(
     )
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
+    borrower_balance_before_settle = usdc.balanceOf(loan.borrower)
+    lender_balance_before_settle = usdc.balanceOf(loan.lender)
+    protocol_wallet_balance_before_settle = usdc.balanceOf(p2p_usdc_acred.protocol_wallet())
+
     p2p_usdc_acred.settle_loan(loan, signed_redeem_result, sender=loan.borrower)
+    # event must be captured before any other call on this contract (overwrites _computation)
+    event = get_last_event(p2p_usdc_acred, "LoanPaid")
+
+    # compute settlement amounts independently
+    # no time has passed since loan creation, so interest = 0
+    settle_interest = loan.apr * loan.amount * (now - loan.accrual_start_time) // (365 * 86400 * BPS)
+    settle_protocol_fee = settle_interest * loan.protocol_settlement_fee // BPS
+    in_vault_payment_token = redeem_usdc
+    borrower_funds_delta = in_vault_payment_token - (loan.amount + settle_interest)
+    # borrower pays abs(delta) if negative, receives delta if positive
+    if borrower_funds_delta < 0:
+        expected_borrower_payment = -borrower_funds_delta
+        expected_borrower_balance = borrower_balance_before_settle - expected_borrower_payment
+    else:
+        expected_borrower_balance = borrower_balance_before_settle + borrower_funds_delta
+    expected_lender_payment = loan.amount + settle_interest - settle_protocol_fee
 
     assert p2p_usdc_acred.loans(loan.id) == ZERO_BYTES32
+    assert event.id == loan.id
+    assert event.borrower == loan.borrower
+    assert event.lender == loan.lender
+    assert event.payment_token == loan.payment_token
+    assert event.paid_principal == loan.amount
+    assert event.paid_interest == settle_interest
+    assert event.origination_fee_amount == loan.origination_fee_amount
+    assert event.protocol_upfront_fee_amount == loan.protocol_upfront_fee_amount
+    assert event.protocol_settlement_fee_amount == settle_protocol_fee
+    assert event.in_vault_payment_token == in_vault_payment_token
+    assert event.in_vault_collateral == residual_collateral
 
     assert usdc.balanceOf(vault) == 0
-    assert usdc.balanceOf(loan.lender) == lender_balance_before
-    assert usdc.balanceOf(loan.borrower) >= borrower_balance_before
+    assert usdc.balanceOf(loan.lender) == lender_balance_before_settle + expected_lender_payment
+    assert usdc.balanceOf(loan.borrower) == expected_borrower_balance
+    assert usdc.balanceOf(p2p_usdc_acred.protocol_wallet()) == protocol_wallet_balance_before_settle + settle_protocol_fee
+
+    # committed liquidity decremented after settlement
+    assert p2p_usdc_acred.commited_liquidity(liquidity_key) == 0
 
     assert acred.balanceOf(vault) == 0
     assert (

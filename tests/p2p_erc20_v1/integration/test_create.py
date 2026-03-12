@@ -60,6 +60,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
     borrower_balance_before = usdc.balanceOf(borrower)
     origination_fee = offer.origination_fee_bps * principal // BPS
     lender_balance_before = usdc.balanceOf(lender)
+    protocol_wallet_balance_before = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
 
     loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
@@ -85,6 +86,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee(),
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
         partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         liquidation_ltv=offer.liquidation_ltv,
@@ -122,6 +124,9 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
 
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee
     assert usdc.balanceOf(lender) == lender_balance_before - principal + origination_fee
+
+    protocol_upfront_fee_amount = p2p_usdc_weth.protocol_upfront_fee() * principal // BPS
+    assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == protocol_wallet_balance_before + protocol_upfront_fee_amount
 
     liquidity_key = compute_liquidity_key(offer.lender, offer.tracing_id)
     assert p2p_usdc_weth.commited_liquidity(liquidity_key) == principal

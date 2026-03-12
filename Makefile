@@ -9,6 +9,9 @@ SOLCJSON := $(patsubst contracts/%, solc_json/%, $(CONTRACTS:%.vy=%.json))
 PATH := ${VENV}/bin:${PATH}
 PYTHONPATH:=contracts:scripts:$(PYTHONPATH)
 
+UNIT_TESTS := $(shell find tests -type d -name unit)
+INTEGRATION_TESTS := $(shell find tests -type d -name integration)
+
 vpath %.vy ./contracts
 
 $(VENV):
@@ -32,18 +35,18 @@ test: ${VENV}
 	${VENV}/bin/pytest tests
 
 coverage:
-	${VENV}/bin/coverage run -m pytest tests/p2p_erc20_vaulted/unit --runslow
+	${VENV}/bin/coverage run -m pytest $(UNIT_TESTS) --runslow
 	${VENV}/bin/coverage report
 
 branch-coverage:
-	${VENV}/bin/coverage run --branch -m pytest tests/p2p_erc20_vaulted/unit --runslow
+	${VENV}/bin/coverage run --branch -m pytest $(UNIT_TESTS) --runslow
 	${VENV}/bin/coverage report
 
 unit-tests:
-	${VENV}/bin/pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_vaulted/unit tests/p2p_erc20_securitize/unit tests/registrar_connector/unit --runslow -n auto --dist loadscope
+	${VENV}/bin/pytest $(UNIT_TESTS) --runslow -n auto --dist loadscope
 
 integration-tests:
-	${VENV}/bin/pytest tests/p2p_erc20_v1/integration tests/p2p_erc20_vaulted/integration tests/p2p_erc20_securitize/integration
+	${VENV}/bin/pytest $(INTEGRATION_TESTS)
 
 profitr-tests:
 	${VENV}/bin/pytest tests/p2p_erc20_vaulted/profitr

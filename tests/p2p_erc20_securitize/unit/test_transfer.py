@@ -166,6 +166,20 @@ def test_transfer_loan_reverts_if_not_transfer_agent(p2p_usdc_weth, ongoing_loan
         )
 
 
+def test_transfer_loan_reverts_if_new_borrower_same_as_current(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, transfer_agent, kyc_for, kyc_validator_contract
+):
+    borrower_kyc = kyc_for(ongoing_loan_usdc_weth.borrower, kyc_validator_contract.address)
+    with boa.reverts("new borrower same as current"):
+        p2p_usdc_weth.transfer_loan(
+            ongoing_loan_usdc_weth,
+            ongoing_loan_usdc_weth.borrower,
+            borrower_kyc,
+            EMPTY_REDEEM_RESULT,
+            sender=transfer_agent,
+        )
+
+
 def test_transfer_loan_reverts_if_redeem_not_concluded(
     p2p_usdc_weth, ongoing_loan_usdc_weth, transfer_agent, kyc_for, kyc_validator_contract, now
 ):
