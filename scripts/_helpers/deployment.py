@@ -7,7 +7,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ape import accounts
+from ape import accounts, chain
+from rich import print as rprint
+from rich.markup import escape
 
 from . import contracts as contracts_module
 from .basetypes import (
@@ -16,8 +18,11 @@ from .basetypes import (
     Environment,
 )
 from .dependency import DependencyManager
+from .verification import is_verified, verify_contract
 
 ENV = Environment[os.environ.get("ENV", "local")]
+ETHERSCAN_API_KEY = os.environ.get("ETHERSCAN_API_KEY", "")
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
@@ -100,6 +105,55 @@ def load_configs(env: Environment, chain: str) -> dict:
     return {f"configs.{k}": v for k, v in _configs.items()}
 
 
+def verify_contracts(context: DeploymentContext, contracts: list[ContractConfig]):
+    print()
+    if context.env not in {Environment.int, Environment.prod}:
+        rprint(f"[bright_black]Skipping verification for {context.env.name} environment[/]")
+        return
+    if not ETHERSCAN_API_KEY:
+        keys = " ".join(c.key for c in contracts)
+        rprint("[dark_orange bold]WARNING[/]: ETHERSCAN_API_KEY not set, skipping verification")
+        rprint("[bright_black]Verify later with:[/]")
+        rprint(f"  python scripts/verify.py --env {context.env.name} --chain {chain.provider.network.name} --contracts {keys}")
+        return
+
+    rprint(f"\nVerifying [blue]{len(contracts)}[/] contract(s) on Etherscan...")
+    results = {}
+    for contract in contracts:
+        if context.dryrun:
+            rprint(f"  [bright_black]Skipping [blue]{escape(contract.key)}[/blue]: dry run mode[/]")
+            continue
+
+        if contract.contract is None:
+            rprint(f"  [bright_black]Skipping [blue]{escape(contract.key)}[/blue]: no contract instance[/]")
+            continue
+        if is_verified(ETHERSCAN_API_KEY, chain.provider.network.chain_id, contract.address()):
+            rprint(f"  [bright_black]Skipping [blue]{escape(contract.key)}[/blue]: already verified[/]")
+            results[contract.key] = True
+            continue
+        rprint(f"\n  Verifying [blue]{escape(contract.key)}[/] at [blue]{escape(contract.address())}[/]...")
+        try:
+            success = verify_contract(
+                api_key=ETHERSCAN_API_KEY,
+                chain_id=chain.provider.network.chain_id,
+                address=contract.address(),
+                source_file=contract.container.source_id,
+                constructor_args=(contract.deploy_args.hex() if contract.deploy_args else "").removeprefix("0x"),
+            )
+            results[contract.key] = success
+        except Exception as e:
+            rprint(f"  [bold red]Error[/]: {escape(str(e))}")
+            results[contract.key] = False
+
+    if results:
+        rprint("\n  Verification summary:")
+        for key, success in results.items():
+            status = "[bold green]OK[/]" if success else "[bold red]FAIL[/]"
+            rprint(f"    {status} [blue]{escape(key)}[/]")
+        succeeded = sum(1 for v in results.values() if v)
+        rprint(f"  [bold]{succeeded}/{len(results)}[/] verified successfully")
+
+
 class DeploymentManager:
     def __init__(self, env: Environment, chain: str, context: Context = Context.DEPLOYMENT):
         self.env = env
@@ -152,6 +206,8 @@ class DeploymentManager:
 
         if save_state and not dryrun:
             self._save_state()
+
+        verify_contracts(self.context, [c for c in contracts_to_deploy if c.deployable(self.context)])
 
     def deploy_all(self, *, dryrun=False, save_state=True):
         self.deploy(self.context.contract.keys(), dryrun=dryrun, save_state=save_state)

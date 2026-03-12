@@ -57,7 +57,7 @@ def is_config_needed(context: DeploymentContext, contract: str, func: str, new_v
 def execute_read(context: DeploymentContext, contract: str, func: str, *args, options=None):
     contract_instance = context.contracts[contract].contract
     args_repr = [f"[blue]{escape(c)}[/blue]" if c in context else c for c in args]
-    print(f"Calling [blue]{escape(contract)}[/blue].{func}({', '.join(args_repr)})", end=" ")
+    print(f"\nCalling [blue]{escape(contract)}[/blue].{func}({', '.join(args_repr)})", end=" ")
 
     args_values = [context[c] if c in context else c for c in args]  # noqa: SIM401
     args_values = [v.address() if isinstance(v, ContractConfig) else v for v in args_values]
@@ -69,7 +69,7 @@ def execute_read(context: DeploymentContext, contract: str, func: str, *args, op
 
 def execute(context: DeploymentContext, contract: str, func: str, *args, options=None):
     args_repr = [f"[blue]{escape(c)}[/blue]" if c in context else str(c) for c in args]
-    print(f"Executing [blue]{escape(contract)}[/blue].{func}({', '.join(args_repr)})")
+    print(f"\nExecuting [blue]{escape(contract)}[/blue].{func}({', '.join(args_repr)})")
     if not context.dryrun:
         contract_instance = context.contracts[contract].contract
         function = getattr(contract_instance, func)

@@ -59,6 +59,7 @@ class ContractConfig:
     deployment_args: list[Any] = field(default_factory=list)
     abi_key: str | None = None
     version: str | None = None
+    deploy_args: bytes | None = None
 
     nft: bool = False
     token: bool = False
@@ -98,6 +99,7 @@ class ContractConfig:
         self.contract = self.container.at(address)
 
     def deploy(self, context: DeploymentContext):
+        rprint()
         if self.contract is not None:
             rprint(
                 f"[dark_orange bold]WARNING[/]: Deployment will override contract [blue bold]{self.key}[/] at {self.contract}"
@@ -112,8 +114,8 @@ class ContractConfig:
         )
 
         if not context.dryrun:
-            deploy_args = self.container.constructor.encode_input(*self.deployment_args_values(context))
-            rprint(f"Deployment args for [blue]{self.key}[/]: [bright_black]{deploy_args.hex()}[/]")
+            self.deploy_args = self.container.constructor.encode_input(*self.deployment_args_values(context))
+            rprint(f"Deployment args for [blue]{self.key}[/]: [bright_black]{self.deploy_args.hex()}[/]")
 
             self.contract = self.container.deploy(*self.deployment_args_values(context), **kwargs)
             self.abi_key = abi_key(self.contract.contract_type.dict()["abi"])

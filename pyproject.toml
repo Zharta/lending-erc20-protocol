@@ -88,6 +88,7 @@ target-version = "py311"
 "scripts/*.py" = [
     "A001",
     "A004",
+    "DOC",
     "ERA001",
     "FURB101",
     "FURB103",
