@@ -167,7 +167,7 @@ def test_settle_loan_reverts_if_loan_called(p2p_usdc_weth, ongoing_loan_usdc_wet
 
 def test_settle_loan_reverts_if_loan_already_settled(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
@@ -180,7 +180,7 @@ def test_settle_loan_reverts_if_loan_already_settled(p2p_usdc_weth, ongoing_loan
 
 def test_settle_loan_reverts_if_funds_not_approved(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
     with boa.reverts():
@@ -190,7 +190,7 @@ def test_settle_loan_reverts_if_funds_not_approved(p2p_usdc_weth, ongoing_loan_u
 
 def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
     usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
@@ -202,7 +202,7 @@ def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
 
 def test_settle_loan_updates_commited_liquidity(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
     liquidity_key = compute_liquidity_key(loan.lender, loan.offer_tracing_id)
@@ -215,7 +215,7 @@ def test_settle_loan_updates_commited_liquidity(p2p_usdc_weth, ongoing_loan_usdc
 
 def test_settle_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
     protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
 
@@ -236,7 +236,7 @@ def test_settle_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now
 
 def test_settle_loan_doesnt_transfer_excess_amount_from_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
     initial_borrower_balance = usdc.balanceOf(ongoing_loan_usdc_weth.borrower)
 
@@ -248,7 +248,7 @@ def test_settle_loan_doesnt_transfer_excess_amount_from_borrower(p2p_usdc_weth, 
 
 def test_settle_loan_transfers_collateral_to_borrower(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
 
     borrower_balance_before = weth.balanceOf(loan.borrower)
@@ -260,7 +260,7 @@ def test_settle_loan_transfers_collateral_to_borrower(p2p_usdc_weth, ongoing_loa
 
 def test_settle_loan_pays_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
     protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
     amount_to_receive = loan.amount + interest - protocol_fee_amount
@@ -274,7 +274,7 @@ def test_settle_loan_pays_lender(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, no
 
 def test_settle_loan_pays_protocol_fees(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     amount_to_settle = loan.amount + interest
     protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
     initial_protocol_wallet_balance = usdc.balanceOf(p2p_usdc_weth.protocol_wallet())
@@ -386,11 +386,11 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
 
     p2p_erc20_weth.settle_loan(loan, sender=loan.borrower)
 
-    interest = loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.get_interest(now)
     assert p2p_erc20_weth.pending_transfers(lender) == loan.amount + interest
 
 
-def test_claim_pending_transactions(p2p_usdc_weth, usdc):
+def test_claim_pending_transfers(p2p_usdc_weth, usdc):
     user = boa.env.generate_address()
     value = 10**6
 
@@ -406,5 +406,33 @@ def test_claim_pending_transactions(p2p_usdc_weth, usdc):
     assert usdc.balanceOf(user) == value
     assert p2p_usdc_weth.pending_transfers(user) == 0
 
+
+def test_claim_pending_transfers_reverts_if_no_pending(p2p_usdc_weth, usdc):
+    user = boa.env.generate_address()
+
     with boa.reverts("no pending transfers"):
         p2p_usdc_weth.claim_pending_transfers(sender=user)
+
+
+def test_claim_pending_collateral(p2p_usdc_weth, weth):
+    user = boa.env.generate_address()
+    value = 10**18
+
+    p2p_usdc_weth.eval(f"base.pending_collateral[{user}] = {value}")
+    boa.env.set_balance(p2p_usdc_weth.address, value)
+    weth.deposit(value=value, sender=p2p_usdc_weth.address)
+
+    assert weth.balanceOf(user) == 0
+    assert p2p_usdc_weth.pending_collateral(user) == value
+
+    p2p_usdc_weth.claim_pending_collateral(sender=user)
+
+    assert weth.balanceOf(user) == value
+    assert p2p_usdc_weth.pending_collateral(user) == 0
+
+
+def test_claim_pending_collateral_reverts_if_no_pending(p2p_usdc_weth):
+    user = boa.env.generate_address()
+
+    with boa.reverts("no pending collateral"):
+        p2p_usdc_weth.claim_pending_collateral(sender=user)

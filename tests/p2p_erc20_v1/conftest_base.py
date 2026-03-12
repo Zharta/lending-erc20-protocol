@@ -407,6 +407,19 @@ def calc_full_liquidation(loan, principal_token, collateral_token, oracle, times
     send_to_liquidator = min(loan.collateral_amount, collateral_for_debt + liquidation_fee)
     send_to_borrower = loan.collateral_amount - send_to_liquidator
 
+    # conservation-of-funds assertions
+    assert send_to_liquidator + send_to_borrower == loan.collateral_amount, "collateral not conserved"
+    assert send_to_lender + send_to_protocol == receive_from_liquidator, "liquidity not conserved"
+    assert send_to_liquidator >= 0, "send_to_liquidator negative"
+    assert send_to_borrower >= 0, "send_to_borrower negative"
+    assert send_to_lender >= 0, "send_to_lender negative"
+    assert send_to_protocol >= 0, "send_to_protocol negative"
+    assert receive_from_liquidator >= 0, "receive_from_liquidator negative"
+    assert liquidation_fee >= 0, "liquidation_fee negative"
+    assert shortfall >= 0, "shortfall negative"
+    assert liquidation_fee <= loan.collateral_amount, "liquidation_fee exceeds collateral"
+    assert send_to_lender <= outstanding_debt, "lender receives more than debt"
+
     return FullLiquidationResult(
         outstanding_debt=outstanding_debt,
         liquidation_fee=liquidation_fee,

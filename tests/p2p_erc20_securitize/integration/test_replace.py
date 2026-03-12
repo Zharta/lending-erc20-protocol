@@ -217,12 +217,80 @@ def test_replace_loan(
     initial_protocol_wallet_balance = usdc.balanceOf(p2p_usdc_acred.protocol_wallet())
 
     boa.env.time_travel(seconds=replace_timestamp - now)
-    new_loan_id = p2p_usdc_acred.replace_loan(  # noqa: F841
+    new_loan_id = p2p_usdc_acred.replace_loan(
         loan, offer_usdc_acred2, offer.principal, new_collateral_amount, kyc_lender2, sender=loan.borrower
     )
+    # event must be captured before any other call on this contract (overwrites _computation)
+    event = get_last_event(p2p_usdc_acred, "LoanReplaced")
+
+    # compute expected interest and new loan fields independently
+    interest = loan.amount * loan.apr * (replace_timestamp - loan.accrual_start_time) // (365 * DAY * BPS)
+    protocol_settlement_fee = interest * loan.protocol_settlement_fee // BPS
+    new_principal = offer.principal
+    new_origination_fee_amount = offer.origination_fee_bps * new_principal // BPS
+    new_protocol_upfront_fee_amount = p2p_usdc_acred.protocol_upfront_fee() * new_principal // BPS
+
+    # new loan hash verification
+    new_loan = SecuritizeLoan(
+        id=new_loan_id,
+        offer_id=compute_signed_offer_id(offer_usdc_acred2),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=new_principal,
+        amount=new_principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=loan.collateral_token,
+        maturity=replace_timestamp + offer.duration,
+        start_time=replace_timestamp,
+        accrual_start_time=replace_timestamp,
+        borrower=loan.borrower,
+        lender=lender2,
+        collateral_amount=new_collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=new_origination_fee_amount,
+        protocol_upfront_fee_amount=new_protocol_upfront_fee_amount,
+        protocol_settlement_fee=p2p_usdc_acred.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_acred.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_acred.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=loan.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+        vault_id=loan.vault_id,
+        redeem_start=loan.redeem_start,
+        redeem_residual_collateral=loan.redeem_residual_collateral,
+    )
+    assert compute_securitize_loan_hash(new_loan) == p2p_usdc_acred.loans(new_loan_id)
 
     assert p2p_usdc_acred.loans(loan.id) == ZERO_BYTES32
     assert usdc.balanceOf(p2p_usdc_acred.address) == 0
+
+    assert event.id == new_loan_id
+    assert event.amount == new_principal
+    assert event.apr == offer.apr
+    assert event.maturity == replace_timestamp + offer.duration
+    assert event.start_time == replace_timestamp
+    assert event.borrower == loan.borrower
+    assert event.lender == lender2
+    assert event.collateral_amount == new_collateral_amount
+    assert event.min_collateral_amount == offer.min_collateral_amount
+    assert event.call_eligibility == offer.call_eligibility
+    assert event.call_window == offer.call_window
+    assert event.liquidation_ltv == offer.liquidation_ltv
+    assert event.initial_ltv == offer.max_iltv
+    assert event.origination_fee_amount == new_origination_fee_amount
+    assert event.protocol_upfront_fee_amount == new_protocol_upfront_fee_amount
+    assert event.protocol_settlement_fee == p2p_usdc_acred.protocol_settlement_fee()
+    assert event.partial_liquidation_fee == p2p_usdc_acred.partial_liquidation_fee()
+    assert event.full_liquidation_fee == p2p_usdc_acred.full_liquidation_fee()
+    assert event.offer_id == compute_signed_offer_id(offer_usdc_acred2)
+    assert event.offer_tracing_id == offer.tracing_id
+    assert event.original_loan_id == loan.id
+    assert event.paid_principal == loan.amount
+    assert event.paid_interest == interest
+    assert event.paid_protocol_settlement_fee_amount == protocol_settlement_fee
 
     assert p2p_usdc_acred.commited_liquidity(liquidity1_key) == offer1_liquidity_before - loan.amount
     assert p2p_usdc_acred.commited_liquidity(liquidity2_key) == offer2_liquidity_before + offer.principal

@@ -200,6 +200,11 @@ def test_remove_collateral_from_loan_works_with_proxy(p2p_usdc_weth, ongoing_loa
     event = get_last_event(p2p_erc20_proxy, "LoanCollateralRemoved")
     assert event.id == ongoing_loan_usdc_weth.id
 
+    updated_loan = replace_namedtuple_field(
+        ongoing_loan_usdc_weth, collateral_amount=ongoing_loan_usdc_weth.collateral_amount - removed_collateral
+    )
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+
 
 def test_remove_collateral_from_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, weth):
     collateral_amount = ongoing_loan_usdc_weth.collateral_amount
@@ -242,3 +247,13 @@ def test_remove_collateral_from_loan_transfers_collateral(p2p_usdc_weth, ongoing
 
     assert weth.balanceOf(p2p_usdc_weth) == collateral_amount - removed_collateral
     assert weth.balanceOf(borrower) == borrower_balance_before + removed_collateral
+
+
+def test_remove_collateral_from_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle):
+    loan = ongoing_loan_usdc_weth
+    collateral_to_remove = int(0.1e18)
+
+    oracle.set_rate(0, sender=oracle.owner())
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.remove_collateral_from_loan(loan, collateral_to_remove, sender=loan.borrower)

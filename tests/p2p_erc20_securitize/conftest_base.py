@@ -159,6 +159,24 @@ class FullLiquidationResult:
     send_to_liquidator: int = field(default=0)
 
 
+@dataclass
+class FullLiquidationRedeemedResult:
+    outstanding_debt: int = field(default=0)
+    liquidation_fee: int = field(default=0)
+    liquidation_fee_collateral: int = field(default=0)
+    in_vault_payment_token: int = field(default=0)
+    collateral_for_debt: int = field(default=0)
+    remaining_collateral: int = field(default=0)
+    remaining_collateral_value: int = field(default=0)
+    shortfall: int = field(default=0)
+    protocol_settlement_fee_amount: int = field(default=0)
+    liquidator_funds_delta: int = field(default=0)
+    lender_funds_delta: int = field(default=0)
+    borrower_funds_delta: int = field(default=0)
+    liquidator_collateral_delta: int = field(default=0)
+    borrower_collateral_delta: int = field(default=0)
+
+
 # Hash computation functions
 def compute_securitize_loan_hash(loan: SecuritizeLoan):
     """Compute hash for SecuritizeLoan struct (29 fields)"""
@@ -475,6 +493,19 @@ def calc_full_liquidation(loan, principal_token, collateral_token, oracle, times
     send_to_liquidator = min(loan.collateral_amount, collateral_for_debt + liquidation_fee)
     send_to_borrower = loan.collateral_amount - send_to_liquidator
 
+    # conservation-of-funds assertions
+    assert send_to_liquidator + send_to_borrower == loan.collateral_amount, "collateral not conserved"
+    assert send_to_lender + send_to_protocol == receive_from_liquidator, "liquidity not conserved"
+    assert send_to_liquidator >= 0, "send_to_liquidator negative"
+    assert send_to_borrower >= 0, "send_to_borrower negative"
+    assert send_to_lender >= 0, "send_to_lender negative"
+    assert send_to_protocol >= 0, "send_to_protocol negative"
+    assert receive_from_liquidator >= 0, "receive_from_liquidator negative"
+    assert liquidation_fee >= 0, "liquidation_fee negative"
+    assert shortfall >= 0, "shortfall negative"
+    assert liquidation_fee <= loan.collateral_amount, "liquidation_fee exceeds collateral"
+    assert send_to_lender <= outstanding_debt, "lender receives more than debt"
+
     return FullLiquidationResult(
         outstanding_debt=outstanding_debt,
         liquidation_fee=liquidation_fee,
@@ -488,4 +519,143 @@ def calc_full_liquidation(loan, principal_token, collateral_token, oracle, times
         send_to_protocol=send_to_protocol,
         send_to_borrower=send_to_borrower,
         send_to_liquidator=send_to_liquidator,
+    )
+
+
+def calc_full_liquidation_redeemed(
+    loan,
+    principal_token,
+    collateral_token,
+    oracle,
+    in_vault_payment_token,
+    in_vault_collateral,
+    timestamp=0,
+    *,
+    oracle_reverse=False,
+):
+    """
+    Compute expected liquidation values for redeemed loans.
+
+    For redeemed loans, the vault contains both payment tokens (from redemption)
+    and residual collateral, unlike non-redeemed loans which have only collateral.
+
+    The liquidation flow mirrors P2PLendingSecuritizeLiquidation.vy:liquidate_loan (lines 218-319):
+    1. Compute liquidation_fee in payment token terms
+    2. Allocate fee from payment tokens first, then collateral if needed
+    3. Determine which of three scenarios applies:
+       - Full cover by payment tokens
+       - Cover by payment + collateral
+       - Shortfall
+    4. Compute delta values for each party
+    """
+    rate_num = oracle.latestRoundData().answer
+    rate_den = 10 ** oracle.decimals()
+    if oracle_reverse:
+        rate_num, rate_den = rate_den, rate_num
+    pay_dec = 10 ** principal_token.decimals()
+    coll_dec = 10 ** collateral_token.decimals()
+
+    timestamp = timestamp or loan.maturity
+    current_interest = loan.get_interest(timestamp)
+    outstanding_debt = loan.amount + current_interest
+
+    # Step 1: Liquidation fee in payment token terms
+    liquidation_fee = outstanding_debt * loan.full_liquidation_fee // BPS
+    liquidation_fee_collateral = 0
+
+    # Step 2: Fee allocation - deduct from payment tokens first
+    ivpt = in_vault_payment_token  # mutable copy
+    if liquidation_fee <= ivpt:
+        ivpt -= liquidation_fee
+    else:
+        liquidation_fee_collateral = min(
+            in_vault_collateral,
+            (liquidation_fee - ivpt) * rate_den * coll_dec // (rate_num * pay_dec),
+        )
+        liquidation_fee = ivpt
+        ivpt = 0
+
+    # Step 3: Compute remaining values
+    collateral_for_debt = (
+        (outstanding_debt - ivpt) * rate_den * coll_dec // (rate_num * pay_dec) if ivpt < outstanding_debt else 0
+    )
+    remaining_collateral = in_vault_collateral - liquidation_fee_collateral
+    remaining_collateral_value = remaining_collateral * rate_num * pay_dec // (rate_den * coll_dec)
+    protocol_settlement_fee_amount = min(
+        loan.protocol_settlement_fee * current_interest // BPS,
+        ivpt + remaining_collateral_value,
+    )
+    shortfall = outstanding_debt - remaining_collateral_value if remaining_collateral_value < outstanding_debt else 0
+
+    # Step 4: Compute deltas based on scenario
+    liquidator_funds_delta = 0
+    lender_funds_delta = 0
+    borrower_funds_delta = 0
+    liquidator_collateral_delta = 0
+    borrower_collateral_delta = 0
+
+    if ivpt >= outstanding_debt:
+        # Scenario 1: payment tokens fully cover the debt
+        lender_funds_delta = outstanding_debt - protocol_settlement_fee_amount
+        liquidator_funds_delta = liquidation_fee
+        borrower_funds_delta = ivpt - outstanding_debt
+        liquidator_collateral_delta = 0
+        borrower_collateral_delta = in_vault_collateral
+
+    elif ivpt + remaining_collateral_value >= outstanding_debt:
+        # Scenario 2: payment + collateral cover the debt
+        lender_funds_delta = outstanding_debt - protocol_settlement_fee_amount
+        liquidator_funds_delta = liquidation_fee + ivpt - outstanding_debt
+        borrower_funds_delta = 0
+        liquidator_collateral_delta = min(collateral_for_debt, remaining_collateral) + liquidation_fee_collateral
+        borrower_collateral_delta = (
+            in_vault_collateral - liquidator_collateral_delta if in_vault_collateral > liquidator_collateral_delta else 0
+        )
+
+    else:
+        # Scenario 3: shortfall
+        lender_funds_delta = ivpt + remaining_collateral_value - protocol_settlement_fee_amount
+        liquidator_funds_delta = liquidation_fee - remaining_collateral_value
+        borrower_funds_delta = 0
+        liquidator_collateral_delta = in_vault_collateral
+        borrower_collateral_delta = 0
+
+    # Conservation assertions
+    # collateral: all vault collateral must go to liquidator or borrower
+    assert liquidator_collateral_delta + borrower_collateral_delta == in_vault_collateral, "collateral not conserved"
+    # payment tokens: all vault payment tokens must go to lender, liquidator, borrower, or protocol
+    # note: in_vault_payment_token is the original input (before fee deduction), and
+    # ivpt + liquidation_fee == in_vault_payment_token in all branches
+    assert (
+        lender_funds_delta + liquidator_funds_delta + borrower_funds_delta + protocol_settlement_fee_amount
+        == in_vault_payment_token
+    ), "payment tokens not conserved"
+    # non-negative outflows (liquidator_funds_delta can be negative — liquidator pays into the system)
+    assert lender_funds_delta >= 0, "lender_funds_delta negative"
+    assert borrower_funds_delta >= 0, "borrower_funds_delta negative"
+    assert liquidator_collateral_delta >= 0, "liquidator_collateral_delta negative"
+    assert borrower_collateral_delta >= 0, "borrower_collateral_delta negative"
+    assert protocol_settlement_fee_amount >= 0, "protocol_settlement_fee_amount negative"
+    # bounds
+    assert lender_funds_delta <= outstanding_debt, "lender receives more than debt"
+    assert (
+        liquidation_fee + liquidation_fee_collateral * rate_num * pay_dec // (rate_den * coll_dec)
+        <= outstanding_debt * loan.full_liquidation_fee // BPS
+    ), "total fee exceeds expected"
+
+    return FullLiquidationRedeemedResult(
+        outstanding_debt=outstanding_debt,
+        liquidation_fee=liquidation_fee,
+        liquidation_fee_collateral=liquidation_fee_collateral,
+        in_vault_payment_token=ivpt,
+        collateral_for_debt=collateral_for_debt,
+        remaining_collateral=remaining_collateral,
+        remaining_collateral_value=remaining_collateral_value,
+        shortfall=shortfall,
+        protocol_settlement_fee_amount=protocol_settlement_fee_amount,
+        liquidator_funds_delta=liquidator_funds_delta,
+        lender_funds_delta=lender_funds_delta,
+        borrower_funds_delta=borrower_funds_delta,
+        liquidator_collateral_delta=liquidator_collateral_delta,
+        borrower_collateral_delta=borrower_collateral_delta,
     )

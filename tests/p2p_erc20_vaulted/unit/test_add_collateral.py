@@ -184,6 +184,11 @@ def test_add_collateral_to_loan_works_with_proxy(p2p_usdc_weth, ongoing_loan_usd
     event = get_last_event(p2p_erc20_proxy, "LoanCollateralAdded")
     assert event.id == ongoing_loan_usdc_weth.id
 
+    updated_loan = replace_namedtuple_field(
+        ongoing_loan_usdc_weth, collateral_amount=ongoing_loan_usdc_weth.collateral_amount + additional_collateral
+    )
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+
 
 def test_add_collateral_to_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, weth):
     collateral_amount = ongoing_loan_usdc_weth.collateral_amount
@@ -233,3 +238,17 @@ def test_add_collateral_to_loan_transfers_collateral(p2p_usdc_weth, ongoing_loan
     p2p_usdc_weth.add_collateral_to_loan(ongoing_loan_usdc_weth, additional_collateral, sender=ongoing_loan_usdc_weth.borrower)
 
     assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(borrower)) == collateral_amount + additional_collateral
+
+
+def test_add_collateral_to_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle):
+    loan = ongoing_loan_usdc_weth
+    additional_collateral = int(0.1e18)
+    vault_addr = p2p_usdc_weth.wallet_to_vault(loan.borrower)
+
+    weth.deposit(value=additional_collateral, sender=loan.borrower)
+    weth.approve(vault_addr, additional_collateral, sender=loan.borrower)
+
+    oracle.set_rate(0, sender=oracle.owner())
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.add_collateral_to_loan(loan, additional_collateral, sender=loan.borrower)

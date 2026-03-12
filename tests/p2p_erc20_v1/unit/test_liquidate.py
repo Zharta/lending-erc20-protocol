@@ -254,9 +254,16 @@ def test_liquidate_loan_not_defaulted_works_if_partial_liquidation_not_possible(
     usdc.mint(liquidator, liquidation.receive_from_liquidator)
     usdc.approve(p2p_usdc_weth.address, liquidation.receive_from_liquidator, sender=liquidator)
 
+    borrower_weth_balance_before = weth.balanceOf(borrower)
+
     p2p_usdc_weth.liquidate_loan(loan, sender=liquidator)
     event = get_last_event(p2p_usdc_weth, "LoanLiquidated")
     assert event.id == loan.id
+
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert weth.balanceOf(liquidator) == liquidation.send_to_liquidator
+    assert weth.balanceOf(borrower) == borrower_weth_balance_before + liquidation.send_to_borrower
+    assert weth.balanceOf(p2p_usdc_weth) == 0
 
 
 def test_liquidate_loan_with_shortfall_reverts_if_not_approved(
@@ -433,3 +440,15 @@ def test_liquidate_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, 
     assert event.shortfall == liquidation.shortfall
     assert event.liquidation_fee == liquidation.liquidation_fee
     assert event.protocol_settlement_fee_amount == liquidation.protocol_settlement_fee_amount
+
+
+def test_liquidate_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner, now):
+    loan = ongoing_loan_usdc_weth
+
+    # Default the loan first
+    boa.env.time_travel(seconds=loan.maturity - now + 1)
+
+    oracle.set_rate(0, sender=owner)
+
+    with boa.reverts("invalid oracle rate"):
+        p2p_usdc_weth.liquidate_loan(loan, sender=loan.lender)

@@ -1,4 +1,4 @@
-name: Unit tests
+name: Branch coverage
 
 on:
   push:
@@ -34,15 +34,17 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
-    - name: Run project unit tests
+    - name: Run unit tests with branch coverage
       run: |
-        coverage run -m pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_securitize/unit tests/p2p_erc20_vaulted/unit tests/registrar_connector/unit --durations=0 --runslow
-        coverage report -m | tee coverage.txt
-        sed -i '1s/^/coverage: platform marker \n/' coverage.txt
+        coverage run --branch -m pytest tests/p2p_erc20_v1/unit tests/p2p_erc20_securitize/unit tests/p2p_erc20_vaulted/unit tests/registrar_connector/unit --durations=0 --runslow
+        coverage report -m | tee coverage-branch.txt
+        sed -i '1s/^/coverage: platform marker \n/' coverage-branch.txt
         coverage xml
 
-    - name: Create coverage comment
+    - name: Create branch coverage comment
       uses: MishaKav/pytest-coverage-comment@main
       with:
-        pytest-coverage-path: ./coverage.txt
+        pytest-coverage-path: ./coverage-branch.txt
+        title: "Branch Coverage Report"
+        badge-title: "Branch Coverage"
       if: github.event_name == 'pull_request'

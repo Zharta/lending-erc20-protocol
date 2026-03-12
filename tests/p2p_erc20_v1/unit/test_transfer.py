@@ -8,8 +8,6 @@ from ..conftest_base import (
     ZERO_BYTES32,
     Loan,
     Offer,
-    calc_ltv,
-    compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
@@ -97,7 +95,7 @@ def ongoing_loan_usdc_weth(
     lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     weth.deposit(value=collateral_amount, sender=borrower)
-    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth, collateral_amount, sender=borrower)
     usdc.deposit(value=lender_approval, sender=lender)
     usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
 
@@ -149,23 +147,11 @@ def test_transfer_loan_reverts_if_loan_invalid(
             p2p_usdc_weth.transfer_loan(loan, new_borrower, new_borrower_kyc, sender=transfer_agent)
 
 
-def test_transfer_loan_reverts_if_not_transfer_agent(
-    p2p_usdc_weth, ongoing_loan_usdc_weth, transfer_agent, kyc_for, kyc_validator_contract
-):
+def test_transfer_loan_reverts_if_not_transfer_agent(p2p_usdc_weth, ongoing_loan_usdc_weth, kyc_for, kyc_validator_contract):
     new_borrower = boa.env.generate_address("new_borrower")
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
     with boa.reverts("not transfer agent"):
         p2p_usdc_weth.transfer_loan(ongoing_loan_usdc_weth, new_borrower, new_borrower_kyc, sender=boa.env.generate_address())
-
-
-def test_transfer_loan_reverts_if_new_borrower_same_as_current(
-    p2p_usdc_weth, ongoing_loan_usdc_weth, transfer_agent, kyc_for, kyc_validator_contract
-):
-    borrower_kyc = kyc_for(ongoing_loan_usdc_weth.borrower, kyc_validator_contract.address)
-    with boa.reverts("new borrower same as current"):
-        p2p_usdc_weth.transfer_loan(
-            ongoing_loan_usdc_weth, ongoing_loan_usdc_weth.borrower, borrower_kyc, sender=transfer_agent
-        )
 
 
 def test_transfer_loan_reverts_if_kyc_validation_fails(
@@ -223,17 +209,15 @@ def test_transfer_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, transfe
     assert event.new_loan_id != ongoing_loan_usdc_weth.id
 
 
-def test_transfer_loan_transfers_collateral_to_new_vault(
+def test_transfer_loan_collateral_stays_in_contract(
     p2p_usdc_weth, ongoing_loan_usdc_weth, transfer_agent, kyc_for, kyc_validator_contract, weth
 ):
-    old_borrower = ongoing_loan_usdc_weth.borrower
     new_borrower = boa.env.generate_address("new_borrower")
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
 
-    old_vault_balance_before = weth.balanceOf(p2p_usdc_weth.wallet_to_vault(old_borrower))
-    assert old_vault_balance_before == ongoing_loan_usdc_weth.collateral_amount
+    contract_balance_before = weth.balanceOf(p2p_usdc_weth.address)
+    assert contract_balance_before == ongoing_loan_usdc_weth.collateral_amount
 
     p2p_usdc_weth.transfer_loan(ongoing_loan_usdc_weth, new_borrower, new_borrower_kyc, sender=transfer_agent)
 
-    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(old_borrower)) == 0
-    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(new_borrower)) == ongoing_loan_usdc_weth.collateral_amount
+    assert weth.balanceOf(p2p_usdc_weth.address) == contract_balance_before

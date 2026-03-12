@@ -119,10 +119,12 @@ def ongoing_loan_usdc_weth(
         borrower=borrower,
         lender=lender,
         collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
         protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
         protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
         partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         liquidation_ltv=offer.liquidation_ltv,
@@ -138,7 +140,7 @@ def ongoing_loan_usdc_weth(
 
 def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
     loan = ongoing_loan_usdc_weth
-    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * 10000)
+    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (365 * 86400 * 10000)
     amount_to_settle = loan.amount + interest
     protocol_fee_amount = interest * loan.protocol_settlement_fee // 10000
     amount_to_receive = loan.amount + interest - protocol_fee_amount
@@ -174,3 +176,4 @@ def test_settle_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, now):
     assert usdc.balanceOf(p2p_usdc_weth.protocol_wallet()) == initial_protocol_wallet_balance + protocol_fee_amount
 
     assert weth.balanceOf(loan.borrower) == borrower_balance_before + loan.collateral_amount
+    assert weth.balanceOf(p2p_usdc_weth.address) == 0
