@@ -257,7 +257,7 @@ event LoanCollateralRedeemStarted:
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
-VERSION: public(constant(String[31])) = "P2PLendingSErc20.20260126"
+VERSION: public(constant(String[31])) = "P2PLendingSErc20.20260310"
 
 payment_token: public(immutable(address))
 collateral_token: public(immutable(address))
@@ -657,7 +657,7 @@ def settle_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
     assert base._check_user(loan.borrower), "not borrower"
 
     _vault: vault.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
-    in_vault_collateral: uint256 = 0
+    in_vault_collateral: uint256 = loan.collateral_amount
     in_vault_payment_token: uint256 = 0
     if base._is_loan_redeemed(loan):
         assert base._is_loan_redeem_concluded(loan, _vault, redeem_result), "redeem not concluded"

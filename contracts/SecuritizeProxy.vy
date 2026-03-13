@@ -179,7 +179,7 @@ def create_loan(
     callback_data: CallbackData = CallbackData(
         securitize_swap_contract = staticcall SecuritizeDSToken(offer.offer.collateral_token).getDSService(SEC_SWAP_SERVICE_ID),
         collateral_to_buy = collateral_to_buy,
-        collateral_max_spend = expected_collateral_swap_value,
+        collateral_max_spend = collateral_max_spend,
         payment_token = payment_token,
         borrower = msg.sender,
         offer = offer,

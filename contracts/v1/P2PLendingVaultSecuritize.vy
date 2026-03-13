@@ -40,7 +40,7 @@ interface P2PLendingContract:
 implements: Vault
 
 
-VERSION: public(constant(String[30])) = "P2PLendingVaultSecur.20251211"
+VERSION: public(constant(String[30])) = "P2PLendingVaultSecur.20260310"
 
 # Structs
 

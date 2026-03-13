@@ -23,11 +23,6 @@ def accounts(boa_env):
 
 
 @pytest.fixture(scope="session")
-def owner_account():
-    return Account.create()
-
-
-@pytest.fixture(scope="session")
 def owner(owner_account, boa_env):
     boa.env.eoa = owner_account.address
     boa.env.set_balance(owner_account.address, 10**21)
@@ -295,7 +290,7 @@ def usdc(weth9_contract_def, owner):
 
 
 @pytest.fixture
-def oracle(oracle_contract_def):
+def oracle(oracle_contract_def, owner):
     rate = 387780390000
     decimals = 8
     return oracle_contract_def.deploy(decimals, rate)

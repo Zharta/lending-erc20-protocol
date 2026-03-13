@@ -250,11 +250,11 @@ def test_remove_collateral_from_loan_transfers_collateral(p2p_usdc_weth, ongoing
     assert weth.balanceOf(borrower) == borrower_balance_before + removed_collateral
 
 
-def test_remove_collateral_from_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle, owner):
+def test_remove_collateral_from_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ongoing_loan_usdc_weth, oracle):
     loan = ongoing_loan_usdc_weth
     collateral_to_remove = int(0.1e18)
 
-    oracle.set_rate(0, sender=owner)
+    oracle.set_rate(0, sender=oracle.owner())
 
     with boa.reverts("invalid oracle rate"):
         p2p_usdc_weth.remove_collateral_from_loan(loan, collateral_to_remove, sender=loan.borrower)

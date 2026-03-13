@@ -28,11 +28,6 @@ def accounts(boa_env):
     return _accounts
 
 
-@pytest.fixture(scope="session")
-def owner_account():
-    return Account.create()
-
-
 @pytest.fixture
 def owner(owner_account, boa_env):
     boa.env.eoa = owner_account.address
