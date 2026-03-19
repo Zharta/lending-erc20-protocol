@@ -354,7 +354,7 @@
     "proxies": {
         "securitize_loop": {
             "abi_key": "b0d386806a77f24cc3636b1596d47647d2bf94f3",
-            "address": "0x81aAc2Ce0299ddA9363b2a4Ee5dDA1cADAf009ad",
+            "address": "0x8b293CCb9b62FAb18D1752Cfffcd96da63A353B2",
             "contract": "SecuritizeLoop",
             "properties": {
                 "balancer_key": "common.balancer",

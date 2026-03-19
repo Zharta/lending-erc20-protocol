@@ -129,6 +129,169 @@ def oracle_contract_def(boa_env):
 
 
 @pytest.fixture(scope="session")
+def acred_contract_def(boa_env):
+    return boa.load_partial("contracts/auxiliary/AcredMock.vy")
+
+
+@pytest.fixture
+def oracle_acred_usdc(oracle_contract_def):
+    """Oracle with rate 3/10 to produce rounding in swaps."""
+    return oracle_contract_def.deploy(1, 3)
+
+
+@pytest.fixture
+def acred(acred_contract_def, oracle_acred_usdc, usdc):
+    return acred_contract_def.deploy(10**6, oracle_acred_usdc.address, usdc.address)
+
+
+@pytest.fixture(scope="session")
+def min_vault_manager():
+    return boa.loads(
+        dedent("""
+        authorized: HashMap[address, bool]
+
+        @external
+        def authorized_proxies(proxy: address) -> bool:
+            return self.authorized[proxy]
+
+        @external
+        def set_proxy(proxy: address, is_authorized: bool):
+            self.authorized[proxy] = is_authorized
+    """)
+    )
+
+
+@pytest.fixture
+def no_zero_transfer_erc20():
+    """ERC20 that reverts on zero-amount transferFrom calls."""
+    return boa.loads(
+        dedent("""
+        balances: HashMap[address, uint256]
+
+        @external
+        @view
+        def balanceOf(_owner: address) -> uint256:
+            return self.balances[_owner]
+
+        @external
+        def transfer(_to: address, _value: uint256) -> bool:
+            self.balances[msg.sender] -= _value
+            self.balances[_to] += _value
+            return True
+
+        @external
+        def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
+            assert _value > 0, "zero transferFrom not allowed"
+            self.balances[_from] -= _value
+            self.balances[_to] += _value
+            return True
+    """)
+    )
+
+
+@pytest.fixture
+def zero_revert_erc20():
+    """ERC20 that reverts on zero-amount transfer calls and tracks if transfer was called."""
+    return boa.loads(
+        dedent("""
+        transfer_called: bool
+
+        @external
+        def transfer(_to: address, _value: uint256) -> bool:
+            assert _value > 0, "zero transfer"
+            self.transfer_called = True
+            return True
+
+        @external
+        def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
+            return True
+
+        @external
+        @view
+        def was_transfer_called() -> bool:
+            return self.transfer_called
+    """)
+    )
+
+
+@pytest.fixture
+def failing_transfer_erc20():
+    """ERC20 where transfer always returns False (simulates transfer failure)."""
+    return boa.loads(
+        dedent("""
+        balances: HashMap[address, uint256]
+
+        @external
+        @view
+        def balanceOf(_owner: address) -> uint256:
+            return self.balances[_owner]
+
+        @external
+        def transfer(_to: address, _value: uint256) -> bool:
+            return False
+
+        @external
+        def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
+            self.balances[_to] += _value
+            return True
+    """)
+    )
+
+
+@pytest.fixture
+def tracking_erc20():
+    """ERC20 that tracks the last transferFrom amount for branch verification."""
+    return boa.loads(
+        dedent("""
+        balances: HashMap[address, uint256]
+        last_transfer_from_amount: public(uint256)
+
+        @external
+        @view
+        def balanceOf(_owner: address) -> uint256:
+            return self.balances[_owner]
+
+        @external
+        def transfer(_to: address, _value: uint256) -> bool:
+            self.balances[msg.sender] -= _value
+            self.balances[_to] += _value
+            return True
+
+        @external
+        def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
+            self.last_transfer_from_amount = _value
+            self.balances[_from] -= _value
+            self.balances[_to] += _value
+            return True
+    """)
+    )
+
+
+@pytest.fixture
+def vault_proxy():
+    """Proxy contract that calls vault.buy() or vault.withdraw_funds(), so msg.sender != tx.origin."""
+    return boa.loads(
+        dedent("""
+        from ethereum.ercs import IERC20
+
+        interface IVault:
+            def buy(payment_token: address, min_ds_token_amount: uint256, stable_coin_amount: uint256): nonpayable
+            def withdraw_funds(payment_token: address, amount: uint256): nonpayable
+
+        @external
+        def proxy_buy(vault: address, payment_token: address, min_ds_token: uint256, stable_amount: uint256):
+            extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_amount)
+            extcall IERC20(payment_token).approve(vault, stable_amount)
+            extcall IVault(vault).buy(payment_token, min_ds_token, stable_amount)
+
+        @external
+        def proxy_withdraw_funds(vault: address, payment_token: address, amount: uint256):
+            extcall IVault(vault).withdraw_funds(payment_token, amount)
+    """)
+    )
+
+
+@pytest.fixture(scope="session")
 def p2p_lending_securitize_erc20_contract_def(boa_env):
     # workaround: boa doesnt catch 'unused' events and fails, so we inject a dummy function that logs them
     contents = Path("contracts/v1/P2PLendingSecuritizeErc20.vy").read_text(encoding="utf-8")
