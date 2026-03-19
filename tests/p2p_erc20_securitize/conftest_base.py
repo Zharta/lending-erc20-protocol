@@ -10,7 +10,7 @@ from boa.contracts.vyper.vyper_contract import VyperContract
 from eth_abi import encode
 from eth_account import Account
 from eth_account.messages import encode_typed_data
-from eth_utils import keccak
+from eth_utils import function_signature_to_4byte_selector, keccak
 
 # Constants
 ZERO_ADDRESS = boa.eval("empty(address)")
@@ -41,6 +41,28 @@ def get_last_event(contract: VyperContract, name: str | None = None):
         if not isinstance(e, RawLogEntry) and (name is None or name == type(e).__name__)
     ]
     return EventWrapper(matching_events[-1])
+
+
+def get_calls(contract, signature: str, arg_types: list[str] | None = None):
+    """Return decoded calls matching a function signature from the last computation trace.
+
+    Args:
+        contract: The contract whose last computation to inspect.
+        signature: Function signature, e.g. 'swap(uint256,uint256)'.
+        arg_types: ABI types to decode args. If None, returns raw calldata.
+
+    Returns:
+        List of decoded arg tuples (if arg_types) or raw calldata bytes.
+    """
+    selector = function_signature_to_4byte_selector(signature)
+    results = []
+    for child in contract._computation.children:
+        if child.msg.data_as_bytes[:4] == selector:
+            if arg_types:
+                results.append(eth_abi.decode(arg_types, child.msg.data_as_bytes[4:]))
+            else:
+                results.append(child.msg.data_as_bytes)
+    return results
 
 
 def get_events(contract: VyperContract, name: str | None = None):
