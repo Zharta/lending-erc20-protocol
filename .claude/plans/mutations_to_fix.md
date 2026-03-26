@@ -406,3 +406,96 @@ NOTE: The access control deletion mutations (L104, L128, L183, L197, L211) repre
 ### Session 3 -- Semantically Equivalent
 - L131: `success: bool = False` -> `success: bool = True` -- initial value is immediately overwritten by raw_call
 - L138: `revert_on_failure=False` -> `True` -- doesn't compile (type mismatch)
+
+
+---
+
+# Mutation Testing Results -- P2PLendingSecuritizeErc20.vy & P2PLendingSecuritizeBase.vy
+
+## Summary
+- Mutations tested: 43
+- Killed (by existing tests): 30
+- Surviving (meaningful): 10
+- Fixed (new tests written): 9
+- Semantically equivalent: 5
+
+## Surviving Mutations
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:568` -- `<` changed to `<=` in initial LTV too high check
+  - Original: `assert (BPS + base.partial_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"`
+  - Mutated: `assert (BPS + base.partial_liquidation_fee) * max_initial_ltv <= BPS * BPS, "initial ltv too high"`
+  - Impact: Allows loans where `(1 + fee) * iltv == 1`, which breaks partial liquidation math (division by zero)
+  - Test: `test_create_loan_reverts_if_initial_ltv_too_high_exact_boundary` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:553` -- `<=` changed to `<` in min collateral check
+  - Original: `assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"`
+  - Mutated: `assert offer.offer.min_collateral_amount < collateral_amount, "low collateral amount"`
+  - Impact: Rejects loans where collateral exactly equals the minimum specified in the offer
+  - Test: `test_create_loan_succeeds_when_min_collateral_equals_collateral` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:554` -- `<=` changed to `<` in origination fee check
+  - Original: `assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"`
+  - Mutated: `assert offer.offer.origination_fee_bps < BPS, "origination fee gt principal"`
+  - Impact: Rejects valid offers with 100% origination fee (origination_fee_bps == BPS)
+  - Test: `test_create_loan_succeeds_with_origination_fee_equal_to_bps` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeBase.vy:472` -- `>` changed to `>=` in loan defaulted check
+  - Original: `return block.timestamp > loan.maturity`
+  - Mutated: `return block.timestamp >= loan.maturity`
+  - Impact: Loan considered defaulted at exact maturity, preventing settlement at the deadline
+  - Test: `test_settle_loan_succeeds_at_exact_maturity` in test_settle.py -- VERIFIED
+
+- [x] **[variable_swap]** `P2PLendingSecuritizeErc20.vy:670` -- `loan.amount` to `loan.initial_amount` in reduce_commited_liquidity
+  - Original: `base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)`
+  - Mutated: `base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.initial_amount)`
+  - Impact: After partial liquidation, wrong liquidity amount freed (initial_amount > amount)
+  - Test: `test_settle_loan_with_modified_amount_updates_commited_liquidity_correctly` in test_settle.py -- VERIFIED
+
+- [x] **[variable_swap]** `P2PLendingSecuritizeBase.vy:361` -- `accrual_start_time` to `start_time` in interest calc
+  - Original: `return loan.amount * loan.apr * (block.timestamp - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)`
+  - Mutated: `return loan.amount * loan.apr * (block.timestamp - loan.start_time) // (BPS * YEAR_TO_SECONDS)`
+  - Impact: After partial liquidation, interest calculated from loan start instead of last accrual reset -- double-charging interest
+  - Test: `test_settle_loan_interest_uses_accrual_start_time_not_start_time` in test_settle.py -- VERIFIED
+
+- [x] **[assertion_deletion]** `P2PLendingSecuritizeBase.vy:417` -- delete `assert offer.offer.call_eligibility == 0`
+  - Original: `assert offer.offer.call_eligibility == 0, "call eligibility not supported"`
+  - Mutated: (line deleted)
+  - Impact: Securitize contracts don't support callable loans, but without this check, offers with call_eligibility > 0 would be accepted
+  - Test: `test_create_loan_reverts_if_call_eligibility_not_zero` in test_create.py -- VERIFIED
+
+- [x] **[assertion_deletion]** `P2PLendingSecuritizeBase.vy:418` -- delete `assert offer.offer.call_window == 0`
+  - Original: `assert offer.offer.call_window == 0, "call window not supported"`
+  - Mutated: (line deleted)
+  - Impact: Securitize contracts don't support callable loans, but without this check, offers with call_window > 0 would be accepted
+  - Test: `test_create_loan_reverts_if_call_window_not_zero` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeBase.vy:494` -- `<` changed to `<=` in redeem_result timestamp check
+  - Original: `if redeem_result.result.timestamp < loan.redeem_start:`
+  - Mutated: `if redeem_result.result.timestamp <= loan.redeem_start:`
+  - Impact: Redeem result at exact redeem_start timestamp would be rejected, requiring timestamp > redeem_start
+  - Test: `test_settle_redeemed_loan_with_exact_timestamp_at_redeem_start` in test_settle.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:848` -- `>=` changed to `>` in remove_collateral initial_ltv check
+  - Original: `assert loan.initial_ltv >= new_ltv, "ltv gt initial ltv"`
+  - Mutated: `assert loan.initial_ltv > new_ltv, "ltv gt initial ltv"`
+  - Impact: Cannot remove collateral when resulting LTV exactly equals initial LTV
+  - Test: `test_remove_collateral_from_loan_succeeds_at_exact_initial_ltv` in test_remove_collateral.py -- VERIFIED
+
+- [x] **[variable_swap]** `P2PLendingSecuritizeErc20.vy:778` -- wrong collateral in new_ltv calc in add_collateral (event only)
+  - Original: `new_ltv: uint256 = self._compute_ltv(loan.collateral_amount + collateral_amount, outstanding_debt, convertion_rate)`
+  - Mutated: `new_ltv: uint256 = self._compute_ltv(loan.collateral_amount, outstanding_debt, convertion_rate)`
+  - Impact: LoanCollateralAdded event logs incorrect new_ltv (old ltv instead of new)
+  - Test: `test_add_collateral_event_new_ltv_reflects_added_collateral` in test_add_collateral.py -- VERIFIED
+
+## Semantically Equivalent Mutations
+- Mutations 8/14: removing `if X > 0:` guard before `_transfer_funds`/`_send_funds` -- the underlying functions already handle zero amounts
+- Mutation 31: `> to >=` in `_reduce_commited_liquidity` -- when `amount == committed`, both paths yield 0
+- `P2PLendingSecuritizeErc20.vy:679`: `< 0` to `<= 0` in borrower_funds_delta -- when delta==0, `_receive_funds(borrower, 0)` calls `transferFrom(borrower, self, 0)` which is a no-op for standard ERC20s
+- `P2PLendingSecuritizeErc20.vy:681`: `> 0` to `>= 0` in borrower_funds_delta surplus -- when delta==0, `_send_funds(borrower, 0)` hits the zero guard and returns immediately
+
+## Killed Mutations (30 total)
+- create_loan: initial_ltv <= to < (killed), liquidation_ltv > to >= (killed), loan.borrower/lender swaps (killed), loan already exists deletion (killed), collateral_token/payment_token swap (killed), origination fee removal (killed)
+- settle_loan: lender payment without fee deduction (killed), collateral to wrong party (killed), reduce_commited_liquidity wrong party (killed), wrong collateral amount (killed)
+- redeem: residual_collateral boundary (killed), wrong recipient (killed), wrong amount (killed)
+- Base: _check_user proxy removal (killed), and->or swap (killed), oracle >= 0 (killed), _send_funds inversion (killed), _send_funds or->and (killed), liquidity +/- swap (killed), set_transfer_agent or->and (killed), _is_loan_redeemed >= 0 (killed), _get_redeem_balances >= to > (killed)
+- config: revoke_offer expiration (killed), claim_pending_transfers reset (killed)

@@ -262,3 +262,35 @@ def test_add_collateral_to_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth, ong
 
     with boa.reverts("invalid oracle rate"):
         p2p_usdc_weth.add_collateral_to_loan(loan, additional_collateral, sender=loan.borrower)
+
+
+# ============================================================================
+# MUTATION TESTING: event coverage
+# ============================================================================
+
+
+def test_add_collateral_event_new_ltv_reflects_added_collateral(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle):
+    """Mutation kill: new_ltv uses loan.collateral_amount instead of
+    loan.collateral_amount + collateral_amount (line 778).
+    Adding a significant amount of collateral ensures the LTV change is
+    measurable and the event logs the correct new_ltv."""
+    loan = ongoing_loan_usdc_weth
+    collateral_amount = loan.collateral_amount
+    # Add 100% more collateral so the LTV change is large and not lost to truncation
+    additional_collateral = int(1e18)
+    borrower = loan.borrower
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+
+    weth.deposit(value=additional_collateral, sender=borrower)
+    weth.approve(vault_addr, additional_collateral, sender=borrower)
+    p2p_usdc_weth.add_collateral_to_loan(loan, additional_collateral, sender=borrower)
+
+    event = get_last_event(p2p_usdc_weth, "LoanCollateralAdded")
+    expected_old_ltv = calc_ltv(loan.amount, collateral_amount, usdc, weth, oracle)
+    expected_new_ltv = calc_ltv(loan.amount, collateral_amount + additional_collateral, usdc, weth, oracle)
+
+    # Precondition: old and new LTV must actually differ
+    assert expected_old_ltv != expected_new_ltv, "LTV values must differ for this test to be meaningful"
+
+    assert event.old_ltv == expected_old_ltv
+    assert event.new_ltv == expected_new_ltv

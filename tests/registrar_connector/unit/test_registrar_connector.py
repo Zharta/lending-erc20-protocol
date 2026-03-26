@@ -102,3 +102,61 @@ def test_register_vault_from_securitize(connector, p2p_securitize, vault_registr
     connector.register_vault(vault_addr, borrower, sender=p2p_securitize.address)
 
     assert vault_registrar.isRegistered(vault_addr, borrower) is True
+
+
+def test_change_authorized_contracts_event_deauthorize(connector_def, vault_registrar, p2p_vaulted, owner):
+    """Verify ContractAuthorizationChanged event emits authorized=False when deauthorizing."""
+    c = connector_def.deploy(vault_registrar.address)
+    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
+
+    # Clear logs from the authorize call, then deauthorize
+    c.get_logs()
+    c.change_authorized_contract(p2p_vaulted.address, False, sender=owner)
+
+    events = c.get_logs()
+    assert len(events) == 1
+    event = events[0]
+    assert event.contract_address == p2p_vaulted.address
+    assert event.authorized is False
+
+
+def test_register_vault_skips_if_already_registered(connector_def, p2p_vaulted, owner):
+    """Verify register_vault does not call registerVault when vault is already registered.
+
+    Uses a custom mock that reverts on double registration to detect whether the
+    isRegistered guard is working correctly.
+    """
+    tracking_registrar = boa.loads(
+        """
+# @version 0.4.3
+registered: public(HashMap[address, HashMap[address, bool]])
+register_count: public(uint256)
+
+@view
+@external
+def isRegistered(vaultAddress: address, investorWalletAddress: address) -> bool:
+    return self.registered[vaultAddress][investorWalletAddress]
+
+@external
+def registerVault(vaultAddress: address, investorWalletAddress: address):
+    assert not self.registered[vaultAddress][investorWalletAddress], "already registered"
+    self.registered[vaultAddress][investorWalletAddress] = True
+    self.register_count += 1
+        """,
+        name="TrackingVaultRegistrar",
+    )
+
+    c = connector_def.deploy(tracking_registrar.address)
+    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
+
+    borrower = boa.env.generate_address("borrower_double_reg")
+    vault_addr = p2p_vaulted.wallet_to_vault(borrower)
+
+    # First registration should succeed
+    c.register_vault(vault_addr, borrower, sender=p2p_vaulted.address)
+    assert tracking_registrar.isRegistered(vault_addr, borrower) is True
+    assert tracking_registrar.register_count() == 1
+
+    # Second registration should be a no-op (guard skips registerVault)
+    c.register_vault(vault_addr, borrower, sender=p2p_vaulted.address)
+    assert tracking_registrar.register_count() == 1

@@ -258,3 +258,32 @@ def test_remove_collateral_from_loan_reverts_if_oracle_answer_zero(p2p_usdc_weth
 
     with boa.reverts("invalid oracle rate"):
         p2p_usdc_weth.remove_collateral_from_loan(loan, collateral_to_remove, sender=loan.borrower)
+
+
+# ============================================================================
+# MUTATION TESTING: boundary coverage
+# ============================================================================
+
+
+def test_remove_collateral_from_loan_succeeds_at_exact_initial_ltv(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle):
+    """Mutation kill: initial_ltv >= new_ltv boundary (line 848).
+    Removing collateral such that new_ltv == initial_ltv exactly should succeed."""
+    loan = ongoing_loan_usdc_weth
+
+    # Calculate the collateral amount that gives exactly initial_ltv
+    outstanding_debt = loan.amount + loan.get_interest(boa.eval("block.timestamp"))
+    target_collateral = calc_collateral_from_ltv(outstanding_debt, loan.initial_ltv, usdc, weth, oracle)
+
+    # The amount to remove to reach exactly initial_ltv
+    collateral_to_remove = loan.collateral_amount - target_collateral
+
+    assert collateral_to_remove > 0  # precondition: we're actually removing something
+
+    # Verify the new LTV will be exactly initial_ltv
+    new_ltv = calc_ltv(outstanding_debt, target_collateral, usdc, weth, oracle)
+    assert new_ltv == loan.initial_ltv  # precondition: exact boundary
+
+    p2p_usdc_weth.remove_collateral_from_loan(loan, collateral_to_remove, sender=loan.borrower)
+
+    updated_loan = replace_namedtuple_field(loan, collateral_amount=loan.collateral_amount - collateral_to_remove)
+    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(loan.id)
