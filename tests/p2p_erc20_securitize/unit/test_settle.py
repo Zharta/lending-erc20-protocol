@@ -1,5 +1,3 @@
-from textwrap import dedent
-
 import boa
 import pytest
 
@@ -328,6 +326,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_sec_refinance,
     p2p_sec_liquidation,
     securitize_vault_impl,
+    failing_transfer_payment_erc20,
     weth,
     owner,
     borrower,
@@ -341,24 +340,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     transfer_agent,
     securitize_redemption_wallet,
 ):
-    failing_erc20_code = dedent("""
-
-            @external
-            @view
-            def decimals() -> uint256:
-                return 9
-
-            @external
-            def transfer(_to : address, _value : uint256) -> bool:
-                return False
-
-            @external
-            def transferFrom(_from : address, _to : address, _value : uint256) -> bool:
-                return True
-
-            """)
-
-    erc20 = boa.loads(failing_erc20_code)
+    erc20 = failing_transfer_payment_erc20
     p2p_erc20_weth = p2p_lending_securitize_erc20_contract_def.deploy(
         erc20,
         weth,

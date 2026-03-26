@@ -15,7 +15,10 @@ reports/
 .vscode
 .cache
 .tool-versions
+.claude/settings.local.json
+.claude/worktrees/
 *~
 
+pytest-logs.txt
 configs/**/collections.json
 configs/**/tokens.json

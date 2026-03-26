@@ -45,4 +45,5 @@ jobs:
       uses: MishaKav/pytest-coverage-comment@main
       with:
         pytest-coverage-path: ./coverage.txt
+        unique-id-for-comment: unit-coverage
       if: github.event_name == 'pull_request'

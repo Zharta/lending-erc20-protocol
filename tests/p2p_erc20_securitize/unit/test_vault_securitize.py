@@ -1348,3 +1348,185 @@ def test_buy_refund_only_excess_not_full_balance(
 
     # Vault should retain its pre-existing 100 USDC
     assert usdc.balanceOf(vault.address) == pre_existing
+
+
+# ===========================================================================
+# Session 6: assert removal and boundary mutations
+# ===========================================================================
+
+
+def test_transfer_funds_transfers_amount_one(securitize_vault_contract_def, weth9_contract_def, owner, min_vault_manager):
+    """Kills mutation L198: `amount > 0` changed to `amount > 1`.
+
+    When amount=1, transfer_funds must still call ERC20.transfer and move the token.
+    With the mutation, amount=1 would be skipped because 1 > 1 is False.
+    """
+    payment_tok = weth9_contract_def.deploy("PayToken", "PT", 6, 10**20)
+    collateral_tok = weth9_contract_def.deploy("CollatToken", "CT", 18, 10**20)
+
+    v = securitize_vault_contract_def.deploy()
+    v.initialise(owner, collateral_tok.address, sender=min_vault_manager.address)
+
+    # Fund the vault with 1 payment token
+    payment_tok.mint(v.address, 1)
+
+    wallet = boa.env.generate_address("recipient")
+    assert payment_tok.balanceOf(wallet) == 0
+
+    v.transfer_funds(payment_tok.address, 1, wallet, sender=min_vault_manager.address)
+
+    # With original code: amount(1) > 0 is True, transfer happens
+    # With mutation: amount(1) > 1 is False, transfer skipped
+    assert payment_tok.balanceOf(wallet) == 1
+    assert payment_tok.balanceOf(v.address) == 0
+
+
+def test_transfer_funds_reverts_if_transfer_returns_false(
+    securitize_vault_contract_def, failing_transfer_erc20, owner, min_vault_manager
+):
+    """Kills mutation L199: remove `assert` on transfer return value.
+
+    When the token's transfer() returns False, transfer_funds must revert
+    with "transfer failed". Without the assert, it would silently succeed.
+    """
+    collateral_tok = failing_transfer_erc20  # has transfer->False, transferFrom->True
+
+    v = securitize_vault_contract_def.deploy()
+    v.initialise(owner, collateral_tok.address, sender=min_vault_manager.address)
+
+    # Fund the vault with tokens via transferFrom (which returns True in this mock)
+    v.deposit(100, owner, sender=min_vault_manager.address)
+    assert collateral_tok.balanceOf(v.address) == 100
+
+    wallet = boa.env.generate_address("recipient")
+
+    # transfer_funds calls IERC20(payment_token).transfer(wallet, amount)
+    # The failing_transfer_erc20's transfer() returns False
+    with boa.reverts("transfer failed"):
+        v.transfer_funds(collateral_tok.address, 50, wallet, sender=min_vault_manager.address)
+
+
+def test_withdraw_funds_reverts_if_transfer_returns_false(
+    securitize_vault_contract_def, failing_transfer_erc20, weth9_contract_def, owner, min_vault_manager
+):
+    """Kills mutation L184: remove `assert` on transfer return value.
+
+    When the payment token's transfer() returns False, withdraw_funds must revert.
+    Uses the failing_transfer_erc20 fixture (transfer->False, transferFrom->True).
+    """
+    collateral_tok = weth9_contract_def.deploy("Collateral", "COL", 18, 10**20)
+    v = securitize_vault_contract_def.deploy()
+    v.initialise(owner, collateral_tok.address, sender=min_vault_manager.address)
+
+    # Fund the vault with the false-transfer payment token
+    failing_transfer_erc20.mint(v.address, 500)
+    assert failing_transfer_erc20.balanceOf(v.address) == 500
+
+    # withdraw_funds calls IERC20(payment_token).transfer(self.caller, amount)
+    # The failing_transfer_erc20's transfer() returns False -> must revert
+    with boa.reverts("transfer failed"):
+        v.withdraw_funds(failing_transfer_erc20.address, 100, sender=min_vault_manager.address)
+
+
+def test_withdraw_pending_reverts_if_collateral_transfer_returns_false(
+    securitize_vault_contract_def, failing_transfer_erc20, owner
+):
+    """Kills mutation L170: remove `assert` on transfer return value.
+
+    When the collateral token's transfer() returns False, withdraw_pending must revert.
+    The failing_transfer_erc20 has transfer->False, transferFrom->True.
+    """
+    caller_addr = boa.env.generate_address("lending_contract")
+    v = securitize_vault_contract_def.deploy()
+    v.initialise(owner, failing_transfer_erc20.address, sender=caller_addr)
+
+    wallet = boa.env.generate_address("wallet")
+
+    # Deposit to build vault balance (transferFrom works in failing_transfer_erc20)
+    v.deposit(100, wallet, sender=caller_addr)
+    assert failing_transfer_erc20.balanceOf(v.address) == 100
+
+    # Withdraw to create pending (transfer fails -> pending created)
+    v.withdraw(50, wallet, sender=caller_addr)
+    assert v.pending_transfers(wallet) == 50
+
+    # Now try withdraw_pending: calls IERC20(self.token).transfer(msg.sender, amount)
+    # The failing_transfer_erc20's transfer returns False -> must revert
+    with boa.reverts("transfer failed"):
+        v.withdraw_pending(50, sender=wallet)
+
+
+def test_deposit_partial_pending_reverts_if_transfer_from_returns_false(
+    securitize_vault_contract_def, false_transfer_from_erc20, owner
+):
+    """Kills mutation L115: remove `assert` on transferFrom in deposit elif branch.
+
+    When pending > 0 but pending < amount, deposit enters the elif branch and calls
+    transferFrom(wallet, self, amount - pending). If transferFrom returns False,
+    deposit must revert with "transferFrom failed".
+    """
+    caller_addr = boa.env.generate_address("lending_contract")
+    v = securitize_vault_contract_def.deploy()
+    v.initialise(owner, false_transfer_from_erc20.address, sender=caller_addr)
+
+    wallet = boa.env.generate_address("wallet")
+
+    # Set up pending < deposit amount to enter elif branch
+    pending = 30
+    deposit_amount = 100
+    v.eval(f"self.pending_transfers[{wallet}] = {pending}")
+    v.eval(f"self.pending_transfers_total = {pending}")
+    # Give vault a balance so it looks consistent
+    false_transfer_from_erc20.eval(f"self.balances[{v.address}] = {pending}")
+
+    # deposit enters elif branch (pending > 0 and pending < amount)
+    # calls transferFrom(wallet, self, 70) which returns False -> must revert
+    with boa.reverts("transferFrom failed"):
+        v.deposit(deposit_amount, wallet, sender=caller_addr)
+
+
+def test_deposit_no_pending_reverts_if_transfer_from_returns_false(
+    securitize_vault_contract_def, false_transfer_from_erc20, owner
+):
+    """Kills mutation L117: remove `assert` on transferFrom in deposit else branch.
+
+    When there is no pending, deposit enters the else branch and calls
+    transferFrom(wallet, self, amount). If transferFrom returns False,
+    deposit must revert with "transferFrom failed".
+    """
+    caller_addr = boa.env.generate_address("lending_contract")
+    v = securitize_vault_contract_def.deploy()
+    v.initialise(owner, false_transfer_from_erc20.address, sender=caller_addr)
+
+    wallet = boa.env.generate_address("wallet")
+
+    # No pending -> enters else branch
+    assert v.pending_transfers(wallet) == 0
+
+    # transferFrom returns False -> must revert
+    with boa.reverts("transferFrom failed"):
+        v.deposit(100, wallet, sender=caller_addr)
+
+
+def test_buy_reverts_if_payment_transfer_from_returns_false(
+    securitize_vault_contract_def, false_transfer_from_erc20, acred_contract_def, oracle_contract_def, owner
+):
+    """Kills mutation L219: remove `assert` on transferFrom in buy.
+
+    When the payment token's transferFrom() returns False, buy must revert
+    with "transferFrom failed", not silently proceed and credit DS tokens.
+    """
+    oracle = oracle_contract_def.deploy(1, 3)
+    acred = acred_contract_def.deploy(10**6, oracle.address, false_transfer_from_erc20.address)
+
+    v = securitize_vault_contract_def.deploy()
+    v.initialise(owner, acred.address, sender=owner)
+
+    stable_amount = 10
+    false_transfer_from_erc20.mint(owner, stable_amount)
+    false_transfer_from_erc20.approve(v.address, stable_amount, sender=owner)
+
+    # buy calls IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount)
+    # With false_transfer_from_erc20, transferFrom returns False -> must revert
+    with boa.reverts("transferFrom failed"):
+        v.buy(false_transfer_from_erc20.address, 0, stable_amount, sender=owner)

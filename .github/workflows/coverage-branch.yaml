@@ -47,4 +47,5 @@ jobs:
         pytest-coverage-path: ./coverage-branch.txt
         title: "Branch Coverage Report"
         badge-title: "Branch Coverage"
+        unique-id-for-comment: branch-coverage
       if: github.event_name == 'pull_request'
