@@ -15,12 +15,13 @@ Find **surviving mutations** — valid code changes that compile and pass all un
 ## Critical Rules
 
 1. **Checkout the correct branch first** — The caller should specify the current branch in the prompt (e.g., "Current branch: feat/my-branch"). Before doing anything else, run `git checkout <branch>` in the worktree to ensure you're working on the right code. If no branch is specified, check `git branch -a` and ask which branch to use.
-2. **Always check memory first** — Before starting, read your agent memory at `.claude/agent-memory/mutation-tests/` and the checklist at `.claude/plans/mutations_to_fix.md` (if it exists) to avoid re-testing mutations you've already tried.
-3. **Read the mutation strategies** — Always read `.claude/docs/mutations.md` at the start of every task for the catalog of valid mutation types.
-4. **Mutations must compile** — A mutation is only valid if the contract compiles successfully after the change. Always verify compilation before running tests.
-5. **Always restore original code** — After testing each mutation, restore the original contract code immediately. Never leave mutated code in place.
-6. **One mutation at a time** — Apply exactly one mutation per test cycle. Never combine multiple mutations.
-7. **Focus on meaningful mutations** — Prioritize mutations in business logic (loan creation, settlement, liquidation, refinancing, fee calculations, LTV checks) over trivial changes (events, logging, comments).
+2. **Setup the environment** — Run `make install-dev` so you can run the tests in the worktree directory
+3. **Always check memory first** — Before starting, read your agent memory at `.claude/agent-memory/mutation-tests/` and the checklist at `.claude/plans/mutations_to_fix.md` (if it exists) to avoid re-testing mutations you've already tried.
+4. **Read the mutation strategies** — Always read `.claude/docs/mutations.md` at the start of every task for the catalog of valid mutation types.
+5. **Mutations must compile** — A mutation is only valid if the contract compiles successfully after the change. Always verify compilation before running tests.
+6. **Always restore original code** — After testing each mutation, restore the original contract code immediately. Never leave mutated code in place.
+7. **One mutation at a time** — Apply exactly one mutation per test cycle. Never combine multiple mutations.
+8. **Focus on meaningful mutations** — Prioritize mutations in business logic (loan creation, settlement, liquidation, refinancing, fee calculations, LTV checks) over trivial changes (events, logging, comments).
 
 ## Workflow
 

@@ -1,15 +1,61 @@
 # Mutation Testing Results -- P2PLendingVaultSecuritize.vy
 
 ## Summary
-- Mutations tested: 131 (86 sessions 1-4, 45 session 5)
-- Killed (by existing tests): 96 (55 sessions 1-4, 41 session 5)
-- Surviving (found): 41 (37 sessions 1-4, 4 session 5)
+- Mutations tested: 181 (131 sessions 1-5, 50 session 6)
+- Killed (by existing tests): 139 (96 sessions 1-5, 43 session 6)
+- Surviving (found): 48 (41 sessions 1-5, 7 session 6)
 - Fixed (killed by new tests from session 1): 8
 - Fixed (killed by new tests from session 2): 10
 - Fixed (killed by new tests from session 3): 8
 - Fixed (killed by new tests from session 4): 11 (5 business logic, 6 event)
+- Fixed (killed by new tests from session 5): 4
+- Fixed (killed by new tests from session 6): 7
 - Remaining to fix: 0
 - Semantically equivalent: 5 (3 from session 1, 1 from session 3, 1 invalid compilation)
+
+## Surviving Mutations (session 6 -- all fixed)
+
+- [x] **[boundary_value]** `P2PLendingVaultSecuritize.vy:198` -- `amount > 0` changed to `amount > 1`
+  - Original: `if amount > 0:`
+  - Mutated: `if amount > 1:`
+  - Impact: transfer_funds would skip transferring when amount=1, silently dropping 1 wei of payment tokens
+  - Test: `test_transfer_funds_transfers_amount_one` in test_vault_securitize.py
+
+- [x] **[assert_removal]** `P2PLendingVaultSecuritize.vy:199` -- remove assert on transfer return value in transfer_funds
+  - Original: `assert extcall IERC20(payment_token).transfer(wallet, amount), "transfer failed"`
+  - Mutated: `extcall IERC20(payment_token).transfer(wallet, amount)`
+  - Impact: If transfer returns False, transfer_funds would silently succeed without actually moving tokens
+  - Test: `test_transfer_funds_reverts_if_transfer_returns_false` in test_vault_securitize.py
+
+- [x] **[assert_removal]** `P2PLendingVaultSecuritize.vy:184` -- remove assert on transfer return value in withdraw_funds
+  - Original: `assert extcall IERC20(payment_token).transfer(self.caller, amount), "transfer failed"`
+  - Mutated: `extcall IERC20(payment_token).transfer(self.caller, amount)`
+  - Impact: If transfer returns False, withdraw_funds silently succeeds without moving tokens
+  - Test: `test_withdraw_funds_reverts_if_transfer_returns_false` in test_vault_securitize.py
+
+- [x] **[assert_removal]** `P2PLendingVaultSecuritize.vy:170` -- remove assert on transfer return value in withdraw_pending
+  - Original: `assert extcall IERC20(self.token).transfer(msg.sender, amount), "transfer failed"`
+  - Mutated: `extcall IERC20(self.token).transfer(msg.sender, amount)`
+  - Impact: If transfer returns False, withdraw_pending silently succeeds while decrementing internal accounting, leading to lost tokens
+  - Test: `test_withdraw_pending_reverts_if_collateral_transfer_returns_false` in test_vault_securitize.py
+
+- [x] **[assert_removal]** `P2PLendingVaultSecuritize.vy:115` -- remove assert on transferFrom return value in deposit elif branch
+  - Original: `assert extcall IERC20(self.token).transferFrom(wallet, self, amount - pending), "transferFrom failed"`
+  - Mutated: `extcall IERC20(self.token).transferFrom(wallet, self, amount - pending)`
+  - Impact: If transferFrom returns False, deposit silently succeeds without receiving tokens, creating phantom balance
+  - Test: `test_deposit_partial_pending_reverts_if_transfer_from_returns_false` in test_vault_securitize.py
+
+- [x] **[assert_removal]** `P2PLendingVaultSecuritize.vy:117` -- remove assert on transferFrom return value in deposit else branch
+  - Original: `assert extcall IERC20(self.token).transferFrom(wallet, self, amount), "transferFrom failed"`
+  - Mutated: `extcall IERC20(self.token).transferFrom(wallet, self, amount)`
+  - Impact: Same as L115 -- deposit silently succeeds without receiving tokens
+  - Test: `test_deposit_no_pending_reverts_if_transfer_from_returns_false` in test_vault_securitize.py
+
+- [x] **[assert_removal]** `P2PLendingVaultSecuritize.vy:219` -- remove assert on transferFrom return value in buy
+  - Original: `assert extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount), "transferFrom failed"`
+  - Mutated: `extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount)`
+  - Impact: If transferFrom returns False, buy silently proceeds without receiving stablecoins, then credits DS tokens to owner anyway
+  - Test: `test_buy_reverts_if_payment_transfer_from_returns_false` in test_vault_securitize.py
 
 ## Surviving Mutations (session 5 -- all fixed)
 
@@ -327,6 +373,35 @@ NOTE: The access control deletion mutations (L104, L128, L183, L197, L211) repre
 - L228: Delete entire refund transfer line (killed by test_buy_transfers_excess_when_remaining_exceeds_initial)
 - L92: `self.token = _token` -> `self.token = msg.sender` (killed by test_buy_no_transfer_when_remaining_equals_initial)
 - L232: Remove first branch of _check_user (killed by test_buy_no_transfer_when_remaining_equals_initial)
+
+### Session 6
+- L104: `msg.sender == self.caller` -> `msg.sender == self.owner` in deposit auth (killed by test_deposit_reverts_if_not_caller)
+- L128: `msg.sender == self.caller` -> `msg.sender == self.owner` in withdraw auth (killed by test_deposit_pending_exact_match indirectly)
+- L115: `amount - pending` -> `pending - amount` (killed by test_deposit_pending_less_than_amount)
+- L110: event wallet `wallet=wallet` -> `wallet=msg.sender` (killed by test_deposit_full_pending_emits_correct_withdraw_pending_amount)
+- L118: Deposit event wallet=wallet -> wallet=msg.sender (killed by test_deposit_emits_deposit_event)
+- L142: TransferFailed event wallet=wallet -> wallet=msg.sender (killed by test_withdraw_failure_emits_transfer_failed_event)
+- L146: Withdraw event wallet=wallet -> wallet=msg.sender (killed by test_withdraw_success_emits_withdraw_event)
+- L220: `approve(securitize_swap_contract, stable_coin_amount)` -> `approve(securitize_swap_contract, min_ds_token_amount)` (killed by test_buy_only_owner_can_call)
+- L157: `balanceOf(self)` -> `balanceOf(msg.sender)` in withdrawable_balance (killed by test_deposit_uses_pending_when_equals_amount)
+- L232: `P2PLendingContract(self.caller)` -> `P2PLendingContract(self.owner)` (killed by test_withdraw_funds_reverts_if_not_authorized)
+- L171: event wallet=msg.sender -> wallet=self.owner in withdraw_pending (killed by test_withdraw_pending_emits_event)
+- L170: `IERC20(self.token)` -> `IERC20(self.caller)` in withdraw_pending (killed by test_withdraw_pending_exact_amount)
+- L129: `amount + self.pending_transfers_total` -> `amount * self.pending_transfers_total` (killed by test_withdraw_multiple_failures_accumulate_pending)
+- L219: transferFrom stable_coin_amount -> min_ds_token_amount (killed by test_buy_only_owner_can_call)
+- L91: `self.owner = _owner` -> `self.owner = _token` (killed by test_initialise_sets_state)
+- L109: `self.pending_transfers_total -= amount` -> `self.pending_transfers_total -= amount + 1` (killed by test_deposit_pending_exact_match)
+- L108: `pending - amount` -> `pending - amount + 1` (killed by test_deposit_pending_exact_match)
+- L232: `tx.origin` -> `msg.sender` in _check_user (killed by test_check_user_proxy_requires_tx_origin_match)
+- L227: `remaining_balance > initial_balance` -> `remaining_balance > initial_balance + 1` (killed by test_buy_refund_goes_to_msg_sender_not_caller)
+- L129: `IERC20(self.token)` -> `IERC20(self.owner)` in withdraw balance check (killed by test_deposit_pending_exact_match)
+- L88: delete initialise guard assert (killed by test_initialise_reverts_if_already_initialized)
+- L143: delete `self.pending_transfers[wallet] += amount` in withdraw failure (killed by test_deposit_pending_exact_match)
+- L220: delete approve call (killed by test_buy_only_owner_can_call)
+- L221: delete swap call (killed by test_buy_approves_correct_spender)
+
+### Session 6 -- Invalid Mutations
+- L137: `max_outsize=32` -> `max_outsize=0` -- doesn't compile
 
 ### Session 3 -- Semantically Equivalent
 - L131: `success: bool = False` -> `success: bool = True` -- initial value is immediately overwritten by raw_call

@@ -216,7 +216,11 @@ def zero_revert_erc20():
 
 @pytest.fixture
 def failing_transfer_erc20():
-    """ERC20 where transfer always returns False (simulates transfer failure)."""
+    """ERC20 where transfer always returns False (simulates transfer failure).
+
+    transferFrom works normally (moves balances, returns True).
+    Includes mint for direct balance setup.
+    """
     return boa.loads(
         dedent("""
         balances: HashMap[address, uint256]
@@ -234,6 +238,10 @@ def failing_transfer_erc20():
         def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
             self.balances[_to] += _value
             return True
+
+        @external
+        def mint(_to: address, _value: uint256):
+            self.balances[_to] += _value
     """)
     )
 
@@ -262,6 +270,71 @@ def tracking_erc20():
             self.last_transfer_from_amount = _value
             self.balances[_from] -= _value
             self.balances[_to] += _value
+            return True
+    """)
+    )
+
+
+@pytest.fixture
+def false_transfer_from_erc20():
+    """ERC20 where transferFrom always returns False (simulates transferFrom failure).
+
+    transfer works normally (moves balances, returns True).
+    Includes approve and mint for full payment-token compatibility.
+    """
+    return boa.loads(
+        dedent("""
+        balances: HashMap[address, uint256]
+        allowance_map: HashMap[address, HashMap[address, uint256]]
+
+        @external
+        @view
+        def balanceOf(_owner: address) -> uint256:
+            return self.balances[_owner]
+
+        @external
+        def transfer(_to: address, _value: uint256) -> bool:
+            self.balances[msg.sender] -= _value
+            self.balances[_to] += _value
+            return True
+
+        @external
+        def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
+            return False
+
+        @external
+        def approve(_spender: address, _value: uint256) -> bool:
+            self.allowance_map[msg.sender][_spender] = _value
+            return True
+
+        @external
+        def mint(_to: address, _value: uint256):
+            self.balances[_to] += _value
+    """)
+    )
+
+
+@pytest.fixture
+def failing_transfer_payment_erc20():
+    """ERC20 where transfer returns False and transferFrom returns True, with decimals().
+
+    Designed for use as a payment token in the lending contract, where create_loan
+    calls decimals() and transferFrom succeeds, but settle_loan's transfer fails
+    (creating pending transfers).
+    """
+    return boa.loads(
+        dedent("""
+        @external
+        @view
+        def decimals() -> uint256:
+            return 9
+
+        @external
+        def transfer(_to: address, _value: uint256) -> bool:
+            return False
+
+        @external
+        def transferFrom(_from: address, _to: address, _value: uint256) -> bool:
             return True
     """)
     )
