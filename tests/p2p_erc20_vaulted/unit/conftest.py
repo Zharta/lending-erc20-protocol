@@ -344,6 +344,60 @@ def p2p_usdc_weth(
     )
 
 
+@pytest.fixture
+def failing_transfer_erc20():
+    """ERC20 mock where transfer() returns False but transferFrom() returns True."""
+    code = dedent("""
+        @external
+        @view
+        def decimals() -> uint256:
+            return 9
+
+        @external
+        def transfer(_to : address, _value : uint256) -> bool:
+            return False
+
+        @external
+        def transferFrom(_from : address, _to : address, _value : uint256) -> bool:
+            return True
+    """)
+    return boa.loads(code)
+
+
+@pytest.fixture
+def p2p_with_failing_erc20(
+    p2p_lending_erc20_contract_def,
+    failing_transfer_erc20,
+    p2p_refinance,
+    p2p_liquidation,
+    vault_impl,
+    weth,
+    oracle,
+    kyc_validator_contract,
+    owner,
+    transfer_agent,
+):
+    return p2p_lending_erc20_contract_def.deploy(
+        failing_transfer_erc20,
+        weth,
+        oracle,
+        False,
+        kyc_validator_contract,
+        0,
+        0,
+        owner,
+        10000,
+        10000,
+        0,
+        0,
+        p2p_refinance.address,
+        p2p_liquidation.address,
+        vault_impl.address,
+        transfer_agent,
+        boa.eval("empty(address)"),
+    )
+
+
 def inject_events_workaround(filename) -> str:
     contents = Path(filename).read_text(encoding="utf-8")
     contents.append(

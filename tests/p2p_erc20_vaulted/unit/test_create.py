@@ -34,17 +34,17 @@ def lender_sc_wallet(sc_wallet_contract_def, lender):
     return sc_wallet_contract_def.deploy(lender)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_lender(lender, kyc_for, kyc_validator_contract):
     return kyc_for(lender, kyc_validator_contract.address)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_lender2(lender2, kyc_for, kyc_validator_contract):
     return kyc_for(lender2, kyc_validator_contract.address)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
     return kyc_for(borrower, kyc_validator_contract.address)
 
