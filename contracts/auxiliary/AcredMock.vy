@@ -48,9 +48,9 @@ event Withdrawal:
 
 SEC_SWAP_SERVICE_ID: constant(uint256) = 1<<14
 
-name: public(constant(String[41])) = "Apollo Diversified Credit Securitize Fund"
-symbol: public(constant(String[5])) = "ACRED"
-decimals: public(constant(uint8)) = 6
+name: public(immutable(String[64]))
+symbol: public(immutable(String[32]))
+decimals: public(immutable(uint8))
 
 balanceOf: public(HashMap[address, uint256])
 allowance: public(HashMap[address, HashMap[address, uint256]])
@@ -62,7 +62,10 @@ stable_coin_addr: public(address)
 blacklisted: public(HashMap[address, bool])
 
 @deploy
-def __init__(_supply: uint256, oracle_addr: address, stable_coin_addr: address):
+def __init__(_name: String[64], _symbol: String[32], _decimals: uint8, _supply: uint256, oracle_addr: address, stable_coin_addr: address):
+    name = _name
+    symbol = _symbol
+    decimals = _decimals
     init_supply: uint256 = _supply * 10 ** convert(decimals, uint256)
     self.balanceOf[msg.sender] = init_supply
     self.totalSupply = init_supply

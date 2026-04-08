@@ -64,7 +64,7 @@ class DependencyManager:
         self.deployment_order = internal_deployable_sorted
 
     def build_transaction_set(self) -> set[Callable]:
-        tx_set = {tx for k, txs in self.transaction_set.items() for tx in txs}
+        tx_set = {tx for txs in self.transaction_set.values() for tx in txs}
         # workaround to deal with partial functions
         tx_dict = {repr(x): x for x in tx_set}
         return set(tx_dict.values())

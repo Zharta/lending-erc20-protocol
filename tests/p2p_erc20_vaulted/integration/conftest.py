@@ -256,6 +256,11 @@ def registrar_connector_def():
     return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
 
 
+@pytest.fixture(scope="session")
+def centrifuge_oracle_adapter_contract_def():
+    return boa.load_partial("contracts/CentrifugeOracleAdapter.vy")
+
+
 @pytest.fixture
 def vault_registrar_mock(vault_registrar_mock_contract_def, weth):
     return vault_registrar_mock_contract_def.deploy(weth.address)
