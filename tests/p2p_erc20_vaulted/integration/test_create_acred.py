@@ -143,6 +143,18 @@ def sec_borrower(securitize_registry, p2p_usdc_acred, securitize_owner, now):
     return "0x81aF1E160c290E8Fff6381CCF67981f012Cf1009"
 
 
+def test_oracle_data(oracle_acred_usd, p2p_usdc_acred):
+    answer = oracle_acred_usd.latestRoundData()[1]
+
+    assert oracle_acred_usd.address == p2p_usdc_acred.oracle_addr()
+    assert oracle_acred_usd.decimals() == 8
+
+    # ACRED trades at ~$1,096.64 per token at the fork block. Must change if fork block changes.
+    min_price = 1096 * 10**8
+    max_price = 1097 * 10**8
+    assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
+
+
 def test_create_loan(
     p2p_usdc_acred,
     sec_borrower,

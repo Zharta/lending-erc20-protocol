@@ -489,6 +489,60 @@ class Oracle(ContractConfig):
 
 
 @dataclass
+class CentrifugeOracleAdapter(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        spoke_key: str,
+        asset_key: str,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.CentrifugeOracleAdapter,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={spoke_key, asset_key},
+            deployment_args=[spoke_key, asset_key],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class XPrismOracleAdapter(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        xprism_key: str,
+        cusdo_key: str,
+        cusdo_usd_feed_key: str,
+        usdc_usd_feed_key: str,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.xPrismOracleAdapter,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={xprism_key, cusdo_key, cusdo_usd_feed_key, usdc_usd_feed_key},
+            deployment_args=[xprism_key, cusdo_key, cusdo_usd_feed_key, usdc_usd_feed_key],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
 class Balancer(ContractConfig):
     def __init__(
         self,
@@ -512,13 +566,16 @@ class Balancer(ContractConfig):
 
 
 @dataclass
-class Acred(ContractConfig):
+class DSToken(ContractConfig):
     def __init__(
         self,
         *,
         key: str,
         version: str | None = None,
-        abi_key: str | None = None,
+        abi_key: str,
+        name: str,
+        symbol: str,
+        decimals: int,
         supply: int | None = 0,
         oracle_key: str | None = None,
         stablecoin_key: str | None = None,
@@ -530,9 +587,9 @@ class Acred(ContractConfig):
             project.AcredMock,
             version=version,
             abi_key=abi_key,
-            token=False,
+            token=True,
             deployment_deps={oracle_key, stablecoin_key},
-            deployment_args=[int(supply) if supply else 0, oracle_key, stablecoin_key],
+            deployment_args=[name, symbol, decimals, int(supply) if supply else 0, oracle_key, stablecoin_key],
         )
         if address:
             self.load_contract(address)

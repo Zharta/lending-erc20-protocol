@@ -310,10 +310,6 @@ def replace_namedtuple_field(namedtuple, **kwargs):
     return namedtuple.__class__(**namedtuple._asdict() | kwargs)
 
 
-def replace_list_element(lst, index, value):
-    return lst[:index] + [value] + lst[index + 1 :]
-
-
 def get_loan_mutations(loan):
     random_address = boa.env.generate_address("random")
 
