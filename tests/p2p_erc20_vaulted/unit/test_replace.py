@@ -1,5 +1,3 @@
-from textwrap import dedent
-
 import boa
 import pytest
 
@@ -49,17 +47,17 @@ def protocol_fees(p2p_usdc_weth):
     return settlement_fee
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_lender(lender, kyc_for, kyc_validator_contract):
     return kyc_for(lender, kyc_validator_contract.address)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_lender2(lender2, kyc_for, kyc_validator_contract):
     return kyc_for(lender2, kyc_validator_contract.address)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
     return kyc_for(borrower, kyc_validator_contract.address)
 
@@ -710,17 +708,12 @@ def test_replace_loan_pays_protocol_fees(
 
 
 def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
-    p2p_lending_erc20_contract_def,
-    p2p_refinance,
-    p2p_liquidation,
-    vault_impl,
+    failing_transfer_erc20,
+    p2p_with_failing_erc20,
     weth,
-    owner,
     borrower,
     lender,
     lender_key,
-    oracle,
-    kyc_validator_contract,
     kyc_borrower,
     kyc_lender,
     now,
@@ -728,45 +721,9 @@ def test_replace_loan_creates_pending_transfer_on_erc20_transfer_fail(
     kyc_lender2,
     lender2,
     lender2_key,
-    transfer_agent,
 ):
-    failing_erc20_code = dedent("""
-
-            @external
-            @view
-            def decimals() -> uint256:
-                return 9
-
-            @external
-            def transfer(_to : address, _value : uint256) -> bool:
-                return False
-
-            @external
-            def transferFrom(_from : address, _to : address, _value : uint256) -> bool:
-                return True
-
-            """)
-
-    erc20 = boa.loads(failing_erc20_code)
-    p2p_erc20_weth = p2p_lending_erc20_contract_def.deploy(
-        erc20,
-        weth,
-        oracle,
-        False,
-        kyc_validator_contract,
-        0,
-        0,
-        owner,
-        10000,
-        10000,
-        0,
-        0,
-        p2p_refinance.address,
-        p2p_liquidation.address,
-        vault_impl.address,
-        transfer_agent,
-        boa.eval("empty(address)"),  # vault_registrar_addr
-    )
+    erc20 = failing_transfer_erc20
+    p2p_erc20_weth = p2p_with_failing_erc20
     principal = 1000 * 10**6
     offer = Offer(
         principal=principal,

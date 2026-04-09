@@ -38,12 +38,12 @@ def protocol_fees(p2p_usdc_weth):
     return settlement_fee
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_lender(lender, kyc_for, kyc_validator_contract):
     return kyc_for(lender, kyc_validator_contract.address)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
     return kyc_for(borrower, kyc_validator_contract.address)
 

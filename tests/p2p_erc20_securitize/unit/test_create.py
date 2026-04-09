@@ -1134,3 +1134,193 @@ def test_current_ltv_reverts_if_oracle_answer_zero(
 
     with boa.reverts("invalid oracle rate"):
         p2p_usdc_weth.current_ltv(loan)
+
+
+# ============================================================================
+# MUTATION TESTING: boundary and assertion coverage
+# ============================================================================
+
+
+def test_create_loan_succeeds_when_min_collateral_equals_collateral(
+    p2p_usdc_weth, borrower, lender, lender_key, usdc, weth, oracle, now, kyc_borrower, kyc_lender
+):
+    """Mutation kill: min_collateral_amount <= collateral_amount boundary (line 553).
+    Ensures loan creation works when collateral exactly equals the minimum."""
+    principal = 1000 * 10**6
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=100,
+        min_collateral_amount=collateral_amount,
+        max_iltv=0,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+    assert loan_id != ZERO_BYTES32
+
+
+def test_create_loan_succeeds_with_origination_fee_equal_to_bps(
+    p2p_usdc_weth, borrower, lender, lender_key, usdc, weth, oracle, now, kyc_borrower, kyc_lender
+):
+    """Mutation kill: origination_fee_bps <= BPS boundary (line 554).
+    Ensures loan creation works when origination_fee_bps == BPS (100%)."""
+    principal = 1000 * 10**6
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=BPS,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    # With 100% origination fee, borrower receives 0 principal, but loan creation should succeed
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+    assert loan_id != ZERO_BYTES32
+
+
+def test_create_loan_reverts_if_initial_ltv_too_high_exact_boundary(
+    p2p_usdc_weth, borrower, lender, lender_key, usdc, weth, oracle, now, kyc_borrower, kyc_lender
+):
+    """Mutation kill: (BPS + partial_liq_fee) * max_iltv < BPS * BPS boundary (line 568).
+    With partial_liquidation_fee=0, max_iltv=BPS, the product equals BPS*BPS exactly,
+    which should be rejected by strict <."""
+    principal = 1000 * 10**6
+    collateral_amount = int(1e18)
+    max_iltv = BPS  # 10000
+    liquidation_ltv = max_iltv + 1  # Must be > max_iltv
+
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=0,
+        min_collateral_amount=0,
+        max_iltv=max_iltv,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=liquidation_ltv,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    with boa.reverts("initial ltv too high"):
+        p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+
+def test_create_loan_reverts_if_call_eligibility_not_zero(
+    p2p_usdc_weth, borrower, lender, lender_key, usdc, weth, oracle, now, kyc_borrower, kyc_lender
+):
+    """Mutation kill: assert call_eligibility == 0 deletion (Base line 417).
+    Securitize contracts do not support callable loans."""
+    principal = 1000 * 10**6
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=0,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=100,  # non-zero: should be rejected
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    with boa.reverts("call eligibility not supported"):
+        p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+
+def test_create_loan_reverts_if_call_window_not_zero(
+    p2p_usdc_weth, borrower, lender, lender_key, usdc, weth, oracle, now, kyc_borrower, kyc_lender
+):
+    """Mutation kill: assert call_window == 0 deletion (Base line 418).
+    Securitize contracts do not support callable loans."""
+    principal = 1000 * 10**6
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=0,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=100,  # non-zero: should be rejected
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    with boa.reverts("call window not supported"):
+        p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)

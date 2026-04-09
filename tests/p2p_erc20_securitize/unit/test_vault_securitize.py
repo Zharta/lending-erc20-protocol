@@ -17,22 +17,8 @@ def token(weth9_contract_def, owner):
 
 
 @pytest.fixture
-def payment_token(weth9_contract_def, owner):
-    """Payment token for transfer_funds / withdraw_funds."""
-    return weth9_contract_def.deploy("PayToken", "PT", 6, 10**20)
-
-
-@pytest.fixture
 def vault_for_lending(securitize_vault_contract_def, caller_addr, token, owner):
     """Vault initialized with caller_addr as caller and owner as owner."""
-    v = securitize_vault_contract_def.deploy()
-    v.initialise(owner, token.address, sender=caller_addr)
-    return v
-
-
-@pytest.fixture
-def vault_with_token(securitize_vault_contract_def, caller_addr, token, owner):
-    """Vault initialized with a blacklistable token for testing failed transfers."""
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, token.address, sender=caller_addr)
     return v
@@ -43,6 +29,15 @@ def vault_acred(securitize_vault_contract_def, caller_addr, owner, acred):
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, acred.address, sender=caller_addr)
     return v
+
+
+@pytest.fixture
+def vault_with_manager(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
+    """Vault initialized with min_vault_manager as caller. Returns (vault, token)."""
+    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
+    vault = securitize_vault_contract_def.deploy()
+    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    return vault, token
 
 
 # ===========================================================================
@@ -94,9 +89,9 @@ def test_deposit_transfers_tokens_when_no_pending(vault_for_lending, caller_addr
     assert vault_for_lending.pending_transfers_total() == 0
 
 
-def test_deposit_pending_exact_match(vault_with_token, caller_addr, token, owner):
+def test_deposit_pending_exact_match(vault_for_lending, caller_addr, token, owner):
     """When pending[wallet] == deposit amount, no token transfer occurs and pending is zeroed."""
-    v = vault_with_token
+    v = vault_for_lending
 
     # Step 1: Deposit some tokens normally to build vault balance
     deposit_amount = 1000
@@ -122,9 +117,9 @@ def test_deposit_pending_exact_match(vault_with_token, caller_addr, token, owner
     assert v.pending_transfers_total() == 0
 
 
-def test_deposit_pending_greater_than_amount(vault_with_token, caller_addr, token, owner):
+def test_deposit_pending_greater_than_amount(vault_for_lending, caller_addr, token, owner):
     """When pending[wallet] > deposit amount, pending is reduced by amount (if branch)."""
-    v = vault_with_token
+    v = vault_for_lending
 
     # Build vault balance
     deposit_amount = 1000
@@ -148,9 +143,9 @@ def test_deposit_pending_greater_than_amount(vault_with_token, caller_addr, toke
     assert v.pending_transfers_total() == deposit_amount - smaller_deposit
 
 
-def test_deposit_pending_less_than_amount(vault_with_token, caller_addr, token, owner):
+def test_deposit_pending_less_than_amount(vault_for_lending, caller_addr, token, owner):
     """When 0 < pending[wallet] < amount, pending is zeroed and remaining transferred (elif branch)."""
-    v = vault_with_token
+    v = vault_for_lending
 
     # Build vault balance
     initial_deposit = 500
@@ -193,9 +188,9 @@ def test_withdraw_reverts_if_not_caller(vault_for_lending, owner):
         vault_for_lending.withdraw(100, owner, sender=owner)
 
 
-def test_withdraw_transfer_failure_tracks_pending(vault_with_token, caller_addr, token, owner):
+def test_withdraw_transfer_failure_tracks_pending(vault_for_lending, caller_addr, token, owner):
     """When withdraw transfer fails, pending_transfers and pending_transfers_total must be updated."""
-    v = vault_with_token
+    v = vault_for_lending
 
     # Deposit tokens
     amount = 1000
@@ -212,9 +207,9 @@ def test_withdraw_transfer_failure_tracks_pending(vault_with_token, caller_addr,
     assert token.balanceOf(v.address) == amount
 
 
-def test_withdraw_transfer_failure_or_semantics(vault_with_token, caller_addr, token, owner):
+def test_withdraw_transfer_failure_or_semantics(vault_for_lending, caller_addr, token, owner):
     """Withdraw uses 'or' (not 'and') in failure check: either !success or !response triggers pending."""
-    v = vault_with_token
+    v = vault_for_lending
 
     amount = 1000
     token.deposit(value=amount, sender=owner)
@@ -234,9 +229,9 @@ def test_withdraw_transfer_failure_or_semantics(vault_with_token, caller_addr, t
 # ===========================================================================
 
 
-def test_withdraw_pending_exact_amount(vault_with_token, caller_addr, token, owner):
+def test_withdraw_pending_exact_amount(vault_for_lending, caller_addr, token, owner):
     """User can withdraw exactly their full pending balance."""
-    v = vault_with_token
+    v = vault_for_lending
 
     # Build pending via deposit + failed withdraw
     amount = 1000
@@ -257,9 +252,9 @@ def test_withdraw_pending_exact_amount(vault_with_token, caller_addr, token, own
     assert token.balanceOf(owner) == owner_balance_before + amount
 
 
-def test_withdraw_pending_partial_amount(vault_with_token, caller_addr, token, owner):
+def test_withdraw_pending_partial_amount(vault_for_lending, caller_addr, token, owner):
     """User can withdraw a partial amount of their pending balance."""
-    v = vault_with_token
+    v = vault_for_lending
 
     amount = 1000
     token.deposit(value=amount, sender=owner)
@@ -277,9 +272,9 @@ def test_withdraw_pending_partial_amount(vault_with_token, caller_addr, token, o
     assert v.pending_transfers_total() == amount - partial
 
 
-def test_withdraw_pending_reverts_if_exceeds_pending(vault_with_token, caller_addr, token, owner):
+def test_withdraw_pending_reverts_if_exceeds_pending(vault_for_lending, caller_addr, token, owner):
     """Cannot withdraw more than pending balance."""
-    v = vault_with_token
+    v = vault_for_lending
 
     amount = 1000
     token.deposit(value=amount, sender=owner)
@@ -299,9 +294,7 @@ def test_withdraw_pending_reverts_if_exceeds_pending(vault_with_token, caller_ad
 # ===========================================================================
 
 
-def test_withdraw_funds_reverts_if_not_authorized(
-    securitize_vault_contract_def, payment_token, token, owner, min_vault_manager
-):
+def test_withdraw_funds_reverts_if_not_authorized(securitize_vault_contract_def, usdc, token, owner, min_vault_manager):
     """Only the lending contract (self.caller) or authorized proxy can call withdraw_funds."""
     # Need a mock contract because _check_user does a staticcall to self.caller.authorized_proxies()
     v = securitize_vault_contract_def.deploy()
@@ -309,7 +302,7 @@ def test_withdraw_funds_reverts_if_not_authorized(
 
     unauthorized = boa.env.generate_address("unauthorized")
     with boa.reverts("unauthorized"):
-        v.withdraw_funds(payment_token.address, 100, sender=unauthorized)
+        v.withdraw_funds(usdc.address, 100, sender=unauthorized)
 
 
 # ===========================================================================
@@ -317,26 +310,26 @@ def test_withdraw_funds_reverts_if_not_authorized(
 # ===========================================================================
 
 
-def test_transfer_funds_skips_zero_amount(vault_for_lending, payment_token, caller_addr):
+def test_transfer_funds_skips_zero_amount(vault_for_lending, usdc, caller_addr):
     """When amount is 0, no ERC20 transfer should occur."""
     wallet = boa.env.generate_address("recipient")
-    wallet_balance_before = payment_token.balanceOf(wallet)
+    wallet_balance_before = usdc.balanceOf(wallet)
 
-    vault_for_lending.transfer_funds(payment_token.address, 0, wallet, sender=caller_addr)
+    vault_for_lending.transfer_funds(usdc.address, 0, wallet, sender=caller_addr)
 
-    assert payment_token.balanceOf(wallet) == wallet_balance_before
+    assert usdc.balanceOf(wallet) == wallet_balance_before
 
 
-def test_transfer_funds_transfers_nonzero_amount(vault_for_lending, payment_token, caller_addr, owner):
+def test_transfer_funds_transfers_nonzero_amount(vault_for_lending, usdc, caller_addr, owner):
     """When amount > 0, tokens are transferred to the wallet."""
     amount = 500
     wallet = boa.env.generate_address("recipient")
 
-    payment_token.mint(vault_for_lending.address, amount)
+    usdc.mint(vault_for_lending.address, amount)
 
-    vault_for_lending.transfer_funds(payment_token.address, amount, wallet, sender=caller_addr)
+    vault_for_lending.transfer_funds(usdc.address, amount, wallet, sender=caller_addr)
 
-    assert payment_token.balanceOf(wallet) == amount
+    assert usdc.balanceOf(wallet) == amount
 
 
 # ===========================================================================
@@ -433,13 +426,13 @@ def test_initialise_sets_owner_to_param_not_sender(securitize_vault_contract_def
     assert v.caller() == lending_contract
 
 
-def test_deposit_partial_pending_clears_pending_to_zero(vault_with_token, caller_addr, token, owner):
+def test_deposit_partial_pending_clears_pending_to_zero(vault_for_lending, caller_addr, token, owner):
     """Kills mutation L113: `self.pending_transfers[wallet] = 0` -> `= amount`.
 
     In the elif branch (0 < pending < amount), pending_transfers[wallet] must be
     set to 0 after deposit, not to the deposit amount.
     """
-    v = vault_with_token
+    v = vault_for_lending
 
     # Build vault balance
     initial_deposit = 500
@@ -468,13 +461,13 @@ def test_deposit_partial_pending_clears_pending_to_zero(vault_with_token, caller
     assert v.pending_transfers_total() == 0
 
 
-def test_withdraw_reverts_when_amount_plus_pending_exceeds_balance(vault_with_token, caller_addr, token, owner):
+def test_withdraw_reverts_when_amount_plus_pending_exceeds_balance(vault_for_lending, caller_addr, token, owner):
     """Kills mutation L129: `amount + self.pending_transfers_total` -> `amount - self.pending_transfers_total`.
 
     When amount + pending_total > balance but amount - pending_total < balance,
     the original code reverts ("insufficient balance") but the mutation would pass.
     """
-    v = vault_with_token
+    v = vault_for_lending
 
     # Deposit tokens to build vault balance
     vault_balance = 1000
@@ -529,13 +522,13 @@ def test_withdraw_failure_credits_pending_to_wallet_not_sender(securitize_vault_
     assert v.pending_transfers(caller) == 0
 
 
-def test_withdraw_pending_transfers_actual_tokens(vault_with_token, caller_addr, token, owner):
+def test_withdraw_pending_transfers_actual_tokens(vault_for_lending, caller_addr, token, owner):
     """Kills mutation L170: `transfer(msg.sender, amount)` -> `transfer(msg.sender, 0)`.
 
     After withdraw_pending, the caller must receive actual tokens (balance increases
     by `amount`), not zero.
     """
-    v = vault_with_token
+    v = vault_for_lending
 
     # Build pending via deposit + failed withdraw
     amount = 1000
@@ -590,13 +583,13 @@ def test_deposit_pending_equals_one_takes_partial_path(securitize_vault_contract
     assert v.pending_transfers_total() == 0
 
 
-def test_withdraw_pending_reverts_if_amount_exceeds_pending(vault_with_token, caller_addr, token, owner):
+def test_withdraw_pending_reverts_if_amount_exceeds_pending(vault_for_lending, caller_addr, token, owner):
     """Kills mutation L167: delete `assert self.pending_transfers[msg.sender] >= amount`.
 
     Calling withdraw_pending with amount > pending must revert with the exact
     message "insufficient pending collateral".
     """
-    v = vault_with_token
+    v = vault_for_lending
 
     # Build pending via deposit + failed withdraw
     pending_amount = 100
@@ -619,13 +612,13 @@ def test_withdraw_pending_reverts_if_amount_exceeds_pending(vault_with_token, ca
 # ===========================================================================
 
 
-def test_withdraw_multiple_failures_accumulate_pending(vault_with_token, caller_addr, token, owner):
+def test_withdraw_multiple_failures_accumulate_pending(vault_for_lending, caller_addr, token, owner):
     """Kills mutations L143 (+=to=) and L144 (+=to=) in withdraw.
 
     Two consecutive failed withdrawals to the same wallet must accumulate
     pending_transfers and pending_transfers_total additively, not overwrite.
     """
-    v = vault_with_token
+    v = vault_for_lending
 
     # Deposit enough tokens for two withdrawals
     total = 1000
@@ -652,61 +645,51 @@ def test_withdraw_multiple_failures_accumulate_pending(vault_with_token, caller_
     assert v.pending_transfers_total() == first_amount + second_amount
 
 
-def test_withdraw_funds_transfers_correct_amount(securitize_vault_contract_def, weth9_contract_def, owner, min_vault_manager):
+def test_withdraw_funds_transfers_correct_amount(vault_with_manager, usdc, min_vault_manager):
     """Kills mutation L184: transfer(self.caller, amount) -> transfer(self.caller, 0).
 
     After withdraw_funds, the caller (lending contract) must receive the
     actual requested amount, not zero.
     """
-    payment_tok = weth9_contract_def.deploy("PaymentToken", "PT", 6, 10**20)
-
-    v = securitize_vault_contract_def.deploy()
-    token = weth9_contract_def.deploy("CollatToken", "CT", 18, 10**20)
-    v.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, _token = vault_with_manager
 
     # Fund the vault with payment tokens
     amount = 500
-    payment_tok.mint(v.address, amount)
+    usdc.mint(vault.address, amount)
 
-    caller_balance_before = payment_tok.balanceOf(min_vault_manager.address)
+    caller_balance_before = usdc.balanceOf(min_vault_manager.address)
 
-    # withdraw_funds should transfer `amount` of payment_tok to self.caller
-    v.withdraw_funds(payment_tok.address, amount, sender=min_vault_manager.address)
+    # withdraw_funds should transfer `amount` of usdc to self.caller
+    vault.withdraw_funds(usdc.address, amount, sender=min_vault_manager.address)
 
-    caller_balance_after = payment_tok.balanceOf(min_vault_manager.address)
+    caller_balance_after = usdc.balanceOf(min_vault_manager.address)
     assert caller_balance_after == caller_balance_before + amount
-    assert payment_tok.balanceOf(v.address) == 0
+    assert usdc.balanceOf(vault.address) == 0
 
 
-def test_withdraw_funds_uses_payment_token_not_collateral(
-    securitize_vault_contract_def, weth9_contract_def, owner, min_vault_manager
-):
+def test_withdraw_funds_uses_payment_token_not_collateral(vault_with_manager, usdc, min_vault_manager, owner):
     """Kills mutation L184: IERC20(payment_token) -> IERC20(self.token).
 
     withdraw_funds must transfer the payment_token parameter, not self.token
     (the collateral token). When they differ, the correct token must move.
     """
-    collateral_tok = weth9_contract_def.deploy("Collateral", "COL", 18, 10**20)
-    payment_tok = weth9_contract_def.deploy("PaymentToken", "PT", 6, 10**20)
-
-    v = securitize_vault_contract_def.deploy()
-    v.initialise(owner, collateral_tok.address, sender=min_vault_manager.address)
+    vault, collateral_tok = vault_with_manager
 
     amount = 500
 
     # Fund vault with BOTH tokens
-    collateral_tok.deposit(value=amount, sender=owner)
-    collateral_tok.transfer(v.address, amount, sender=owner)
-    payment_tok.mint(v.address, amount)
+    collateral_tok.mint(owner, amount)
+    collateral_tok.transfer(vault.address, amount, sender=owner)
+    usdc.mint(vault.address, amount)
 
-    collateral_before = collateral_tok.balanceOf(v.address)
-    payment_before = payment_tok.balanceOf(v.address)
+    collateral_before = collateral_tok.balanceOf(vault.address)
+    payment_before = usdc.balanceOf(vault.address)
 
-    v.withdraw_funds(payment_tok.address, amount, sender=min_vault_manager.address)
+    vault.withdraw_funds(usdc.address, amount, sender=min_vault_manager.address)
 
     # Payment token should have been transferred, not collateral
-    assert payment_tok.balanceOf(v.address) == payment_before - amount
-    assert collateral_tok.balanceOf(v.address) == collateral_before  # unchanged
+    assert usdc.balanceOf(vault.address) == payment_before - amount
+    assert collateral_tok.balanceOf(vault.address) == collateral_before  # unchanged
 
 
 def test_buy_twice_accumulates_pending(vault_acred, caller_addr, usdc, owner):
@@ -743,18 +726,12 @@ def test_buy_twice_accumulates_pending(vault_acred, caller_addr, usdc, owner):
     assert second_total == first_total * 2
 
 
-def test_buy_approves_correct_spender(
-    securitize_vault_contract_def, acred_contract_def, oracle_contract_def, weth9_contract_def, owner
-):
+def test_buy_approves_correct_spender(securitize_vault_contract_def, acred, usdc, owner):
     """Kills mutation L220: approve(securitize_swap_contract, ...) -> approve(self.token, ...).
 
     The approve must go to the SecuritizeSwap contract address (returned by
     getDSService(1<<14)), not to self.token. We verify by checking allowance.
     """
-    oracle = oracle_contract_def.deploy(1, 3)
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy(10**6, oracle.address, usdc.address)
-
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, acred.address, sender=owner)
 
@@ -871,7 +848,7 @@ def test_check_user_proxy_requires_tx_origin_match(
 # ===================================================================
 
 
-def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, owner):
+def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, oracle_contract_def, acred_contract_def, owner):
     """Initialise guard must check self.caller == empty(address), not self.owner.
 
     Kills mutation: assert self.caller == empty(address) -> assert self.owner == empty(address)
@@ -879,10 +856,10 @@ def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, owner
     and then re-initialising would succeed (because owner is still empty(address)).
     With the correct guard on caller, the second initialise must revert.
     """
-    acred = boa.load(
-        "contracts/auxiliary/AcredMock.vy",
+    oracle = oracle_contract_def.deploy(1, 1)
+    acred = acred_contract_def.deploy(
         10**6,
-        boa.load("contracts/auxiliary/OracleMock.vy", 1, 1).address,
+        oracle.address,
         boa.env.generate_address("usdc"),
     )
 
@@ -904,18 +881,14 @@ def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, owner
 # ===================================================================
 
 
-def test_deposit_uses_full_pending_path_when_pending_exceeds_amount(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
-):
+def test_deposit_uses_full_pending_path_when_pending_exceeds_amount(vault_with_manager, min_vault_manager, owner):
     """When pending_transfers[wallet] > deposit amount, the full-pending branch should be used.
 
     Kills mutation: if pending >= amount -> if pending == amount
     If only == is checked, pending > amount falls through to elif/else, causing an
     unnecessary transferFrom or incorrect accounting.
     """
-    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, token = vault_with_manager
 
     # Deposit some tokens normally so vault has balance
     token.mint(owner, 200)
@@ -953,36 +926,30 @@ def test_deposit_uses_full_pending_path_when_pending_exceeds_amount(
 # ===================================================================
 
 
-def test_withdraw_funds_sends_to_caller_not_msg_sender(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner, vault_proxy
-):
+def test_withdraw_funds_sends_to_caller_not_msg_sender(vault_with_manager, usdc, min_vault_manager, owner, vault_proxy):
     """withdraw_funds must transfer to self.caller (lending contract), not msg.sender.
 
     Kills mutation: transfer(self.caller, amount) -> transfer(msg.sender, amount)
     When called via an authorized proxy, msg.sender != self.caller. Funds must go
     to the lending contract (self.caller), not the proxy.
     """
-    payment_token = weth9_contract_def.deploy("PAY", "PAY", 18, 10**30)
-    collateral_token = weth9_contract_def.deploy("COL", "COL", 18, 10**30)
-
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, collateral_token.address, sender=min_vault_manager.address)
+    vault, _token = vault_with_manager
 
     # Authorize the proxy in the vault manager mock
     min_vault_manager.set_proxy(vault_proxy.address, True)
 
     # Fund the vault with payment tokens
     amount = 1000
-    payment_token.mint(vault.address, amount)
+    usdc.mint(vault.address, amount)
 
-    vault_manager_balance_before = payment_token.balanceOf(min_vault_manager.address)
-    proxy_balance_before = payment_token.balanceOf(vault_proxy.address)
+    vault_manager_balance_before = usdc.balanceOf(min_vault_manager.address)
+    proxy_balance_before = usdc.balanceOf(vault_proxy.address)
 
-    vault_proxy.proxy_withdraw_funds(vault.address, payment_token.address, amount, sender=min_vault_manager.address)
+    vault_proxy.proxy_withdraw_funds(vault.address, usdc.address, amount, sender=min_vault_manager.address)
 
     # Funds should go to self.caller (min_vault_manager), NOT to vault_proxy (msg.sender)
-    assert payment_token.balanceOf(min_vault_manager.address) == vault_manager_balance_before + amount
-    assert payment_token.balanceOf(vault_proxy.address) == proxy_balance_before  # proxy gets nothing
+    assert usdc.balanceOf(min_vault_manager.address) == vault_manager_balance_before + amount
+    assert usdc.balanceOf(vault_proxy.address) == proxy_balance_before  # proxy gets nothing
 
 
 # ===================================================================
@@ -991,7 +958,7 @@ def test_withdraw_funds_sends_to_caller_not_msg_sender(
 
 
 def test_buy_transfers_from_msg_sender_not_owner(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner, vault_proxy
+    securitize_vault_contract_def, min_vault_manager, usdc, acred, owner, vault_proxy
 ):
     """buy() must transferFrom(msg.sender, ...) not transferFrom(self.owner, ...).
 
@@ -999,10 +966,6 @@ def test_buy_transfers_from_msg_sender_not_owner(
     When the vault owner != msg.sender (e.g., proxy call), funds should come from
     the actual caller, not the vault owner.
     """
-    oracle = boa.load("contracts/auxiliary/OracleMock.vy", 1, 3)
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = boa.load("contracts/auxiliary/AcredMock.vy", 10**6, oracle.address, usdc.address)
-
     # Create vault with a specific owner (different from proxy caller)
     vault_owner = boa.env.generate_address("vault_owner")
     boa.env.set_balance(vault_owner, 10**18)
@@ -1031,7 +994,7 @@ def test_buy_transfers_from_msg_sender_not_owner(
 
 
 def test_buy_refund_goes_to_msg_sender_not_caller(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner, vault_proxy
+    securitize_vault_contract_def, min_vault_manager, usdc, acred, owner, vault_proxy
 ):
     """buy() refund must go to msg.sender (proxy), not self.caller (lending contract).
 
@@ -1039,9 +1002,6 @@ def test_buy_refund_goes_to_msg_sender_not_caller(
     When there's excess stablecoins after the swap, the refund should go back to
     whoever called buy (msg.sender), not the lending contract (self.caller).
     """
-    oracle = boa.load("contracts/auxiliary/OracleMock.vy", 1, 3)
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = boa.load("contracts/auxiliary/AcredMock.vy", 10**6, oracle.address, usdc.address)
 
     vault_owner = boa.env.generate_address("vault_owner2")
     boa.env.set_balance(vault_owner, 10**18)
@@ -1073,14 +1033,12 @@ def test_buy_refund_goes_to_msg_sender_not_caller(
 # ===================================================================
 
 
-def test_deposit_emits_deposit_event(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
+def test_deposit_emits_deposit_event(vault_with_manager, min_vault_manager, owner):
     """Deposit must emit a Deposit event.
 
     Kills mutation: delete log Deposit(wallet=wallet, amount=amount) at L118
     """
-    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, token = vault_with_manager
 
     amount = 100
     token.mint(owner, amount)
@@ -1094,14 +1052,12 @@ def test_deposit_emits_deposit_event(securitize_vault_contract_def, min_vault_ma
     assert events[0].amount == amount
 
 
-def test_withdraw_success_emits_withdraw_event(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
+def test_withdraw_success_emits_withdraw_event(vault_with_manager, min_vault_manager, owner):
     """Successful withdraw must emit a Withdraw event.
 
     Kills mutation: delete log Withdraw(wallet=wallet, amount=amount) at L146
     """
-    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, token = vault_with_manager
 
     # Deposit first
     amount = 100
@@ -1120,16 +1076,12 @@ def test_withdraw_success_emits_withdraw_event(securitize_vault_contract_def, mi
     assert events[0].amount == 50
 
 
-def test_withdraw_failure_emits_transfer_failed_event(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
-):
+def test_withdraw_failure_emits_transfer_failed_event(vault_with_manager, min_vault_manager, owner):
     """Failed withdraw must emit a TransferFailed event.
 
     Kills mutation: delete log TransferFailed(wallet=wallet, amount=amount) at L142
     """
-    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, token = vault_with_manager
 
     amount = 100
     token.mint(owner, amount)
@@ -1149,14 +1101,12 @@ def test_withdraw_failure_emits_transfer_failed_event(
     assert events[0].amount == 50
 
 
-def test_withdraw_pending_emits_event(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
+def test_withdraw_pending_emits_event(vault_with_manager, min_vault_manager, owner):
     """withdraw_pending must emit a WithdrawPending event.
 
     Kills mutation: delete log WithdrawPending(...) at L171
     """
-    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, token = vault_with_manager
 
     # Create pending: deposit, then withdraw to blacklisted address
     amount = 100
@@ -1180,16 +1130,12 @@ def test_withdraw_pending_emits_event(securitize_vault_contract_def, min_vault_m
     assert events[0].amount == 30
 
 
-def test_deposit_full_pending_emits_correct_withdraw_pending_amount(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
-):
+def test_deposit_full_pending_emits_correct_withdraw_pending_amount(vault_with_manager, min_vault_manager, owner):
     """In the full-pending deposit branch, WithdrawPending event must log amount (not pending).
 
     Kills mutation: log WithdrawPending(wallet=wallet, amount=amount) -> amount=pending at L110
     """
-    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, token = vault_with_manager
 
     # Deposit tokens to vault
     token.mint(owner, 200)
@@ -1213,16 +1159,12 @@ def test_deposit_full_pending_emits_correct_withdraw_pending_amount(
     assert wp_events[0].amount == 50  # This is the deposit amount, not the pending amount
 
 
-def test_deposit_partial_pending_emits_correct_withdraw_pending_amount(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
-):
+def test_deposit_partial_pending_emits_correct_withdraw_pending_amount(vault_with_manager, min_vault_manager, owner):
     """In the partial-pending deposit branch, WithdrawPending event must log pending (not amount).
 
     Kills mutation: log WithdrawPending(wallet=wallet, amount=pending) -> amount=amount at L114
     """
-    token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, token = vault_with_manager
 
     # Deposit tokens to vault
     token.mint(owner, 200)
@@ -1256,7 +1198,7 @@ def test_deposit_partial_pending_emits_correct_withdraw_pending_amount(
 # ===========================================================================
 
 
-def test_transfer_funds_reverts_if_not_authorized(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
+def test_transfer_funds_reverts_if_not_authorized(vault_with_manager, min_vault_manager, usdc, owner):
     """Kills mutations L197: delete auth check or change _check_user(self.caller) to _check_user(msg.sender).
 
     transfer_funds must only be callable by the lending contract (self.caller) or
@@ -1265,20 +1207,16 @@ def test_transfer_funds_reverts_if_not_authorized(securitize_vault_contract_def,
     Mutation A: deleting the assert entirely -> anyone can call transfer_funds
     Mutation B: _check_user(self.caller) -> _check_user(msg.sender) -> always True
     """
-    token = weth9_contract_def.deploy("COL", "COL", 18, 10**30)
-    payment_tok = weth9_contract_def.deploy("PAY", "PAY", 6, 10**20)
-
-    vault = securitize_vault_contract_def.deploy()
-    vault.initialise(owner, token.address, sender=min_vault_manager.address)
+    vault, _token = vault_with_manager
 
     # Fund the vault with payment tokens so the transfer itself would succeed
     amount = 500
-    payment_tok.mint(vault.address, amount)
+    usdc.mint(vault.address, amount)
 
     # An unauthorized address should be rejected
     unauthorized = boa.env.generate_address("unauthorized")
     with boa.reverts("unauthorized"):
-        vault.transfer_funds(payment_tok.address, amount, unauthorized, sender=unauthorized)
+        vault.transfer_funds(usdc.address, amount, unauthorized, sender=unauthorized)
 
 
 def test_buy_passes_min_ds_token_to_swap(vault_acred, acred, usdc, owner):
@@ -1301,9 +1239,7 @@ def test_buy_passes_min_ds_token_to_swap(vault_acred, acred, usdc, owner):
     assert swap_calls[0][1] == min_ds  # second arg is minOutAmount
 
 
-def test_buy_refund_only_excess_not_full_balance(
-    securitize_vault_contract_def, acred_contract_def, oracle_contract_def, weth9_contract_def, owner
-):
+def test_buy_refund_only_excess_not_full_balance(securitize_vault_contract_def, acred, usdc, owner):
     """Kills mutation L228: remaining_balance - initial_balance -> remaining_balance.
 
     When the vault has a pre-existing payment token balance, the refund must only
@@ -1311,10 +1247,6 @@ def test_buy_refund_only_excess_not_full_balance(
     Without pre-existing balance, remaining_balance == remaining_balance - 0, so the
     mutation is undetectable.
     """
-    oracle = oracle_contract_def.deploy(1, 3)  # rate 3/10
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy(10**6, oracle.address, usdc.address)
-
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, acred.address, sender=owner)
 
@@ -1355,30 +1287,26 @@ def test_buy_refund_only_excess_not_full_balance(
 # ===========================================================================
 
 
-def test_transfer_funds_transfers_amount_one(securitize_vault_contract_def, weth9_contract_def, owner, min_vault_manager):
+def test_transfer_funds_transfers_amount_one(vault_with_manager, usdc, min_vault_manager):
     """Kills mutation L198: `amount > 0` changed to `amount > 1`.
 
     When amount=1, transfer_funds must still call ERC20.transfer and move the token.
     With the mutation, amount=1 would be skipped because 1 > 1 is False.
     """
-    payment_tok = weth9_contract_def.deploy("PayToken", "PT", 6, 10**20)
-    collateral_tok = weth9_contract_def.deploy("CollatToken", "CT", 18, 10**20)
-
-    v = securitize_vault_contract_def.deploy()
-    v.initialise(owner, collateral_tok.address, sender=min_vault_manager.address)
+    vault, _token = vault_with_manager
 
     # Fund the vault with 1 payment token
-    payment_tok.mint(v.address, 1)
+    usdc.mint(vault.address, 1)
 
     wallet = boa.env.generate_address("recipient")
-    assert payment_tok.balanceOf(wallet) == 0
+    assert usdc.balanceOf(wallet) == 0
 
-    v.transfer_funds(payment_tok.address, 1, wallet, sender=min_vault_manager.address)
+    vault.transfer_funds(usdc.address, 1, wallet, sender=min_vault_manager.address)
 
     # With original code: amount(1) > 0 is True, transfer happens
     # With mutation: amount(1) > 1 is False, transfer skipped
-    assert payment_tok.balanceOf(wallet) == 1
-    assert payment_tok.balanceOf(v.address) == 0
+    assert usdc.balanceOf(wallet) == 1
+    assert usdc.balanceOf(vault.address) == 0
 
 
 def test_transfer_funds_reverts_if_transfer_returns_false(
@@ -1509,15 +1437,14 @@ def test_deposit_no_pending_reverts_if_transfer_from_returns_false(
 
 
 def test_buy_reverts_if_payment_transfer_from_returns_false(
-    securitize_vault_contract_def, false_transfer_from_erc20, acred_contract_def, oracle_contract_def, owner
+    securitize_vault_contract_def, false_transfer_from_erc20, acred_contract_def, oracle_acred_usdc, owner
 ):
     """Kills mutation L219: remove `assert` on transferFrom in buy.
 
     When the payment token's transferFrom() returns False, buy must revert
     with "transferFrom failed", not silently proceed and credit DS tokens.
     """
-    oracle = oracle_contract_def.deploy(1, 3)
-    acred = acred_contract_def.deploy(10**6, oracle.address, false_transfer_from_erc20.address)
+    acred = acred_contract_def.deploy(10**6, oracle_acred_usdc.address, false_transfer_from_erc20.address)
 
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, acred.address, sender=owner)

@@ -406,3 +406,239 @@ NOTE: The access control deletion mutations (L104, L128, L183, L197, L211) repre
 ### Session 3 -- Semantically Equivalent
 - L131: `success: bool = False` -> `success: bool = True` -- initial value is immediately overwritten by raw_call
 - L138: `revert_on_failure=False` -> `True` -- doesn't compile (type mismatch)
+
+
+---
+
+# Mutation Testing Results -- P2PLendingSecuritizeErc20.vy & P2PLendingSecuritizeBase.vy
+
+## Summary
+- Mutations tested: 43
+- Killed (by existing tests): 30
+- Surviving (meaningful): 10
+- Fixed (new tests written): 9
+- Semantically equivalent: 5
+
+## Surviving Mutations
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:568` -- `<` changed to `<=` in initial LTV too high check
+  - Original: `assert (BPS + base.partial_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"`
+  - Mutated: `assert (BPS + base.partial_liquidation_fee) * max_initial_ltv <= BPS * BPS, "initial ltv too high"`
+  - Impact: Allows loans where `(1 + fee) * iltv == 1`, which breaks partial liquidation math (division by zero)
+  - Test: `test_create_loan_reverts_if_initial_ltv_too_high_exact_boundary` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:553` -- `<=` changed to `<` in min collateral check
+  - Original: `assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"`
+  - Mutated: `assert offer.offer.min_collateral_amount < collateral_amount, "low collateral amount"`
+  - Impact: Rejects loans where collateral exactly equals the minimum specified in the offer
+  - Test: `test_create_loan_succeeds_when_min_collateral_equals_collateral` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:554` -- `<=` changed to `<` in origination fee check
+  - Original: `assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"`
+  - Mutated: `assert offer.offer.origination_fee_bps < BPS, "origination fee gt principal"`
+  - Impact: Rejects valid offers with 100% origination fee (origination_fee_bps == BPS)
+  - Test: `test_create_loan_succeeds_with_origination_fee_equal_to_bps` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeBase.vy:472` -- `>` changed to `>=` in loan defaulted check
+  - Original: `return block.timestamp > loan.maturity`
+  - Mutated: `return block.timestamp >= loan.maturity`
+  - Impact: Loan considered defaulted at exact maturity, preventing settlement at the deadline
+  - Test: `test_settle_loan_succeeds_at_exact_maturity` in test_settle.py -- VERIFIED
+
+- [x] **[variable_swap]** `P2PLendingSecuritizeErc20.vy:670` -- `loan.amount` to `loan.initial_amount` in reduce_commited_liquidity
+  - Original: `base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)`
+  - Mutated: `base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.initial_amount)`
+  - Impact: After partial liquidation, wrong liquidity amount freed (initial_amount > amount)
+  - Test: `test_settle_loan_with_modified_amount_updates_commited_liquidity_correctly` in test_settle.py -- VERIFIED
+
+- [x] **[variable_swap]** `P2PLendingSecuritizeBase.vy:361` -- `accrual_start_time` to `start_time` in interest calc
+  - Original: `return loan.amount * loan.apr * (block.timestamp - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)`
+  - Mutated: `return loan.amount * loan.apr * (block.timestamp - loan.start_time) // (BPS * YEAR_TO_SECONDS)`
+  - Impact: After partial liquidation, interest calculated from loan start instead of last accrual reset -- double-charging interest
+  - Test: `test_settle_loan_interest_uses_accrual_start_time_not_start_time` in test_settle.py -- VERIFIED
+
+- [x] **[assertion_deletion]** `P2PLendingSecuritizeBase.vy:417` -- delete `assert offer.offer.call_eligibility == 0`
+  - Original: `assert offer.offer.call_eligibility == 0, "call eligibility not supported"`
+  - Mutated: (line deleted)
+  - Impact: Securitize contracts don't support callable loans, but without this check, offers with call_eligibility > 0 would be accepted
+  - Test: `test_create_loan_reverts_if_call_eligibility_not_zero` in test_create.py -- VERIFIED
+
+- [x] **[assertion_deletion]** `P2PLendingSecuritizeBase.vy:418` -- delete `assert offer.offer.call_window == 0`
+  - Original: `assert offer.offer.call_window == 0, "call window not supported"`
+  - Mutated: (line deleted)
+  - Impact: Securitize contracts don't support callable loans, but without this check, offers with call_window > 0 would be accepted
+  - Test: `test_create_loan_reverts_if_call_window_not_zero` in test_create.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeBase.vy:494` -- `<` changed to `<=` in redeem_result timestamp check
+  - Original: `if redeem_result.result.timestamp < loan.redeem_start:`
+  - Mutated: `if redeem_result.result.timestamp <= loan.redeem_start:`
+  - Impact: Redeem result at exact redeem_start timestamp would be rejected, requiring timestamp > redeem_start
+  - Test: `test_settle_redeemed_loan_with_exact_timestamp_at_redeem_start` in test_settle.py -- VERIFIED
+
+- [x] **[comparison_swap]** `P2PLendingSecuritizeErc20.vy:848` -- `>=` changed to `>` in remove_collateral initial_ltv check
+  - Original: `assert loan.initial_ltv >= new_ltv, "ltv gt initial ltv"`
+  - Mutated: `assert loan.initial_ltv > new_ltv, "ltv gt initial ltv"`
+  - Impact: Cannot remove collateral when resulting LTV exactly equals initial LTV
+  - Test: `test_remove_collateral_from_loan_succeeds_at_exact_initial_ltv` in test_remove_collateral.py -- VERIFIED
+
+- [x] **[variable_swap]** `P2PLendingSecuritizeErc20.vy:778` -- wrong collateral in new_ltv calc in add_collateral (event only)
+  - Original: `new_ltv: uint256 = self._compute_ltv(loan.collateral_amount + collateral_amount, outstanding_debt, convertion_rate)`
+  - Mutated: `new_ltv: uint256 = self._compute_ltv(loan.collateral_amount, outstanding_debt, convertion_rate)`
+  - Impact: LoanCollateralAdded event logs incorrect new_ltv (old ltv instead of new)
+  - Test: `test_add_collateral_event_new_ltv_reflects_added_collateral` in test_add_collateral.py -- VERIFIED
+
+## Semantically Equivalent Mutations
+- Mutations 8/14: removing `if X > 0:` guard before `_transfer_funds`/`_send_funds` -- the underlying functions already handle zero amounts
+- Mutation 31: `> to >=` in `_reduce_commited_liquidity` -- when `amount == committed`, both paths yield 0
+- `P2PLendingSecuritizeErc20.vy:679`: `< 0` to `<= 0` in borrower_funds_delta -- when delta==0, `_receive_funds(borrower, 0)` calls `transferFrom(borrower, self, 0)` which is a no-op for standard ERC20s
+- `P2PLendingSecuritizeErc20.vy:681`: `> 0` to `>= 0` in borrower_funds_delta surplus -- when delta==0, `_send_funds(borrower, 0)` hits the zero guard and returns immediately
+
+## Killed Mutations (30 total)
+- create_loan: initial_ltv <= to < (killed), liquidation_ltv > to >= (killed), loan.borrower/lender swaps (killed), loan already exists deletion (killed), collateral_token/payment_token swap (killed), origination fee removal (killed)
+- settle_loan: lender payment without fee deduction (killed), collateral to wrong party (killed), reduce_commited_liquidity wrong party (killed), wrong collateral amount (killed)
+- redeem: residual_collateral boundary (killed), wrong recipient (killed), wrong amount (killed)
+- Base: _check_user proxy removal (killed), and->or swap (killed), oracle >= 0 (killed), _send_funds inversion (killed), _send_funds or->and (killed), liquidity +/- swap (killed), set_transfer_agent or->and (killed), _is_loan_redeemed >= 0 (killed), _get_redeem_balances >= to > (killed)
+- config: revoke_offer expiration (killed), claim_pending_transfers reset (killed)
+
+---
+
+# Mutation Testing Results -- P2PLendingVault.vy
+
+## Summary
+- Mutations tested: 33
+- Killed (by existing tests): 10
+- Surviving (found): 22 (17 business logic + 5 event)
+- Semantically equivalent: 1 (M1: field_swap in initialise guard)
+- Fixed (killed by new tests): 21
+
+## Surviving Mutations -- Business Logic (all fixed)
+
+- [x] **[assignment_swap]** `P2PLendingVault.vy:72` -- `self.caller = msg.sender` changed to `self.caller = _owner`
+  - Original: `self.caller = msg.sender`
+  - Mutated: `self.caller = _owner`
+  - Impact: Vault caller set to borrower instead of lending contract, breaking authorization model
+  - Test: `test_initialise_sets_caller_to_msg_sender_not_owner` -- VERIFIED
+
+- [x] **[assignment_swap]** `P2PLendingVault.vy:73` -- `self.owner = _owner` changed to `self.owner = msg.sender`
+  - Original: `self.owner = _owner`
+  - Mutated: `self.owner = msg.sender`
+  - Impact: Vault owner set to lending contract instead of borrower
+  - Test: `test_initialise_sets_owner_to_param_not_msg_sender` -- VERIFIED
+
+- [x] **[assert_deletion]** `P2PLendingVault.vy:70` -- delete initialise guard assert
+  - Original: `assert self.caller == empty(address), "already initialised"`
+  - Mutated: (line deleted)
+  - Impact: Allows re-initialization of already-initialized vaults, enabling hijacking
+  - Test: `test_initialise_reverts_if_already_initialised` -- VERIFIED
+
+- [x] **[assert_deletion]** `P2PLendingVault.vy:86` -- delete deposit auth assert
+  - Original: `assert msg.sender == self.caller, "unauthorized"`
+  - Mutated: (line deleted)
+  - Impact: Anyone can call deposit on any vault
+  - Test: `test_deposit_reverts_if_not_caller` -- VERIFIED
+
+- [x] **[boundary_comparison]** `P2PLendingVault.vy:89` -- `>=` changed to `>` in deposit full-pending branch
+  - Original: `if pending >= amount:`
+  - Mutated: `if pending > amount:`
+  - Impact: When pending == amount exactly, falls to elif branch causing unnecessary transferFrom
+  - Test: `test_deposit_with_pending_equals_amount` -- VERIFIED
+
+- [x] **[boundary_value]** `P2PLendingVault.vy:93` -- `pending > 0` changed to `pending > 1`
+  - Original: `elif pending > 0:`
+  - Mutated: `elif pending > 1:`
+  - Impact: When pending == 1, falls through to else branch, ignoring 1 wei of pending
+  - Test: `test_deposit_pending_equals_one_takes_partial_path` -- VERIFIED
+
+- [x] **[assert_deletion]** `P2PLendingVault.vy:111` -- delete withdraw auth assert
+  - Original: `assert msg.sender == self.caller, "unauthorized"`
+  - Mutated: (line deleted)
+  - Impact: Anyone can call withdraw on any vault
+  - Test: `test_withdraw_reverts_if_not_caller` -- VERIFIED
+
+- [x] **[arithmetic_swap]** `P2PLendingVault.vy:112` -- `+` changed to `-` in withdraw balance check
+  - Original: `assert amount + self.pending_transfers_total <= ...`
+  - Mutated: `assert amount - self.pending_transfers_total <= ...`
+  - Impact: Withdraw balance check weakened -- allows over-withdrawal when pending > 0
+  - Test: `test_withdraw_reverts_when_amount_plus_pending_exceeds_balance` -- VERIFIED
+
+- [x] **[assert_deletion]** `P2PLendingVault.vy:112` -- delete withdraw balance check
+  - Original: `assert amount + self.pending_transfers_total <= staticcall IERC20(self.token).balanceOf(self), "insufficient balance"`
+  - Mutated: (line deleted)
+  - Impact: Removes balance validation, allows withdraw attempts exceeding vault balance
+  - Test: `test_withdraw_reverts_when_amount_plus_pending_exceeds_balance` -- VERIFIED
+
+- [x] **[boolean_inversion]** `P2PLendingVault.vy:124` -- `not success` changed to `success` in withdraw failure check
+  - Original: `if not success or not convert(response, bool):`
+  - Mutated: `if success or not convert(response, bool):`
+  - Impact: When transfer succeeds, still enters failure branch (creates pending + doesn't emit Withdraw)
+  - Test: `test_withdraw_success_transfers_tokens` -- VERIFIED
+
+- [x] **[assignment_operator]** `P2PLendingVault.vy:126` -- `+=` changed to `=` in pending accumulation
+  - Original: `self.pending_transfers[wallet] += amount`
+  - Mutated: `self.pending_transfers[wallet] = amount`
+  - Impact: Multiple failed withdrawals to same wallet lose previously accumulated pending
+  - Test: `test_withdraw_multiple_failures_accumulate_pending` -- VERIFIED
+
+- [x] **[assignment_operator]** `P2PLendingVault.vy:127` -- `+=` changed to `=` in pending_total accumulation
+  - Original: `self.pending_transfers_total += amount`
+  - Mutated: `self.pending_transfers_total = amount`
+  - Impact: Multiple failed withdrawals lose total tracking
+  - Test: `test_withdraw_multiple_failures_accumulate_pending` -- VERIFIED
+
+- [x] **[boundary_comparison]** `P2PLendingVault.vy:139` -- `>=` changed to `>` in withdraw_pending amount check
+  - Original: `assert self.pending_transfers[msg.sender] >= amount`
+  - Mutated: `assert self.pending_transfers[msg.sender] > amount`
+  - Impact: Cannot withdraw exact full pending amount
+  - Test: `test_withdraw_pending_exact_full_amount` -- VERIFIED
+
+- [x] **[param_swap]** `P2PLendingVault.vy:119` -- abi_encode parameter swap in withdraw raw_call
+  - Original: `abi_encode(wallet, amount, method_id=...)`
+  - Mutated: `abi_encode(amount, wallet, method_id=...)`
+  - Impact: Garbled transfer call -- sends to address(amount) for wallet tokens
+  - Test: `test_withdraw_success_transfers_tokens` -- VERIFIED
+
+- [x] **[assert_removal]** `P2PLendingVault.vy:97` -- remove assert on transferFrom in deposit elif branch
+  - Original: `assert extcall IERC20(self.token).transferFrom(wallet, self, amount - pending), "transferFrom failed"`
+  - Mutated: `extcall IERC20(self.token).transferFrom(wallet, self, amount - pending)`
+  - Impact: If transferFrom returns False, deposit silently succeeds without receiving tokens
+  - Test: `test_deposit_partial_pending_reverts_if_transferfrom_returns_false` -- VERIFIED
+
+- [x] **[assert_removal]** `P2PLendingVault.vy:99` -- remove assert on transferFrom in deposit else branch
+  - Original: `assert extcall IERC20(self.token).transferFrom(wallet, self, amount), "transferFrom failed"`
+  - Mutated: `extcall IERC20(self.token).transferFrom(wallet, self, amount)`
+  - Impact: Same -- deposit silently succeeds without receiving tokens
+  - Test: `test_deposit_no_pending_reverts_if_transferfrom_returns_false` -- VERIFIED
+
+- [x] **[assert_removal]** `P2PLendingVault.vy:142` -- remove assert on transfer in withdraw_pending
+  - Original: `assert extcall IERC20(self.token).transfer(msg.sender, amount), "transfer failed"`
+  - Mutated: `extcall IERC20(self.token).transfer(msg.sender, amount)`
+  - Impact: If transfer returns False, withdraw_pending silently succeeds while decrementing accounting
+  - Test: `test_withdraw_pending_reverts_if_transfer_returns_false` -- VERIFIED
+
+## Surviving Mutations -- Events (all fixed)
+
+- [x] **[event_deletion]** `P2PLendingVault.vy:92` -- delete `log WithdrawPending` in deposit if branch
+  - Test: `test_deposit_full_pending_emits_withdraw_pending_event` -- VERIFIED
+- [x] **[event_deletion]** `P2PLendingVault.vy:100` -- delete `log Deposit`
+  - Test: `test_deposit_emits_deposit_event` -- VERIFIED
+- [x] **[event_deletion]** `P2PLendingVault.vy:125` -- delete `log TransferFailed` in withdraw failure
+  - Test: `test_withdraw_failure_emits_transfer_failed_event` -- VERIFIED
+- [x] **[event_deletion]** `P2PLendingVault.vy:129` -- delete `log Withdraw` in withdraw success
+  - Test: `test_withdraw_success_emits_withdraw_event` -- VERIFIED
+- [x] **[event_deletion]** `P2PLendingVault.vy:143` -- delete `log WithdrawPending` in withdraw_pending
+  - Test: `test_withdraw_pending_emits_withdraw_pending_event` -- VERIFIED
+
+## Semantically Equivalent
+- M1 (L70): `self.caller == empty(address)` -> `self.owner == empty(address)` -- both fields are set during initialise, so checking either one for re-initialization is functionally equivalent. The only difference would occur if _owner is address(0), a contrived scenario.
+
+## Killed Mutations (10, by pre-existing tests)
+- L90: `pending - amount` -> `0` (killed by test_deposit_with_pending_covers_full_amount)
+- L95: `0` -> `amount` in elif pending clear (killed by test_deposit_with_partial_pending)
+- L124: `or` -> `and` in failure check (killed by test_withdraw_creates_pending_on_transfer_failure)
+- L126: `wallet` -> `msg.sender` target swap (killed by test_withdraw_creates_pending_on_transfer_failure)
+- L142: transfer amount `amount` -> `0` (killed by test_withdraw_pending)
+- L142: `msg.sender` -> `self.owner` recipient (killed by test_withdraw_pending)
+- L142: `self.token` -> `self.caller` token swap (killed by test_withdraw_pending)
+- L74: `_token` -> `_owner` (killed by test_deposit_with_partial_pending)
+- L94: `pending` -> `amount` in total decrement (killed by underflow)
+- L91: `pending_transfers_total -= amount` -> `pending_transfers_total -= pending` (would be killed similarly)

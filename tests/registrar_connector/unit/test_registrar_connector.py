@@ -1,6 +1,8 @@
 import boa
 import pytest
 
+from tests.p2p_erc20_securitize.conftest_base import get_calls
+
 ZERO_ADDRESS = boa.eval("empty(address)")
 
 
@@ -102,3 +104,34 @@ def test_register_vault_from_securitize(connector, p2p_securitize, vault_registr
     connector.register_vault(vault_addr, borrower, sender=p2p_securitize.address)
 
     assert vault_registrar.isRegistered(vault_addr, borrower) is True
+
+
+def test_change_authorized_contracts_event_deauthorize(connector_def, vault_registrar, p2p_vaulted, owner):
+    """Verify ContractAuthorizationChanged event emits authorized=False when deauthorizing."""
+    c = connector_def.deploy(vault_registrar.address)
+    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
+
+    # Clear logs from the authorize call, then deauthorize
+    c.get_logs()
+    c.change_authorized_contract(p2p_vaulted.address, False, sender=owner)
+
+    events = c.get_logs()
+    assert len(events) == 1
+    event = events[0]
+    assert event.contract_address == p2p_vaulted.address
+    assert event.authorized is False
+
+
+def test_register_vault_skips_if_already_registered(connector, p2p_vaulted, vault_registrar):
+    """Verify register_vault does not call registerVault when vault is already registered."""
+    borrower = boa.env.generate_address("borrower_double_reg")
+    vault_addr = p2p_vaulted.wallet_to_vault(borrower)
+
+    # First registration should succeed
+    connector.register_vault(vault_addr, borrower, sender=p2p_vaulted.address)
+    assert vault_registrar.isRegistered(vault_addr, borrower) is True
+
+    # Second registration should be a no-op (guard skips registerVault)
+    connector.register_vault(vault_addr, borrower, sender=p2p_vaulted.address)
+    register_calls = get_calls(connector, "registerVault(address,address)", ["address", "address"])
+    assert register_calls == [], f"expected no registerVault sub-call, got {register_calls}"

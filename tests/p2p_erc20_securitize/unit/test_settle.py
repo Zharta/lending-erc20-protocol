@@ -673,3 +673,134 @@ def test_settle_redeemed_loan_logs_event(
     # No collateral remaining since all was redeemed (residual_collateral=0, collateral_redeemed=0)
     # in_vault_collateral = loan.redeem_residual_collateral + redeem_result.collateral_redeemed = 0
     assert event.in_vault_collateral == 0
+
+
+# ============================================================================
+# MUTATION TESTING: boundary and variable coverage
+# ============================================================================
+
+
+def test_settle_loan_succeeds_at_exact_maturity(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now):
+    """Mutation kill: _is_loan_defaulted > to >= (Base line 472).
+    Settling at exactly maturity should succeed (loan is NOT defaulted)."""
+    loan = ongoing_loan_usdc_weth
+    time_to_maturity = loan.maturity - now
+    boa.env.time_travel(seconds=time_to_maturity)
+
+    interest = loan.get_interest(loan.maturity)
+    amount_to_settle = loan.amount + interest
+
+    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
+    p2p_usdc_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
+
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+
+
+def test_settle_redeemed_loan_with_exact_timestamp_at_redeem_start(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, borrower, owner_key, now, protocol_fees
+):
+    """Mutation kill: redeem_result.timestamp < to <= loan.redeem_start (Base line 494).
+    A redeem result with timestamp exactly equal to redeem_start should be accepted."""
+    loan = ongoing_loan_usdc_weth
+
+    p2p_usdc_weth.redeem(loan, 0, sender=loan.borrower)
+    redeem_time = boa.env.evm.patch.timestamp
+
+    redeemed_loan = replace_namedtuple_field(loan, redeem_start=redeem_time, redeem_residual_collateral=0)
+
+    vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
+    payment_redeemed = loan.amount + loan.amount
+    usdc.mint(vault_addr, payment_redeemed)
+
+    # Use timestamp == redeem_start (exact boundary)
+    redeem_result = RedeemResult(
+        vault=vault_addr,
+        collateral_redeemed=0,
+        payment_redeemed=payment_redeemed,
+        timestamp=redeem_time,  # exact boundary, not redeem_time + 1
+    )
+    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
+
+    usdc.approve(p2p_usdc_weth.address, loan.amount * 2, sender=loan.borrower)
+    p2p_usdc_weth.settle_loan(redeemed_loan, signed_redeem_result, sender=loan.borrower)
+
+    assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
+
+
+def test_settle_loan_with_modified_amount_updates_commited_liquidity_correctly(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now
+):
+    """Mutation kill: loan.amount vs loan.initial_amount in _reduce_commited_liquidity (line 670).
+    After modifying loan.amount (simulating partial liquidation), committed liquidity
+    should be reduced by loan.amount, not loan.initial_amount."""
+    loan = ongoing_loan_usdc_weth
+
+    # Simulate partial liquidation by reducing loan.amount but keeping initial_amount
+    reduced_amount = loan.amount // 2  # half of principal
+    modified_loan = replace_namedtuple_field(loan, amount=reduced_amount)
+
+    # Update the loan hash in the contract using hex-encoded bytes32
+    new_hash = compute_securitize_loan_hash(modified_loan)
+    loan_id_hex = "0x" + modified_loan.id.hex()
+    hash_hex = "0x" + new_hash.hex()
+    p2p_usdc_weth.eval(f"base.loans[{loan_id_hex}] = {hash_hex}")
+    # Verify the modified loan is valid
+    assert p2p_usdc_weth.loans(modified_loan.id) == new_hash
+
+    liquidity_key = compute_liquidity_key(loan.lender, loan.offer_tracing_id)
+    offer_liquidity_before = p2p_usdc_weth.commited_liquidity(liquidity_key)
+
+    interest = modified_loan.get_interest(now)
+    amount_to_settle = modified_loan.amount + interest
+    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=modified_loan.borrower)
+    p2p_usdc_weth.settle_loan(modified_loan, EMPTY_REDEEM_RESULT, sender=modified_loan.borrower)
+
+    # Committed liquidity should be reduced by loan.amount (reduced), not initial_amount
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == offer_liquidity_before - reduced_amount
+
+
+def test_settle_loan_interest_uses_accrual_start_time_not_start_time(
+    p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, now, protocol_fees
+):
+    """Mutation kill: accrual_start_time vs start_time in interest calc (Base line 361).
+    After setting accrual_start_time > start_time (simulating post-partial-liquidation),
+    interest should be computed from accrual_start_time."""
+    loan = ongoing_loan_usdc_weth
+
+    # Simulate partial liquidation having happened: advance time and set a later accrual_start_time
+    time_delta = 50
+    boa.env.time_travel(seconds=time_delta)
+    mid_time = now + time_delta
+
+    # Create a loan where accrual_start_time is mid_time (later than start_time)
+    modified_loan = replace_namedtuple_field(loan, accrual_start_time=mid_time)
+
+    # Update the loan hash in the contract using hex-encoded bytes32
+    new_hash = compute_securitize_loan_hash(modified_loan)
+    loan_id_hex = "0x" + modified_loan.id.hex()
+    hash_hex = "0x" + new_hash.hex()
+    p2p_usdc_weth.eval(f"base.loans[{loan_id_hex}] = {hash_hex}")
+    assert p2p_usdc_weth.loans(modified_loan.id) == new_hash
+
+    # Time travel more so interest accrues from accrual_start_time
+    boa.env.time_travel(seconds=time_delta)
+    settle_time = now + time_delta * 2
+
+    # Interest should be calculated from accrual_start_time (mid_time), not start_time (now)
+    expected_interest = modified_loan.apr * modified_loan.amount * (settle_time - mid_time) // (365 * 24 * 3600 * BPS)
+    wrong_interest = modified_loan.apr * modified_loan.amount * (settle_time - now) // (365 * 24 * 3600 * BPS)
+
+    assert expected_interest != wrong_interest  # precondition: values differ
+    assert expected_interest > 0  # precondition: non-zero interest
+
+    amount_to_settle = modified_loan.amount + expected_interest
+    protocol_fee_amount = expected_interest * modified_loan.protocol_settlement_fee // BPS
+
+    initial_lender_balance = usdc.balanceOf(modified_loan.lender)
+
+    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=modified_loan.borrower)
+    p2p_usdc_weth.settle_loan(modified_loan, EMPTY_REDEEM_RESULT, sender=modified_loan.borrower)
+
+    # Verify lender got the correct amount (based on accrual_start_time interest, not start_time)
+    expected_lender_payment = modified_loan.amount + expected_interest - protocol_fee_amount
+    assert usdc.balanceOf(modified_loan.lender) == initial_lender_balance + expected_lender_payment
