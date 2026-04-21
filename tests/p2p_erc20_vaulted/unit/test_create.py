@@ -592,18 +592,15 @@ def test_create_loan_reverts_if_liquidation_ltv_le_initial_ltv(
         p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
 
-def test_create_loan_reverts_if_initial_ltv_too_high(
+def test_create_loan_with_undercollateralized_ltv(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc, oracle, owner
 ):
-    # Set partial_liquidation_fee high enough so that (BPS + fee) * max_iltv >= BPS * BPS
     p2p_usdc_weth.set_partial_liquidation_fee(500, sender=owner)
 
     principal = 1000 * int(1e6)
     collateral_amount = int(1e18)
-    # We need (BPS + 500) * max_iltv >= BPS * BPS, i.e. max_iltv >= 10000*10000/10500 = 9523.8
-    # Use max_iltv = 9524 which satisfies (10500 * 9524 = 100,002,000 >= 100,000,000)
-    max_iltv = 9524
-    assert (BPS + 500) * max_iltv >= BPS * BPS  # precondition: the ltv is too high
+    max_iltv = 12000  # 120% LTV - truly undercollateralized
+    assert (BPS + 500) * max_iltv >= BPS * BPS  # precondition: undercollateralized
     offer = Offer(
         principal=principal,
         payment_token=p2p_usdc_weth.payment_token(),
@@ -611,15 +608,49 @@ def test_create_loan_reverts_if_initial_ltv_too_high(
         duration=100,
         min_collateral_amount=1,
         max_iltv=max_iltv,
-        liquidation_ltv=max_iltv + 1,  # must be > max_iltv to pass previous check
+        liquidation_ltv=max_iltv + 1,
         available_liquidity=principal,
         expiration=now + 100,
         lender=lender,
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
-    with boa.reverts("initial ltv too high"):
-        p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.deposit(value=principal, sender=lender)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    loan = Loan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=p2p_usdc_weth.oracle_addr(),
+        initial_ltv=max_iltv,
+        call_time=0,
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
 
 
 def test_create_loan_reverts_if_loan_already_exists(

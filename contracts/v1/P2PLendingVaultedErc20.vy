@@ -523,8 +523,6 @@ def create_loan(
 
     if offer.offer.liquidation_ltv > 0:
         assert offer.offer.liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
-        # required for soft liquidation: (1 + f) * iltv < 1
-        assert (BPS + base.partial_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
 
     offer_id: bytes32 = base._compute_signed_offer_id(offer)
     loan: base.Loan = base.Loan(

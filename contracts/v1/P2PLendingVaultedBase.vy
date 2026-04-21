@@ -376,6 +376,9 @@ def _compute_partial_liquidation(
         collateral_claimed: uint256 - the amount of collateral claimed
         liquidation_fee: uint256 - the liquidation fee
     """
+
+    if (BPS + partial_liquidation_fee) * initial_ltv >= BPS * BPS:
+        return max_value(uint256), max_value(uint256), max_value(uint256)
     collateral_value: uint256 = collateral_amount * convertion_rate.numerator * payment_token_decimals // (convertion_rate.denominator * collateral_token_decimals)
     principal_written_off: uint256 = (outstanding_debt * BPS - collateral_value * initial_ltv)  * BPS // (BPS * BPS - (BPS + partial_liquidation_fee) * initial_ltv)
     collateral_claimed: uint256 = principal_written_off * convertion_rate.denominator * collateral_token_decimals // (convertion_rate.numerator * payment_token_decimals)
