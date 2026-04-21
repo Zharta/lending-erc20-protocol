@@ -507,3 +507,80 @@ def test_simulate_partial_liquidation_reverts_if_oracle_answer_zero(p2p_usdc_wet
 
     with boa.reverts("invalid oracle rate"):
         p2p_usdc_weth.simulate_partial_liquidation(loan)
+
+
+def test_partially_liquidate_loan_reverts_if_undercollateralized(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc, oracle, protocol_fees
+):
+    max_iltv = 12000  # 120% LTV - truly undercollateralized
+    partial_liq_fee = p2p_usdc_weth.partial_liquidation_fee()
+    assert (BPS + partial_liq_fee) * max_iltv >= BPS * BPS
+
+    principal = 1000 * 10**6
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        min_collateral_amount=int(0.5e18),
+        max_iltv=max_iltv,
+        available_liquidity=principal,
+        call_eligibility=1 * DAY,
+        call_window=1 * DAY,
+        liquidation_ltv=max_iltv + 1,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=32 * b"\1",
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.deposit(value=lender_approval, sender=lender)
+    usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    loan = Loan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=max_iltv,
+        call_time=0,
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+
+    # Drop oracle price to trigger current_ltv >= liquidation_ltv
+    oracle.set_rate(oracle.rate() // 5, sender=oracle.owner())
+    current_ltv = calc_ltv(loan.amount, loan.collateral_amount, usdc, weth, oracle)
+    assert current_ltv >= loan.liquidation_ltv
+
+    with boa.reverts("written off ge debt"):
+        p2p_usdc_weth.partially_liquidate_loan(loan, sender=borrower)

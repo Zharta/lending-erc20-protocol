@@ -23,6 +23,7 @@ from web3 import Web3
 ZERO_ADDRESS = boa.eval("empty(address)")
 ZERO_BYTES32 = boa.eval("empty(bytes32)")
 BPS = 10000
+MAX_VALUE_UINT256 = 2**256 - 1
 
 
 def get_last_event(contract: VyperContract, name: str | None = None):
@@ -410,6 +411,9 @@ def calc_collateral_from_ltv(principal, ltv, principal_token, collateral_token, 
 
 
 def calc_partial_liquidation(loan, principal_token, collateral_token, oracle, timestamp, *, oracle_reverse=False):
+    if (BPS + loan.partial_liquidation_fee) * loan.initial_ltv >= BPS * BPS:
+        return MAX_VALUE_UINT256, MAX_VALUE_UINT256, MAX_VALUE_UINT256
+
     convertion_rate_numerator = oracle.latestRoundData().answer
     convertion_rate_denominator = 10 ** oracle.decimals()
     if oracle_reverse:
