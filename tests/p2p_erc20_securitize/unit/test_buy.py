@@ -139,7 +139,7 @@ def test_buy_succeeds_when_ds_token_equals_min(
     """
     oracle_1to1 = oracle_contract_def.deploy(1, 10)
     usdc_1to1 = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred_1to1 = acred_contract_def.deploy(10**6, oracle_1to1.address, usdc_1to1.address)
+    acred_1to1 = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle_1to1.address, usdc_1to1.address)
 
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, acred_1to1.address, sender=owner)
@@ -165,7 +165,7 @@ def test_buy_reverts_if_ds_token_below_min(
     """Validates that buy reverts when calculated ds_token_amount < min_ds_token_amount."""
     oracle_1to1 = oracle_contract_def.deploy(1, 10)
     usdc_1to1 = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred_1to1 = acred_contract_def.deploy(10**6, oracle_1to1.address, usdc_1to1.address)
+    acred_1to1 = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle_1to1.address, usdc_1to1.address)
 
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, acred_1to1.address, sender=owner)
@@ -197,7 +197,7 @@ def test_buy_credits_pending_to_owner_not_sender(
     # Set up fresh contracts with 1:1 oracle for simplicity
     oracle = oracle_contract_def.deploy(1, 10)
     usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy(10**6, oracle.address, usdc.address)
+    acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
 
     # Initialize vault: owner is 'owner' (the test EOA), caller is min_vault_manager
     vault = securitize_vault_contract_def.deploy()
@@ -428,7 +428,7 @@ def test_buy_refund_goes_to_caller_not_owner(
     # Set up fresh contracts with oracle rate 3/10 so swap consumes less than input
     oracle = oracle_contract_def.deploy(1, 3)
     usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy(10**6, oracle.address, usdc.address)
+    acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
 
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, acred.address, sender=min_vault_manager.address)

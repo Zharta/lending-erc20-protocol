@@ -91,16 +91,6 @@
             "properties": {},
             "properties_addresses": {}
         },
-        "oracle_acrdx_usd": {
-            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
-            "address": "0x4e47b3b2af70455c27AdC41f09A0694c4A73f263",
-            "contract": "Oracle",
-            "properties": {
-                "decimals": 8,
-                "rate": "102000000"
-            },
-            "properties_addresses": {}
-        },
         "oracle_acred_usd": {
             "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
             "address": "0x036611CaA5aDBF21C0699C9A30C5715adB2DC3BE",
@@ -139,6 +129,36 @@
             },
             "properties_addresses": {}
         },
+        "oracle_decrdx_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0x084B6a02c97D62C43e4096F3Efee82687Fa14581",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "102000000"
+            },
+            "properties_addresses": {}
+        },
+        "oracle_dejaaa_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0xbeFf09800a54Dd21c91B67a001c1375c0b8b0203",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "102700000"
+            },
+            "properties_addresses": {}
+        },
+        "oracle_dejtrsy_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0x7545441882933028B0aCFdde236c01575607C932",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "102700000"
+            },
+            "properties_addresses": {}
+        },
         "oracle_dummy": {
             "address": "0xA1550fc6198257c9f4B1CEA110d1Fc2b59557BE2",
             "contract": "Oracle",
@@ -157,23 +177,13 @@
             },
             "properties_addresses": {}
         },
-        "oracle_jaaa_usd": {
+        "oracle_mfone_usd": {
             "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
-            "address": "0xDb4a8C74EA795782A6674F9730305daA76F2084b",
+            "address": "0x1142576A3e90535673D2651cBE771a18F908BA6b",
             "contract": "Oracle",
             "properties": {
                 "decimals": 8,
-                "rate": "102700000"
-            },
-            "properties_addresses": {}
-        },
-        "oracle_jtrsy_usd": {
-            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
-            "address": "0xD0e4607b4174e6715cD65dEC350A70AcE30A4088",
-            "contract": "Oracle",
-            "properties": {
-                "decimals": 8,
-                "rate": "102700000"
+                "rate": "107000000"
             },
             "properties_addresses": {}
         },
@@ -265,41 +275,6 @@
     },
     "configs": {},
     "p2p": {
-        "usdc_acrdx_vaulted": {
-            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
-            "address": "0xEF39AA70273Eeb28479Ba2d98Fe5aC85a7A12c00",
-            "contract": "P2PLendingVaultedErc20",
-            "oracle_name": "Centrifuge Oracle: ACRDX / USD",
-            "properties": {
-                "collateral_token_key": "common.acrdx",
-                "full_liquidation_fee": 1000,
-                "kyc_validator_key": "common.kyc",
-                "liquidation_impl_key": "common.liquidation_vaulted_impl",
-                "max_protocol_settlement_fee": 1000,
-                "max_protocol_upfront_fee": 1000,
-                "oracle_key": "common.oracle_acrdx_usd",
-                "oracle_reverse": false,
-                "partial_liquidation_fee": 1000,
-                "payment_token_key": "common.usdc",
-                "protocol_settlement_fee": 0,
-                "protocol_upfront_fee": 0,
-                "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
-                "refinance_impl_key": "common.refinance_vaulted_impl",
-                "transfer_agent": "0x66aB6D9362d4F35596279692F0251Db635165871",
-                "vault_impl_key": "common.vault_impl"
-            },
-            "properties_addresses": {
-                "collateral_token": "0x22aFd3182521E01578EeE9579EfaBA949fC724d6",
-                "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
-                "liquidation_impl": "0x2d84AB2d91278A9559F51fB9F705f11d45Dc5d4B",
-                "oracle": "0x4e47b3b2af70455c27AdC41f09A0694c4A73f263",
-                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
-                "refinance_impl": "0x7F4B5c3980c46Db2B2cf6748977D6f321d032Af4",
-                "vault_impl": "0xc3E07Df8aDc87B129D6054c0F2403070313A6F58"
-            },
-            "token_symbol": "USDC",
-            "version": "1"
-        },
         "usdc_acred": {
             "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
             "address": "0x69A4c3B58BffB11A86Befe3f85C80Cb9a2D5B3f6",
@@ -474,19 +449,19 @@
             "token_symbol": "USDC",
             "version": "1"
         },
-        "usdc_jaaa_vaulted": {
+        "usdc_decrdx_vaulted": {
             "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
-            "address": "0xfd91AfD06Eb5099364AFB736092fBB340Ce5bb52",
+            "address": "0x76CE3889B7AdD25D7A9276Af029242FAa6e2984d",
             "contract": "P2PLendingVaultedErc20",
-            "oracle_name": "Centrifuge Oracle: JAAA / USD",
+            "oracle_name": "Centrifuge Oracle: deCRDX / USD",
             "properties": {
-                "collateral_token_key": "common.jaaa",
+                "collateral_token_key": "common.decrdx",
                 "full_liquidation_fee": 1000,
                 "kyc_validator_key": "common.kyc",
                 "liquidation_impl_key": "common.liquidation_vaulted_impl",
                 "max_protocol_settlement_fee": 1000,
                 "max_protocol_upfront_fee": 1000,
-                "oracle_key": "common.oracle_jaaa_usd",
+                "oracle_key": "common.oracle_decrdx_usd",
                 "oracle_reverse": false,
                 "partial_liquidation_fee": 1000,
                 "payment_token_key": "common.usdc",
@@ -498,10 +473,10 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0xDDE6AdfDd4577D4278C6CA1687185180212a398A",
+                "collateral_token": "0x0f10803507d4dfC47dA52C60E0130bE07a1263EE",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "liquidation_impl": "0x2d84AB2d91278A9559F51fB9F705f11d45Dc5d4B",
-                "oracle": "0xDb4a8C74EA795782A6674F9730305daA76F2084b",
+                "oracle": "0x084B6a02c97D62C43e4096F3Efee82687Fa14581",
                 "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
                 "refinance_impl": "0x7F4B5c3980c46Db2B2cf6748977D6f321d032Af4",
                 "vault_impl": "0xc3E07Df8aDc87B129D6054c0F2403070313A6F58"
@@ -509,19 +484,19 @@
             "token_symbol": "USDC",
             "version": "1"
         },
-        "usdc_jtrsy_vaulted": {
+        "usdc_dejaaa_vaulted": {
             "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
-            "address": "0x510e34bC58d703f2475B5cF56FE1652CC38e8382",
+            "address": "0xcFf3e49D8947D75Fa04115cFD3f9343c95956eb7",
             "contract": "P2PLendingVaultedErc20",
-            "oracle_name": "Centrifuge Oracle: JTRSY / USD",
+            "oracle_name": "Centrifuge Oracle: deJAAA / USD",
             "properties": {
-                "collateral_token_key": "common.jtrsy",
+                "collateral_token_key": "common.dejaaa",
                 "full_liquidation_fee": 1000,
                 "kyc_validator_key": "common.kyc",
                 "liquidation_impl_key": "common.liquidation_vaulted_impl",
                 "max_protocol_settlement_fee": 1000,
                 "max_protocol_upfront_fee": 1000,
-                "oracle_key": "common.oracle_jtrsy_usd",
+                "oracle_key": "common.oracle_dejaaa_usd",
                 "oracle_reverse": false,
                 "partial_liquidation_fee": 1000,
                 "payment_token_key": "common.usdc",
@@ -533,10 +508,80 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0x6785b8A7BBf4e15A6F0f8EB5e1B69E03AEb575f8",
+                "collateral_token": "0x435bca473a345750F5A9F28bBf8529Ddf8D70a3F",
                 "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
                 "liquidation_impl": "0x2d84AB2d91278A9559F51fB9F705f11d45Dc5d4B",
-                "oracle": "0xD0e4607b4174e6715cD65dEC350A70AcE30A4088",
+                "oracle": "0xbeFf09800a54Dd21c91B67a001c1375c0b8b0203",
+                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
+                "refinance_impl": "0x7F4B5c3980c46Db2B2cf6748977D6f321d032Af4",
+                "vault_impl": "0xc3E07Df8aDc87B129D6054c0F2403070313A6F58"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_dejtrsy_vaulted": {
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0x502940807b9b9d24F1f19567179c63ad68Cd8AeF",
+            "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Centrifuge Oracle: deJTRSY / USD",
+            "properties": {
+                "collateral_token_key": "common.dejtrsy",
+                "full_liquidation_fee": 1000,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_vaulted_impl",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_dejtrsy_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 1000,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "refinance_impl_key": "common.refinance_vaulted_impl",
+                "transfer_agent": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "vault_impl_key": "common.vault_impl"
+            },
+            "properties_addresses": {
+                "collateral_token": "0xdAAA43316A1a36893f58e3D0d15a7EBac8911E77",
+                "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
+                "liquidation_impl": "0x2d84AB2d91278A9559F51fB9F705f11d45Dc5d4B",
+                "oracle": "0x7545441882933028B0aCFdde236c01575607C932",
+                "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
+                "refinance_impl": "0x7F4B5c3980c46Db2B2cf6748977D6f321d032Af4",
+                "vault_impl": "0xc3E07Df8aDc87B129D6054c0F2403070313A6F58"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_mfone_vaulted": {
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0xAaB429Fe3D81a791c2282426Ea25339FacFBa6F0",
+            "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: mF-ONE / USD",
+            "properties": {
+                "collateral_token_key": "common.mf-one",
+                "full_liquidation_fee": 1000,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_vaulted_impl",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_mfone_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 1000,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "refinance_impl_key": "common.refinance_vaulted_impl",
+                "transfer_agent": "0x66aB6D9362d4F35596279692F0251Db635165871",
+                "vault_impl_key": "common.vault_impl"
+            },
+            "properties_addresses": {
+                "collateral_token": "0xCD7E032d00c3A510FcE1910F4CcdE5851BF77805",
+                "kyc_validator": "0xb35a834B53C64c00b12A4Dd6E07C9d674Fc7906F",
+                "liquidation_impl": "0x2d84AB2d91278A9559F51fB9F705f11d45Dc5d4B",
+                "oracle": "0x1142576A3e90535673D2651cBE771a18F908BA6b",
                 "payment_token": "0x77BE703d950f6B84c679a2AB519f736174E63883",
                 "refinance_impl": "0x7F4B5c3980c46Db2B2cf6748977D6f321d032Af4",
                 "vault_impl": "0xc3E07Df8aDc87B129D6054c0F2403070313A6F58"

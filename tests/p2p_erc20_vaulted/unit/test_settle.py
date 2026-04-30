@@ -420,3 +420,82 @@ def test_claim_pending_transfers_reverts_if_no_pending(p2p_usdc_weth, usdc):
 
     with boa.reverts("no pending transfers"):
         p2p_usdc_weth.claim_pending_transfers(sender=user)
+
+
+def test_settle_loan_works_on_undercollateralized_loans(
+    p2p_usdc_weth, usdc, weth, borrower, lender, lender_key, oracle, now, protocol_fees, kyc_borrower, kyc_lender
+):
+    principal = 1000 * 10**6
+    collateral_amount = 2 * 10**17  # 0.2 WETH, worth ~775 USDC at oracle rate => LTV > 100%
+
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=100,
+        min_collateral_amount=collateral_amount,
+        max_iltv=0,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    # precondition: verify the loan is undercollateralized (LTV > BPS)
+    initial_ltv = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
+    assert initial_ltv > BPS, f"expected undercollateralized loan (LTV > {BPS}), got {initial_ltv}"
+
+    lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.deposit(value=lender_approval, sender=lender)
+    usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    loan = Loan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_token=offer.collateral_token,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=initial_ltv,
+        call_time=0,
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+
+    # settle the undercollateralized loan
+    interest = loan.amount * loan.apr * (now - loan.accrual_start_time) // (86400 * BPS)
+    amount_to_settle = loan.amount + interest
+
+    usdc.approve(p2p_usdc_weth.address, amount_to_settle, sender=loan.borrower)
+    p2p_usdc_weth.settle_loan(loan, sender=loan.borrower)
+
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32
+    assert weth.balanceOf(p2p_usdc_weth.wallet_to_vault(borrower)) == 0

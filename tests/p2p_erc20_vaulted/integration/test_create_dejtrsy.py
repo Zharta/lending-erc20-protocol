@@ -1,7 +1,8 @@
 """
-Integration tests for P2PLendingVaultedErc20 with JTRSY token.
-These tests use the actual JTRSY token on mainnet fork.
-Oracle: CentrifugeOracleAdapter wrapping the Centrifuge Spoke for JTRSY price feed.
+Integration tests for P2PLendingVaultedErc20 with deJTRSY token (Centrifuge deRWA wrapper).
+These tests use the actual deJTRSY token on mainnet fork.
+Oracle: CentrifugeOracleAdapter wrapping the Centrifuge Spoke for deJTRSY price feed.
+deJTRSY is a freely transferable wrapper around the restricted JTRSY token.
 """
 
 import boa
@@ -21,46 +22,48 @@ from ..conftest_base import (
 
 BPS = 10000
 
+# deJTRSY is a freely transferable wrapper — no transfer restrictions / whitelisting needed.
+# The Centrifuge Spoke resolves the price via shareTokenDetails(deJTRSY_address) directly.
+DEJTRSY_ADDRESS = "0xA6233014B9b7aaa74f38fa1977ffC7A89642dC72"
+DEJTRSY_HOLDER = "0xB9d62d9DD99635370C2eAc9fBFDD8163956afe0c"
+CENTRIFUGE_SPOKE = "0xEC3582fcDc34078a4B7a8c75a5a3AE46f48525aB"
+
 
 @pytest.fixture
-def jtrsy(owner, accounts, erc20_contract_def):
-    return erc20_contract_def.at("0x8c213ee79581Ff4984583C6a801e5263418C4b86")
+def dejtrsy(owner, accounts, erc20_contract_def):
+    return erc20_contract_def.at(DEJTRSY_ADDRESS)
 
 
 @pytest.fixture
 def centrifuge_spoke():
-    return "0xEC3582fcDc34078a4B7a8c75a5a3AE46f48525aB"
+    return CENTRIFUGE_SPOKE
 
 
 @pytest.fixture
-def oracle_jtrsy_usd(centrifuge_oracle_adapter_contract_def, jtrsy, owner, centrifuge_spoke):
-    return centrifuge_oracle_adapter_contract_def.deploy(centrifuge_spoke, jtrsy.address)
+def oracle_dejtrsy_usd(centrifuge_oracle_adapter_contract_def, owner, centrifuge_spoke):
+    # Deploy CentrifugeOracleAdapter with the deJTRSY token address as the asset.
+    # The Spoke resolves poolId/scId via shareTokenDetails(deJTRSY_address).
+    return centrifuge_oracle_adapter_contract_def.deploy(centrifuge_spoke, DEJTRSY_ADDRESS)
 
 
 @pytest.fixture
-def centrifuge_full_restrictions():
-    contract_def = boa.load_abi("contracts/auxiliary/CentrifugeFullRestrictions_abi.json")
-    return contract_def.at("0x8E680873b4C77e6088b4Ba0aBD59d100c3D224a4")
-
-
-@pytest.fixture
-def p2p_usdc_jtrsy(
+def p2p_usdc_dejtrsy(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
     p2p_liquidation,
     vault_impl,
     usdc,
-    jtrsy,
-    oracle_jtrsy_usd,
+    dejtrsy,
+    oracle_dejtrsy_usd,
     kyc_validator_contract,
     owner,
     transfer_agent,
 ):
     return p2p_lending_erc20_contract_def.deploy(
         usdc,
-        jtrsy,
-        oracle_jtrsy_usd,
-        False,  # oracle_reverse (JTRSY/USD oracle is not reversed)
+        dejtrsy,
+        oracle_dejtrsy_usd,
+        False,  # oracle_reverse (deJTRSY/USD oracle is not reversed)
         kyc_validator_contract,
         0,  # protocol_upfront_fee
         0,  # protocol_settlement_fee
@@ -83,48 +86,54 @@ def lender_funds(lender, usdc, owner):
 
 
 @pytest.fixture
-def sec_borrower(jtrsy, p2p_usdc_jtrsy, centrifuge_full_restrictions, now, centrifuge_spoke):
-    holder = "0x491EDFB0B8b608044e227225C715981a30F3A44E"
+def de_borrower(dejtrsy):
+    """Transfer deJTRSY tokens from a known holder to a fresh borrower address.
+    No whitelisting needed — deJTRSY is freely transferable.
+    deJTRSY has 18 decimals."""
     borrower = boa.env.generate_address("borrwer")
-
-    # Whitelist borrower in Centrifuge FullRestrictions before transferring
-    centrifuge_full_restrictions.updateMember(jtrsy.address, borrower, 2**64 - 1, sender=centrifuge_spoke)
-    jtrsy.transfer(borrower, 10000 * int(1e6), sender=holder)
-
-    # Also whitelist the vault that will hold collateral
-    vault_addr = p2p_usdc_jtrsy.wallet_to_vault(borrower)
-    centrifuge_full_restrictions.updateMember(jtrsy.address, vault_addr, 2**64 - 1, sender=centrifuge_spoke)
-
+    dejtrsy.transfer(borrower, 10000 * int(1e18), sender=DEJTRSY_HOLDER)
     return borrower
 
 
+def test_oracle_data(oracle_dejtrsy_usd, p2p_usdc_dejtrsy):
+    answer = oracle_dejtrsy_usd.latestRoundData()[1]
+
+    assert oracle_dejtrsy_usd.address == p2p_usdc_dejtrsy.oracle_addr()
+    assert oracle_dejtrsy_usd.decimals() == 18
+
+    # Must change if fork block changes.
+    min_price = 1022 * 10**15
+    max_price = 1023 * 10**15
+    assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
+
+
 def test_create_loan(
-    p2p_usdc_jtrsy,
-    sec_borrower,
+    p2p_usdc_dejtrsy,
+    de_borrower,
     lender,
     lender_key,
     now,
     kyc_for,
     kyc_validator_contract,
-    jtrsy,
+    dejtrsy,
     usdc,
-    oracle_jtrsy_usd,
+    oracle_dejtrsy_usd,
 ):
-    borrower = sec_borrower
+    borrower = de_borrower
     # Generate KYC for the actual borrower and lender
     kyc_borrower = kyc_for(borrower, kyc_validator_contract.address)
     kyc_lender = kyc_for(lender, kyc_validator_contract.address)
 
-    # The borrower already has JTRSY (sec_borrower transferred tokens)
+    # The borrower already has deJTRSY (de_borrower transferred tokens)
     boa.env.set_balance(borrower, 10**21)
 
-    collateral_amount = 200 * int(1e6)  # 200 JTRSY
+    collateral_amount = 200 * int(1e18)  # 200 deJTRSY (18 decimals)
     principal = 100 * int(1e6)  # 100 USDC
 
     offer = Offer(
         principal=principal,
-        payment_token=p2p_usdc_jtrsy.payment_token(),
-        collateral_token=p2p_usdc_jtrsy.collateral_token(),
+        payment_token=p2p_usdc_dejtrsy.payment_token(),
+        collateral_token=p2p_usdc_dejtrsy.collateral_token(),
         duration=100,
         min_collateral_amount=collateral_amount,
         available_liquidity=principal,
@@ -133,20 +142,25 @@ def test_create_loan(
         max_iltv=9500,  # 95% max initial LTV
         liquidation_ltv=9900,  # 99% liquidation LTV
     )
-    signed_offer = sign_offer(offer, lender_key, p2p_usdc_jtrsy.address)
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_dejtrsy.address)
 
     # Approve collateral
-    jtrsy.approve(p2p_usdc_jtrsy.wallet_to_vault(borrower), collateral_amount, sender=borrower)
-    usdc.approve(p2p_usdc_jtrsy.address, principal, sender=lender)
+    dejtrsy.approve(p2p_usdc_dejtrsy.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_dejtrsy.address, principal, sender=lender)
 
-    borrower_collateral_balance_before = jtrsy.balanceOf(borrower)
+    borrower_collateral_balance_before = dejtrsy.balanceOf(borrower)
     borrower_balance_before = usdc.balanceOf(borrower)
     origination_fee = offer.origination_fee_bps * principal // BPS
     lender_balance_before = usdc.balanceOf(lender)
 
+    # Precondition: borrower has enough collateral
+    assert borrower_collateral_balance_before >= collateral_amount, "borrower must have enough deJTRSY"
+
     # Create loan
-    loan_id = p2p_usdc_jtrsy.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
-    event = get_last_event(p2p_usdc_jtrsy, "LoanCreated")
+    loan_id = p2p_usdc_dejtrsy.create_loan(
+        signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
+    )
+    event = get_last_event(p2p_usdc_dejtrsy, "LoanCreated")
 
     # Verify loan was created with proper hash
     loan = Loan(
@@ -166,18 +180,18 @@ def test_create_loan(
         collateral_amount=collateral_amount,
         min_collateral_amount=offer.min_collateral_amount,
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
-        protocol_upfront_fee_amount=p2p_usdc_jtrsy.protocol_upfront_fee() * principal // BPS,
-        protocol_settlement_fee=p2p_usdc_jtrsy.protocol_settlement_fee(),
-        partial_liquidation_fee=p2p_usdc_jtrsy.partial_liquidation_fee(),
-        full_liquidation_fee=p2p_usdc_jtrsy.full_liquidation_fee(),
+        protocol_upfront_fee_amount=p2p_usdc_dejtrsy.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_dejtrsy.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_dejtrsy.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_dejtrsy.full_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         liquidation_ltv=offer.liquidation_ltv,
-        oracle_addr=p2p_usdc_jtrsy.oracle_addr(),
+        oracle_addr=p2p_usdc_dejtrsy.oracle_addr(),
         initial_ltv=offer.max_iltv,
         call_time=0,
     )
-    assert compute_loan_hash(loan) == p2p_usdc_jtrsy.loans(loan_id), "Loan hash should match"
+    assert compute_loan_hash(loan) == p2p_usdc_dejtrsy.loans(loan_id), "Loan hash should match"
 
     # event assertions
     assert event.id == loan_id
@@ -193,22 +207,22 @@ def test_create_loan(
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
     assert event.liquidation_ltv == offer.liquidation_ltv
-    assert event.oracle_addr == p2p_usdc_jtrsy.oracle_addr()
+    assert event.oracle_addr == p2p_usdc_dejtrsy.oracle_addr()
     assert event.initial_ltv == offer.max_iltv
     assert event.origination_fee_amount == offer.origination_fee_bps * principal // BPS
-    assert event.protocol_upfront_fee_amount == p2p_usdc_jtrsy.protocol_upfront_fee() * principal // BPS
-    assert event.protocol_settlement_fee == p2p_usdc_jtrsy.protocol_settlement_fee()
-    assert event.partial_liquidation_fee == p2p_usdc_jtrsy.partial_liquidation_fee()
+    assert event.protocol_upfront_fee_amount == p2p_usdc_dejtrsy.protocol_upfront_fee() * principal // BPS
+    assert event.protocol_settlement_fee == p2p_usdc_dejtrsy.protocol_settlement_fee()
+    assert event.partial_liquidation_fee == p2p_usdc_dejtrsy.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
 
-    vault_addr = p2p_usdc_jtrsy.wallet_to_vault(borrower)
+    vault_addr = p2p_usdc_dejtrsy.wallet_to_vault(borrower)
 
     # Balance assertions
-    assert jtrsy.balanceOf(vault_addr) == collateral_amount
-    assert jtrsy.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
+    assert dejtrsy.balanceOf(vault_addr) == collateral_amount
+    assert dejtrsy.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee
     assert usdc.balanceOf(lender) == lender_balance_before - principal + origination_fee
 
     liquidity_key = compute_liquidity_key(offer.lender, offer.tracing_id)
-    assert p2p_usdc_jtrsy.commited_liquidity(liquidity_key) == principal
+    assert p2p_usdc_dejtrsy.commited_liquidity(liquidity_key) == principal

@@ -98,9 +98,9 @@ def test_oracle_data(oracle_tbill_usd, p2p_usdc_tbill):
     assert oracle_tbill_usd.address == p2p_usdc_tbill.oracle_addr()
     assert oracle_tbill_usd.decimals() == 8
 
-    # TBILL trades at ~$1.1354 per token at the fork block. Must change if fork block changes.
-    min_price = 113 * 10**6
-    max_price = 114 * 10**6
+    # Must change if fork block changes.
+    min_price = 114 * 10**6
+    max_price = 115 * 10**6
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

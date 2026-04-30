@@ -753,7 +753,7 @@ def test_buy_approves_correct_spender(
     """
     oracle = oracle_contract_def.deploy(1, 3)
     usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy(10**6, oracle.address, usdc.address)
+    acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
 
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, acred.address, sender=owner)
@@ -881,6 +881,7 @@ def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, owner
     """
     acred = boa.load(
         "contracts/auxiliary/AcredMock.vy",
+        "ACRED", "ACRED", 6,
         10**6,
         boa.load("contracts/auxiliary/OracleMock.vy", 1, 1).address,
         boa.env.generate_address("usdc"),
@@ -1001,7 +1002,7 @@ def test_buy_transfers_from_msg_sender_not_owner(
     """
     oracle = boa.load("contracts/auxiliary/OracleMock.vy", 1, 3)
     usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = boa.load("contracts/auxiliary/AcredMock.vy", 10**6, oracle.address, usdc.address)
+    acred = boa.load("contracts/auxiliary/AcredMock.vy", "ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
 
     # Create vault with a specific owner (different from proxy caller)
     vault_owner = boa.env.generate_address("vault_owner")
@@ -1041,7 +1042,7 @@ def test_buy_refund_goes_to_msg_sender_not_caller(
     """
     oracle = boa.load("contracts/auxiliary/OracleMock.vy", 1, 3)
     usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = boa.load("contracts/auxiliary/AcredMock.vy", 10**6, oracle.address, usdc.address)
+    acred = boa.load("contracts/auxiliary/AcredMock.vy", "ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
 
     vault_owner = boa.env.generate_address("vault_owner2")
     boa.env.set_balance(vault_owner, 10**18)
@@ -1313,7 +1314,7 @@ def test_buy_refund_only_excess_not_full_balance(
     """
     oracle = oracle_contract_def.deploy(1, 3)  # rate 3/10
     usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy(10**6, oracle.address, usdc.address)
+    acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
 
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, acred.address, sender=owner)
@@ -1517,7 +1518,7 @@ def test_buy_reverts_if_payment_transfer_from_returns_false(
     with "transferFrom failed", not silently proceed and credit DS tokens.
     """
     oracle = oracle_contract_def.deploy(1, 3)
-    acred = acred_contract_def.deploy(10**6, oracle.address, false_transfer_from_erc20.address)
+    acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, false_transfer_from_erc20.address)
 
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, acred.address, sender=owner)

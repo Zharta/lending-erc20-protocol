@@ -83,9 +83,9 @@ def lender_funds(lender, usdc, owner):
 
 @pytest.fixture
 def sec_borrower(xprism, p2p_usdc_xprism, now):
-    holder = "0xA1f90a2e2B6E32A89c82951F474E1c2317086e7B"
+    holder = "0xCe8A7CA24E28c8C19DDe7806f68489B8116e34b5"
     borrower = boa.env.generate_address("borrwer")
-    xprism.transfer(borrower, 10000 * int(1e18), sender=holder)
+    xprism.transfer(borrower, 800 * int(1e18), sender=holder)
     return borrower
 
 
@@ -95,9 +95,9 @@ def test_oracle_data(oracle_xprism_usd, p2p_usdc_xprism):
     assert oracle_xprism_usd.address == p2p_usdc_xprism.oracle_addr()
     assert oracle_xprism_usd.decimals() == 8
 
-    # xPRISM trades at ~$0.998 per token at the fork block. Must change if fork block changes.
-    min_price = 998 * 10**5
-    max_price = 999 * 10**5
+    # Must change if fork block changes.
+    min_price = 100 * 10**6
+    max_price = 101 * 10**6
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

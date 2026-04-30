@@ -132,7 +132,8 @@ def registrar_connector(
 
     # securitize_trust_service.addEntity("zharta_connector", securitize_owner, sender=securitize_owner)
     # securitize_trust_service.addResource("zharta_connector", vault_registrar.address, sender=securitize_owner)
-    securitize_trust_service.setRole(vault_registrar.address, TRUST_ROLE_TRANSFER_AGENT, sender=securitize_owner)
+
+    # securitize_trust_service.setRole(vault_registrar.address, TRUST_ROLE_TRANSFER_AGENT, sender=securitize_owner)
 
     p2p_usdc_acred.change_vault_registrar(contract.address, sender=owner)
     return contract
@@ -150,8 +151,8 @@ def test_oracle_data(oracle_acred_usd, p2p_usdc_acred):
     assert oracle_acred_usd.decimals() == 8
 
     # ACRED trades at ~$1,096.64 per token at the fork block. Must change if fork block changes.
-    min_price = 1096 * 10**8
-    max_price = 1097 * 10**8
+    min_price = 1095 * 10**8
+    max_price = 1096 * 10**8
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

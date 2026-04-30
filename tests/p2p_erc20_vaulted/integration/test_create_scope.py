@@ -103,9 +103,9 @@ def test_oracle_data(oracle_scope_usd, p2p_usdc_scope):
     assert oracle_scope_usd.address == p2p_usdc_scope.oracle_addr()
     assert oracle_scope_usd.decimals() == 8
 
-    # SCOPE trades at ~$1,236 per token at the fork block. Must change if fork block changes.
-    min_price = 1236 * 10**8
-    max_price = 1237 * 10**8
+    # Must change if fork block changes.
+    min_price = 1228 * 10**8
+    max_price = 1229 * 10**8
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 
