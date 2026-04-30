@@ -20,6 +20,7 @@ def boa_env():
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
         blkid = 24541820
+        blkid = 24920000
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 

@@ -1,7 +1,8 @@
 """
-Integration tests for P2PLendingVaultedErc20 with JAAA token.
-These tests use the actual JAAA token on mainnet fork.
-Oracle: CentrifugeOracleAdapter wrapping the Centrifuge Spoke for JAAA price feed.
+Integration tests for P2PLendingVaultedErc20 with deJAAA token (Centrifuge deRWA wrapper).
+These tests use the actual deJAAA token on mainnet fork.
+Oracle: CentrifugeOracleAdapter wrapping the Centrifuge Spoke for deJAAA price feed.
+deJAAA is a freely transferable wrapper around the restricted JAAA token.
 """
 
 import boa
@@ -21,46 +22,48 @@ from ..conftest_base import (
 
 BPS = 10000
 
+# deJAAA is a freely transferable wrapper — no transfer restrictions / whitelisting needed.
+# The Centrifuge Spoke resolves the price via shareTokenDetails(deJAAA_address) directly.
+DEJAAA_ADDRESS = "0xAAA0008C8CF3A7Dca931adaF04336A5D808C82Cc"
+DEJAAA_HOLDER = "0x490b0d0eF365cB949B9E9f5656b9301048d2b474"
+CENTRIFUGE_SPOKE = "0xEC3582fcDc34078a4B7a8c75a5a3AE46f48525aB"
+
 
 @pytest.fixture
-def jaaa(owner, accounts, erc20_contract_def):
-    return erc20_contract_def.at("0x5a0F93D040De44e78F251b03c43be9CF317Dcf64")
+def dejaaa(owner, accounts, erc20_contract_def):
+    return erc20_contract_def.at(DEJAAA_ADDRESS)
 
 
 @pytest.fixture
 def centrifuge_spoke():
-    return "0xEC3582fcDc34078a4B7a8c75a5a3AE46f48525aB"
+    return CENTRIFUGE_SPOKE
 
 
 @pytest.fixture
-def oracle_jaaa_usd(centrifuge_oracle_adapter_contract_def, jaaa, owner, centrifuge_spoke):
-    return centrifuge_oracle_adapter_contract_def.deploy(centrifuge_spoke, jaaa.address)
+def oracle_dejaaa_usd(centrifuge_oracle_adapter_contract_def, owner, centrifuge_spoke):
+    # Deploy CentrifugeOracleAdapter with the deJAAA token address as the asset.
+    # The Spoke resolves poolId/scId via shareTokenDetails(deJAAA_address).
+    return centrifuge_oracle_adapter_contract_def.deploy(centrifuge_spoke, DEJAAA_ADDRESS)
 
 
 @pytest.fixture
-def centrifuge_full_restrictions():
-    contract_def = boa.load_abi("contracts/auxiliary/CentrifugeFullRestrictions_abi.json")
-    return contract_def.at("0x8E680873b4C77e6088b4Ba0aBD59d100c3D224a4")
-
-
-@pytest.fixture
-def p2p_usdc_jaaa(
+def p2p_usdc_dejaaa(
     p2p_lending_erc20_contract_def,
     p2p_refinance,
     p2p_liquidation,
     vault_impl,
     usdc,
-    jaaa,
-    oracle_jaaa_usd,
+    dejaaa,
+    oracle_dejaaa_usd,
     kyc_validator_contract,
     owner,
     transfer_agent,
 ):
     return p2p_lending_erc20_contract_def.deploy(
         usdc,
-        jaaa,
-        oracle_jaaa_usd,
-        False,  # oracle_reverse (JAAA/USD oracle is not reversed)
+        dejaaa,
+        oracle_dejaaa_usd,
+        False,  # oracle_reverse (deJAAA/USD oracle is not reversed)
         kyc_validator_contract,
         0,  # protocol_upfront_fee
         0,  # protocol_settlement_fee
@@ -83,60 +86,54 @@ def lender_funds(lender, usdc, owner):
 
 
 @pytest.fixture
-def sec_borrower(jaaa, p2p_usdc_jaaa, centrifuge_full_restrictions, now, centrifuge_spoke):
-    holder = "0x491EDFB0B8b608044e227225C715981a30F3A44E"
-    borrower = boa.env.generate_address("borrwer")
-
-    # Whitelist borrower in Centrifuge FullRestrictions before transferring
-    centrifuge_full_restrictions.updateMember(jaaa.address, borrower, 2**64 - 1, sender=centrifuge_spoke)
-    jaaa.transfer(borrower, 10000 * int(1e6), sender=holder)
-
-    # Also whitelist the vault that will hold collateral
-    vault_addr = p2p_usdc_jaaa.wallet_to_vault(borrower)
-    centrifuge_full_restrictions.updateMember(jaaa.address, vault_addr, 2**64 - 1, sender=centrifuge_spoke)
-
+def de_borrower(dejaaa):
+    """Transfer deJAAA tokens from a known holder to a fresh borrower address.
+    No whitelisting needed — deJAAA is freely transferable.
+    deJAAA has 18 decimals."""
+    borrower = boa.env.generate_address("borrower")
+    dejaaa.transfer(borrower, 10000 * int(1e18), sender=DEJAAA_HOLDER)
     return borrower
 
 
-def test_oracle_data(oracle_jaaa_usd, p2p_usdc_jaaa):
-    answer = oracle_jaaa_usd.latestRoundData()[1]
+def test_oracle_data(oracle_dejaaa_usd, p2p_usdc_dejaaa):
+    answer = oracle_dejaaa_usd.latestRoundData()[1]
 
-    assert oracle_jaaa_usd.address == p2p_usdc_jaaa.oracle_addr()
-    assert oracle_jaaa_usd.decimals() == 18
+    assert oracle_dejaaa_usd.address == p2p_usdc_dejaaa.oracle_addr()
+    assert oracle_dejaaa_usd.decimals() == 18
 
-    # JAAA trades at ~$1.0274 per token at the fork block. Must change if fork block changes.
-    min_price = 1027 * 10**15
-    max_price = 1028 * 10**15
+    # Must change if fork block changes.
+    min_price = 1029 * 10**15
+    max_price = 1030 * 10**15
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 
 def test_create_loan(
-    p2p_usdc_jaaa,
-    sec_borrower,
+    p2p_usdc_dejaaa,
+    de_borrower,
     lender,
     lender_key,
     now,
     kyc_for,
     kyc_validator_contract,
-    jaaa,
+    dejaaa,
     usdc,
-    oracle_jaaa_usd,
+    oracle_dejaaa_usd,
 ):
-    borrower = sec_borrower
+    borrower = de_borrower
     # Generate KYC for the actual borrower and lender
     kyc_borrower = kyc_for(borrower, kyc_validator_contract.address)
     kyc_lender = kyc_for(lender, kyc_validator_contract.address)
 
-    # The borrower already has JAAA (sec_borrower transferred tokens)
+    # The borrower already has deJAAA (de_borrower transferred tokens)
     boa.env.set_balance(borrower, 10**21)
 
-    collateral_amount = 200 * int(1e6)  # 200 JAAA
+    collateral_amount = 200 * int(1e18)  # 200 deJAAA (18 decimals)
     principal = 100 * int(1e6)  # 100 USDC
 
     offer = Offer(
         principal=principal,
-        payment_token=p2p_usdc_jaaa.payment_token(),
-        collateral_token=p2p_usdc_jaaa.collateral_token(),
+        payment_token=p2p_usdc_dejaaa.payment_token(),
+        collateral_token=p2p_usdc_dejaaa.collateral_token(),
         duration=100,
         min_collateral_amount=collateral_amount,
         available_liquidity=principal,
@@ -145,20 +142,25 @@ def test_create_loan(
         max_iltv=9500,  # 95% max initial LTV
         liquidation_ltv=9900,  # 99% liquidation LTV
     )
-    signed_offer = sign_offer(offer, lender_key, p2p_usdc_jaaa.address)
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_dejaaa.address)
 
     # Approve collateral
-    jaaa.approve(p2p_usdc_jaaa.wallet_to_vault(borrower), collateral_amount, sender=borrower)
-    usdc.approve(p2p_usdc_jaaa.address, principal, sender=lender)
+    dejaaa.approve(p2p_usdc_dejaaa.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_dejaaa.address, principal, sender=lender)
 
-    borrower_collateral_balance_before = jaaa.balanceOf(borrower)
+    borrower_collateral_balance_before = dejaaa.balanceOf(borrower)
     borrower_balance_before = usdc.balanceOf(borrower)
     origination_fee = offer.origination_fee_bps * principal // BPS
     lender_balance_before = usdc.balanceOf(lender)
 
+    # Precondition: borrower has enough collateral
+    assert borrower_collateral_balance_before >= collateral_amount, "borrower must have enough deJAAA"
+
     # Create loan
-    loan_id = p2p_usdc_jaaa.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
-    event = get_last_event(p2p_usdc_jaaa, "LoanCreated")
+    loan_id = p2p_usdc_dejaaa.create_loan(
+        signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
+    )
+    event = get_last_event(p2p_usdc_dejaaa, "LoanCreated")
 
     # Verify loan was created with proper hash
     loan = Loan(
@@ -178,18 +180,18 @@ def test_create_loan(
         collateral_amount=collateral_amount,
         min_collateral_amount=offer.min_collateral_amount,
         origination_fee_amount=offer.origination_fee_bps * principal // BPS,
-        protocol_upfront_fee_amount=p2p_usdc_jaaa.protocol_upfront_fee() * principal // BPS,
-        protocol_settlement_fee=p2p_usdc_jaaa.protocol_settlement_fee(),
-        partial_liquidation_fee=p2p_usdc_jaaa.partial_liquidation_fee(),
-        full_liquidation_fee=p2p_usdc_jaaa.full_liquidation_fee(),
+        protocol_upfront_fee_amount=p2p_usdc_dejaaa.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_dejaaa.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_dejaaa.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_dejaaa.full_liquidation_fee(),
         call_eligibility=offer.call_eligibility,
         call_window=offer.call_window,
         liquidation_ltv=offer.liquidation_ltv,
-        oracle_addr=p2p_usdc_jaaa.oracle_addr(),
+        oracle_addr=p2p_usdc_dejaaa.oracle_addr(),
         initial_ltv=offer.max_iltv,
         call_time=0,
     )
-    assert compute_loan_hash(loan) == p2p_usdc_jaaa.loans(loan_id), "Loan hash should match"
+    assert compute_loan_hash(loan) == p2p_usdc_dejaaa.loans(loan_id), "Loan hash should match"
 
     # event assertions
     assert event.id == loan_id
@@ -205,22 +207,22 @@ def test_create_loan(
     assert event.call_eligibility == offer.call_eligibility
     assert event.call_window == offer.call_window
     assert event.liquidation_ltv == offer.liquidation_ltv
-    assert event.oracle_addr == p2p_usdc_jaaa.oracle_addr()
+    assert event.oracle_addr == p2p_usdc_dejaaa.oracle_addr()
     assert event.initial_ltv == offer.max_iltv
     assert event.origination_fee_amount == offer.origination_fee_bps * principal // BPS
-    assert event.protocol_upfront_fee_amount == p2p_usdc_jaaa.protocol_upfront_fee() * principal // BPS
-    assert event.protocol_settlement_fee == p2p_usdc_jaaa.protocol_settlement_fee()
-    assert event.partial_liquidation_fee == p2p_usdc_jaaa.partial_liquidation_fee()
+    assert event.protocol_upfront_fee_amount == p2p_usdc_dejaaa.protocol_upfront_fee() * principal // BPS
+    assert event.protocol_settlement_fee == p2p_usdc_dejaaa.protocol_settlement_fee()
+    assert event.partial_liquidation_fee == p2p_usdc_dejaaa.partial_liquidation_fee()
     assert event.offer_id == compute_signed_offer_id(signed_offer)
     assert event.offer_tracing_id == offer.tracing_id
 
-    vault_addr = p2p_usdc_jaaa.wallet_to_vault(borrower)
+    vault_addr = p2p_usdc_dejaaa.wallet_to_vault(borrower)
 
     # Balance assertions
-    assert jaaa.balanceOf(vault_addr) == collateral_amount
-    assert jaaa.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
+    assert dejaaa.balanceOf(vault_addr) == collateral_amount
+    assert dejaaa.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee
     assert usdc.balanceOf(lender) == lender_balance_before - principal + origination_fee
 
     liquidity_key = compute_liquidity_key(offer.lender, offer.tracing_id)
-    assert p2p_usdc_jaaa.commited_liquidity(liquidity_key) == principal
+    assert p2p_usdc_dejaaa.commited_liquidity(liquidity_key) == principal

@@ -141,7 +141,7 @@ def oracle_acred_usdc(oracle_contract_def):
 
 @pytest.fixture
 def acred(acred_contract_def, oracle_acred_usdc, usdc):
-    return acred_contract_def.deploy(10**6, oracle_acred_usdc.address, usdc.address)
+    return acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle_acred_usdc.address, usdc.address)
 
 
 @pytest.fixture(scope="session")
