@@ -273,7 +273,7 @@
             "version": "1"
         },
         "usdc_acred_vaulted": {
-            "abi_key": "",
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
             "address": "0x644cB6A4610Be45e1436DD8Ef89C690E3809Ff52",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "RedStone Feed: ACRED / USD",
