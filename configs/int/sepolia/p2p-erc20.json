@@ -172,6 +172,16 @@
             },
             "properties_addresses": {}
         },
+        "oracle_tbill_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0x39D9b582Ae339921295B3eb248A14e2516620ccD",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "113540000"
+            },
+            "properties_addresses": {}
+        },
         "oracle_usdc_eth": {
             "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
             "address": "0x878a0f68CFBe7CCA1dF9D9071Ca8D9bF47782204",
@@ -179,6 +189,16 @@
             "properties": {
                 "decimals": 18,
                 "rate": "234216332997344"
+            },
+            "properties_addresses": {}
+        },
+        "oracle_xprism_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0xb187d4E1D90c871fBb042C2066CFF0554Ee8B349",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "99800000"
             },
             "properties_addresses": {}
         },
@@ -543,6 +563,41 @@
             "token_symbol": "USDC",
             "version": "1"
         },
+        "usdc_tbill_vaulted": {
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0xA89Da11178C508F60342900e26949307d5df949C",
+            "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "OpenEden Oracle: TBILL / USD",
+            "properties": {
+                "collateral_token_key": "common.tbill",
+                "full_liquidation_fee": 1000,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_vaulted_impl",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_tbill_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 1000,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "refinance_impl_key": "common.refinance_vaulted_impl",
+                "transfer_agent": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "vault_impl_key": "common.vault_impl"
+            },
+            "properties_addresses": {
+                "collateral_token": "0x0BE6F9d3F5ddbdEE2f2917b29eFcC7feb0DA1a5d",
+                "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
+                "liquidation_impl": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
+                "oracle": "0x39D9b582Ae339921295B3eb248A14e2516620ccD",
+                "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
+                "refinance_impl": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
+                "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
         "usdc_wbtc_vaulted": {
             "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
             "address": "0x81E16a0820BF00ae915d26EF2A8C1B4E28B204B7",
@@ -606,6 +661,41 @@
                 "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
                 "liquidation_impl": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
                 "oracle": "0x878a0f68CFBe7CCA1dF9D9071Ca8D9bF47782204",
+                "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
+                "refinance_impl": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
+                "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_xprism_vaulted": {
+            "abi_key": "66bfc09d5a17298e9d954a9a74ada331949fbcec",
+            "address": "0x665E0234111cCeb6A522178f75645B2F7992d175",
+            "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Oracle: xPRISM / USDC",
+            "properties": {
+                "collateral_token_key": "common.xprism",
+                "full_liquidation_fee": 1000,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_vaulted_impl",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_xprism_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 1000,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "refinance_impl_key": "common.refinance_vaulted_impl",
+                "transfer_agent": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "vault_impl_key": "common.vault_impl"
+            },
+            "properties_addresses": {
+                "collateral_token": "0x6E90d9f5c8731D868Bf575229Bb1d77773914560",
+                "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
+                "liquidation_impl": "0xC063a80FA65922F5d49E39029F7bb96d04118EaE",
+                "oracle": "0xb187d4E1D90c871fBb042C2066CFF0554Ee8B349",
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
                 "refinance_impl": "0x4eA225a474BafC9A2F4b6677DF1dDBb400D5Cd63",
                 "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
