@@ -1,0 +1,2 @@
+{"notice": "Adapts xPRISM pricing to the Chainlink AggregatorV3 interface. Derives xPRISM/USDC price from the chain: xPRISM -> PRISM (ERC-4626) -> USDO (1:1 peg) -> USD (cUSDO/USD feed) -> USDC (USDC/USD feed) Formula: xPRISM_USDC = xprism_prism * cusdo_usd * D8 / (cusdo_usdo * usdc_usd)"}
+{"title": "xPrismOracleAdapter", "author": "[Zharta](https://zharta.io/)"}

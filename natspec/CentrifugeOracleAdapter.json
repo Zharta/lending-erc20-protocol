@@ -1,0 +1,2 @@
+{"notice": "Adapts Centrifuge Spoke price feeds to the Chainlink AggregatorV3 interface. Wraps Spoke.pricePoolPerShare() (D18, in pool currency) into latestRoundData()"}
+{"title": "CentrifugeOracleAdapter", "author": "[Zharta](https://zharta.io/)"}
