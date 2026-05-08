@@ -48,22 +48,6 @@ unit-tests:
 integration-tests:
 	${VENV}/bin/pytest $(INTEGRATION_TESTS)
 
-F_TESTS := $(shell find tests/p2p_erc20_vaulted -type f -name 'test_create_*.py')
-failing:
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/unit/test_settle.py
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/unit/test_liquidate.py
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/unit/test_create.py
-	# ${VENV}/bin/pytest $(F_TESTS) --sw
-	#
-	# ${VENV}/bin/pytest tests/p2p_erc20_multivault
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/integration/test_create_mfone.py
-	${VENV}/bin/pytest tests/p2p_erc20_multivault/integration/test_loop_mfone.py
-
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/integration/test_create_stac.py
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/integration/test_create_dejaaa.py
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/integration/test_create_dejtrsy.py
-	# ${VENV}/bin/pytest tests/p2p_erc20_vaulted/integration/test_create_decrdx.py
-
 profitr-tests:
 	${VENV}/bin/pytest tests/p2p_erc20_vaulted/profitr
 
