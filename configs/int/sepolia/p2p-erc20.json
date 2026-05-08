@@ -251,35 +251,6 @@
     },
     "configs": {},
     "p2p": {
-        "usdc_acred": {
-            "abi_key": "5609e3e1b289c0010ac40c54eb69feda349ac8b1",
-            "address": "0xA6dF5F68cfBe674Cd3A5b1DE28A1Dfbeb6B6c211",
-            "contract": "P2PLendingV0Securitize",
-            "oracle_name": "RedStone Feed: ACRED / USD",
-            "properties": {
-                "borrower": "0x52C5599257A5c9FE268d27BAAD9C1f2B220D5F25",
-                "collateral_token_key": "common.acred_with_swap",
-                "kyc_validator_key": "common.kyc",
-                "max_protocol_settlement_fee": 1000,
-                "max_protocol_upfront_fee": 1000,
-                "oracle_key": "common.oracle_acred_usd",
-                "oracle_reverse": false,
-                "payment_token_key": "common.usdc",
-                "protocol_settlement_fee": 0,
-                "protocol_upfront_fee": 0,
-                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
-                "refinance_impl_key": "common.refinance_v0_impl"
-            },
-            "properties_addresses": {
-                "collateral_token": "0x1d5023d67cCB29C5e3Ea51a99AF9EA071e7bdCc0",
-                "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
-                "oracle": "0x11eaC7Ee25518860dA0df985834A82Cdf8611954",
-                "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
-                "refinance_impl": "0x2bD3396E3fDaec4D4766cE88E2272054AC04E505"
-            },
-            "token_symbol": "USDC",
-            "version": "0"
-        },
         "usdc_acred_securitize": {
             "abi_key": "a9d1a39fa9d7570bff67a8199d2b22eb1b31edb7",
             "address": "0x0343D3477E95Ac98583A3B95af8735A94706afa8",
