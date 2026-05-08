@@ -743,18 +743,12 @@ def test_buy_twice_accumulates_pending(vault_acred, caller_addr, usdc, owner):
     assert second_total == first_total * 2
 
 
-def test_buy_approves_correct_spender(
-    securitize_vault_contract_def, acred_contract_def, oracle_contract_def, weth9_contract_def, owner
-):
+def test_buy_approves_correct_spender(securitize_vault_contract_def, acred, usdc, owner):
     """Kills mutation L220: approve(securitize_swap_contract, ...) -> approve(self.token, ...).
 
     The approve must go to the SecuritizeSwap contract address (returned by
     getDSService(1<<14)), not to self.token. We verify by checking allowance.
     """
-    oracle = oracle_contract_def.deploy(1, 3)
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
-
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, acred.address, sender=owner)
 
@@ -881,7 +875,9 @@ def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, owner
     """
     acred = boa.load(
         "contracts/auxiliary/AcredMock.vy",
-        "ACRED", "ACRED", 6,
+        "ACRED",
+        "ACRED",
+        6,
         10**6,
         boa.load("contracts/auxiliary/OracleMock.vy", 1, 1).address,
         boa.env.generate_address("usdc"),
@@ -992,7 +988,7 @@ def test_withdraw_funds_sends_to_caller_not_msg_sender(
 
 
 def test_buy_transfers_from_msg_sender_not_owner(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner, vault_proxy
+    securitize_vault_contract_def, min_vault_manager, acred, usdc, owner, vault_proxy
 ):
     """buy() must transferFrom(msg.sender, ...) not transferFrom(self.owner, ...).
 
@@ -1000,10 +996,6 @@ def test_buy_transfers_from_msg_sender_not_owner(
     When the vault owner != msg.sender (e.g., proxy call), funds should come from
     the actual caller, not the vault owner.
     """
-    oracle = boa.load("contracts/auxiliary/OracleMock.vy", 1, 3)
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = boa.load("contracts/auxiliary/AcredMock.vy", "ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
-
     # Create vault with a specific owner (different from proxy caller)
     vault_owner = boa.env.generate_address("vault_owner")
     boa.env.set_balance(vault_owner, 10**18)
@@ -1032,7 +1024,7 @@ def test_buy_transfers_from_msg_sender_not_owner(
 
 
 def test_buy_refund_goes_to_msg_sender_not_caller(
-    securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner, vault_proxy
+    securitize_vault_contract_def, min_vault_manager, acred, usdc, owner, vault_proxy
 ):
     """buy() refund must go to msg.sender (proxy), not self.caller (lending contract).
 
@@ -1040,10 +1032,6 @@ def test_buy_refund_goes_to_msg_sender_not_caller(
     When there's excess stablecoins after the swap, the refund should go back to
     whoever called buy (msg.sender), not the lending contract (self.caller).
     """
-    oracle = boa.load("contracts/auxiliary/OracleMock.vy", 1, 3)
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = boa.load("contracts/auxiliary/AcredMock.vy", "ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
-
     vault_owner = boa.env.generate_address("vault_owner2")
     boa.env.set_balance(vault_owner, 10**18)
 
@@ -1302,9 +1290,7 @@ def test_buy_passes_min_ds_token_to_swap(vault_acred, acred, usdc, owner):
     assert swap_calls[0][1] == min_ds  # second arg is minOutAmount
 
 
-def test_buy_refund_only_excess_not_full_balance(
-    securitize_vault_contract_def, acred_contract_def, oracle_contract_def, weth9_contract_def, owner
-):
+def test_buy_refund_only_excess_not_full_balance(securitize_vault_contract_def, acred, usdc, owner):
     """Kills mutation L228: remaining_balance - initial_balance -> remaining_balance.
 
     When the vault has a pre-existing payment token balance, the refund must only
@@ -1312,10 +1298,6 @@ def test_buy_refund_only_excess_not_full_balance(
     Without pre-existing balance, remaining_balance == remaining_balance - 0, so the
     mutation is undetectable.
     """
-    oracle = oracle_contract_def.deploy(1, 3)  # rate 3/10
-    usdc = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
-    acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, usdc.address)
-
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, acred.address, sender=owner)
 
