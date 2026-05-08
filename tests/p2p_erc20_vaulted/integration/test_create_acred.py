@@ -120,8 +120,6 @@ def registrar_connector(
     securitize_trust_service,
     securitize_owner,
 ):
-    TRUST_ROLE_TRANSFER_AGENT = 8
-
     contract = registrar_connector_def.deploy(vault_registrar.address)
     contract.change_authorized_contract(p2p_usdc_acred.address, True, sender=owner)
 
