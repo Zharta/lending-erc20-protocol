@@ -249,7 +249,7 @@ def replace_loan_lender(
     if offer.offer.max_iltv == 0:
         max_initial_ltv = base._compute_ltv(offer.offer.min_collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
 
-    current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, loan.amount, convertion_rate, payment_token_decimals, collateral_token_decimals)
+    current_ltv: uint256 = base._compute_ltv(loan.collateral_amount, outstanding_debt, convertion_rate, payment_token_decimals, collateral_token_decimals)
     initial_ltv: uint256 = base._compute_ltv(loan.collateral_amount, new_principal, convertion_rate, payment_token_decimals, collateral_token_decimals)
     assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
 

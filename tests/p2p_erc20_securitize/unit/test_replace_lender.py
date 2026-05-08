@@ -1134,3 +1134,310 @@ def test_replace_loan_lender_same_lender(
 
     assert usdc.balanceOf(lender) == initial_lender_balance + lender_delta
     assert usdc.balanceOf(loan.borrower) == initial_borrower_balance + delta_borrower
+
+
+def test_replace_loan_lender_current_ltv_uses_outstanding_debt(
+    p2p_usdc_weth,
+    usdc,
+    weth,
+    borrower,
+    lender,
+    lender_key,
+    lender2,
+    lender2_key,
+    now,
+    oracle,
+    kyc_borrower,
+    kyc_lender,
+    kyc_validator_key,
+    kyc_validator_contract,
+    protocol_fees,
+):
+    """Validates that current_ltv is computed using outstanding_debt (principal + interest)
+    rather than loan.amount (principal only).
+
+    This test would fail using loan.amount to compute current_ltv,
+    because initial_ltv > ltv(loan.amount) but initial_ltv <= ltv(outstanding_debt).
+    """
+    # Create a loan with high APR so interest accrues significantly
+    high_apr = 5000  # 50% APR
+    principal = 1000 * 10**6  # 1000 USDC
+    collateral_amount = int(1e18)  # 1 WETH
+
+    offer = Offer(
+        principal=principal,
+        apr=high_apr,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=365 * DAY,  # 1 year duration so it doesn't default
+        origination_fee_bps=0,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=9000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=32 * b"\x10",
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.mint(lender, lender_approval)
+    usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    loan = SecuritizeLoan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+        vault_id=0,
+        redeem_start=0,
+        redeem_residual_collateral=0,
+    )
+    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+
+    # Time travel 90 days to accrue significant interest
+    time_elapsed = 90 * DAY
+    boa.env.time_travel(seconds=time_elapsed)
+    refinance_time = now + time_elapsed
+
+    # Compute interest and LTV values
+    interest = high_apr * principal * time_elapsed // (365 * DAY * BPS)
+    outstanding_debt = principal + interest
+    assert interest > 0, "precondition: interest must be > 0 for this test to be meaningful"
+
+    # LTV with outstanding_debt (correct, fixed code)
+    ltv_outstanding = calc_ltv(outstanding_debt, collateral_amount, usdc, weth, oracle)
+    # LTV with loan.amount (incorrect, buggy code)
+    ltv_principal_only = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
+
+    # Precondition: confirm the bug would matter
+    assert ltv_outstanding > ltv_principal_only, "precondition: outstanding_debt LTV must exceed principal-only LTV"
+
+    # Create new offer where principal=0 (meaning new_principal = outstanding_debt)
+    # initial_ltv = ltv(collateral_amount, outstanding_debt) = ltv_outstanding
+    # max_iltv needs to be >= initial_ltv and >= old loan's initial_ltv (8000)
+    new_max_iltv = max(ltv_outstanding, loan.initial_ltv)
+
+    new_offer = Offer(
+        principal=0,  # Accept any principal
+        apr=high_apr,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=365 * DAY,
+        origination_fee_bps=0,
+        min_collateral_amount=0,
+        max_iltv=new_max_iltv,
+        available_liquidity=outstanding_debt * 2,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=new_max_iltv + 1000,
+        oracle_addr=oracle.address,
+        expiration=refinance_time + 100,
+        lender=lender2,
+        borrower=borrower,
+        tracing_id=32 * b"\x11",
+    )
+    signed_new_offer = sign_offer(new_offer, lender2_key, p2p_usdc_weth.address)
+
+    # Sign KYC for lender2 with expiration after time travel
+    kyc_lender2_fresh = sign_kyc(lender2, refinance_time + 100, kyc_validator_key, kyc_validator_contract.address)
+
+    # initial_ltv for the new loan = ltv(collateral_amount, outstanding_debt) = ltv_outstanding
+    # With the fix:   current_ltv = ltv(collateral_amount, outstanding_debt) = ltv_outstanding
+    #                 initial_ltv <= current_ltv => PASSES
+    # With the bug:   current_ltv = ltv(collateral_amount, loan.amount) = ltv_principal_only
+    #                 initial_ltv > current_ltv => REVERTS with "initial ltv gt old loan"
+
+    # Approve funds for the new lender
+    new_lender_amount = outstanding_debt * 2
+    usdc.approve(p2p_usdc_weth.address, new_lender_amount, sender=lender2)
+
+    # This call succeeds with the fix but would revert with "initial ltv gt old loan" with the bug
+    new_loan_id = p2p_usdc_weth.replace_loan_lender(loan, signed_new_offer, 0, kyc_lender2_fresh, sender=loan.lender)
+
+    # Verify the replacement was successful
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32, "old loan should be deleted"
+    assert p2p_usdc_weth.loans(new_loan_id) != ZERO_BYTES32, "new loan should exist"
+
+
+def test_replace_loan_lender_current_ltv_uses_outstanding_debt_boundary(
+    p2p_usdc_weth,
+    usdc,
+    weth,
+    borrower,
+    lender,
+    lender_key,
+    lender2,
+    lender2_key,
+    now,
+    oracle,
+    kyc_borrower,
+    kyc_lender,
+    kyc_validator_key,
+    kyc_validator_contract,
+    protocol_fees,
+):
+    """Boundary test: new_principal is set so initial_ltv falls between
+    ltv(loan.amount) and ltv(outstanding_debt), proving the fix matters.
+
+    With the fix, current_ltv uses outstanding_debt so initial_ltv <= current_ltv passes.
+    With the bug, current_ltv uses loan.amount so initial_ltv > current_ltv and it reverts.
+    """
+    high_apr = 5000  # 50% APR
+    principal = 1000 * 10**6  # 1000 USDC
+    collateral_amount = int(1e18)  # 1 WETH
+
+    offer = Offer(
+        principal=principal,
+        apr=high_apr,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=365 * DAY,
+        origination_fee_bps=0,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=9000,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=32 * b"\x20",
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    lender_approval = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.mint(lender, lender_approval)
+    usdc.approve(p2p_usdc_weth.address, lender_approval, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    loan = SecuritizeLoan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+        vault_id=0,
+        redeem_start=0,
+        redeem_residual_collateral=0,
+    )
+    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+
+    # Time travel 90 days
+    time_elapsed = 90 * DAY
+    boa.env.time_travel(seconds=time_elapsed)
+    refinance_time = now + time_elapsed
+
+    interest = high_apr * principal * time_elapsed // (365 * DAY * BPS)
+    outstanding_debt = principal + interest
+    assert interest > 0, "precondition: interest must accrue"
+
+    # Pick a new_principal in between loan.amount and outstanding_debt.
+    # This ensures initial_ltv falls between ltv(loan.amount) and ltv(outstanding_debt).
+    new_principal = (principal + outstanding_debt) // 2
+    assert principal < new_principal < outstanding_debt, (
+        "precondition: new_principal must be strictly between loan.amount and outstanding_debt"
+    )
+
+    # Verify the LTV ordering
+    ltv_principal_only = calc_ltv(principal, collateral_amount, usdc, weth, oracle)
+    ltv_new_principal = calc_ltv(new_principal, collateral_amount, usdc, weth, oracle)
+    ltv_outstanding = calc_ltv(outstanding_debt, collateral_amount, usdc, weth, oracle)
+    assert ltv_principal_only < ltv_new_principal <= ltv_outstanding, (
+        f"precondition: ltv ordering must be principal({ltv_principal_only}) < new({ltv_new_principal}) <= outstanding({ltv_outstanding})"
+    )
+
+    new_max_iltv = max(ltv_outstanding, loan.initial_ltv)
+
+    new_offer = Offer(
+        principal=new_principal,
+        apr=high_apr,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=365 * DAY,
+        origination_fee_bps=0,
+        min_collateral_amount=0,
+        max_iltv=new_max_iltv,
+        available_liquidity=new_principal * 2,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=new_max_iltv + 1000,
+        oracle_addr=oracle.address,
+        expiration=refinance_time + 100,
+        lender=lender2,
+        borrower=borrower,
+        tracing_id=32 * b"\x21",
+    )
+    signed_new_offer = sign_offer(new_offer, lender2_key, p2p_usdc_weth.address)
+
+    # Sign KYC for lender2 with expiration after time travel
+    kyc_lender2_fresh = sign_kyc(lender2, refinance_time + 100, kyc_validator_key, kyc_validator_contract.address)
+
+    usdc.approve(p2p_usdc_weth.address, new_principal * 2, sender=lender2)
+    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=borrower)
+
+    # With the fix: current_ltv = ltv_outstanding >= ltv_new_principal = initial_ltv => PASSES
+    # With the bug: current_ltv = ltv_principal_only < ltv_new_principal = initial_ltv => REVERTS
+    new_loan_id = p2p_usdc_weth.replace_loan_lender(
+        loan, signed_new_offer, new_principal, kyc_lender2_fresh, sender=loan.lender
+    )
+
+    assert p2p_usdc_weth.loans(loan.id) == ZERO_BYTES32, "old loan should be deleted"
+    assert p2p_usdc_weth.loans(new_loan_id) != ZERO_BYTES32, "new loan should exist"
