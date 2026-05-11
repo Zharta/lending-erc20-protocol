@@ -19,12 +19,7 @@ contracts/
     P2PLendingV0Base.vy     # Shared state and logic
     P2PLendingV0Refinance.vy
     P2PLendingV0Securitize.vy
-  v1/                   # Production versions (standard, vaulted, and securitize)
-    # Standard contracts (direct collateral)
-    P2PLendingErc20.vy      # Main entry point
-    P2PLendingBase.vy       # Shared state and logic
-    P2PLendingRefinance.vy  # Refinancing facet (delegatecall)
-    P2PLendingLiquidation.vy # Liquidation facet (delegatecall)
+  v1/                   # Production versions (vaulted and securitize)
     # Vaulted contracts (vault-based collateral)
     P2PLendingVaultedErc20.vy    # Main entry point with vault system
     P2PLendingVaultedBase.vy     # Shared state with vault logic
@@ -38,14 +33,10 @@ contracts/
     P2PLendingSecuritizeRefinance.vy # Refinance + maturity extension facet
     P2PLendingSecuritizeLiquidation.vy # Liquidation with redemption handling
     P2PLendingVaultSecuritize.vy    # Vault with SecuritizeSwap integration
-    P2PLendingSecuritize.vy  # Single-borrower variant (direct collateral)
   auxiliary/            # Mock contracts for testing
   KYCValidator.vy       # KYC signature validation
 
 tests/
-  p2p_erc20_v1/
-    unit/               # Unit tests with mocked dependencies
-    integration/        # Forked chain tests
   p2p_erc20_vaulted/
     unit/
     integration/
@@ -107,11 +98,10 @@ make console-sepolia      # Console for Sepolia
 ## Contract Versioning
 
 - **v0**: Legacy version (contracts/v0/)
-- **v1 (Standard)**: Collateral held directly in main contract (P2PLendingErc20)
 - **v1 (Vaulted)**: Collateral isolated in per-borrower vaults using CREATE2 minimal proxies (P2PLendingVaultedErc20)
 - **v1 (Securitize)**: Designed for Securitize DS Token collateral with redemption workflow (P2PLendingSecuritizeErc20)
 
-All v1 contracts use delegatecall facets for Refinance and Liquidation logic.
+All v1 contracts use delegatecall facets for Refinance and Liquidation logic. The standard (non-vaulted) v1 contracts have been removed.
 
 ### Securitize Contracts Key Features:
 - **Multiple vaults per borrower**: Each loan creates a new vault (tracked via `vault_id`)
