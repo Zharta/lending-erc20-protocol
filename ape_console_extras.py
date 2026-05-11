@@ -901,6 +901,66 @@ def contract_sizes():
         contract_size(path)
 
 
+def check_offer_signature(offer: Offer, sig: Signature, verifying_contract: str, chain_id: int) -> bool:
+    typed_data = {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+            "Offer": [
+                {"name": "principal", "type": "uint256"},
+                {"name": "apr", "type": "uint256"},
+                {"name": "payment_token", "type": "address"},
+                {"name": "collateral_token", "type": "address"},
+                {"name": "duration", "type": "uint256"},
+                {"name": "origination_fee_bps", "type": "uint256"},
+                {"name": "min_collateral_amount", "type": "uint256"},
+                {"name": "max_iltv", "type": "uint256"},
+                {"name": "available_liquidity", "type": "uint256"},
+                {"name": "call_eligibility", "type": "uint256"},
+                {"name": "call_window", "type": "uint256"},
+                {"name": "liquidation_ltv", "type": "uint256"},
+                {"name": "oracle_addr", "type": "address"},
+                {"name": "expiration", "type": "uint256"},
+                {"name": "lender", "type": "address"},
+                {"name": "borrower", "type": "address"},
+                {"name": "tracing_id", "type": "bytes32"},
+            ],
+        },
+        "primaryType": "Offer",
+        "domain": {
+            "name": "Zharta",
+            "version": "1",
+            "chainId": chain_id,
+            "verifyingContract": verifying_contract,
+        },
+        "message": {
+            "principal": int(offer.principal),
+            "apr": offer.apr,
+            "payment_token": offer.payment_token,
+            "collateral_token": offer.collateral_token,
+            "duration": offer.duration,
+            "origination_fee_bps": int(offer.origination_fee_bps),
+            "min_collateral_amount": int(offer.min_collateral_amount),
+            "max_iltv": offer.max_iltv or 0,
+            "available_liquidity": int(offer.available_liquidity),
+            "call_eligibility": offer.call_eligibility or 0,
+            "call_window": offer.call_window or 0,
+            "liquidation_ltv": offer.liquidation_ltv or 0,
+            "oracle_addr": offer.oracle_addr or "0x0000000000000000000000000000000000000000",
+            "expiration": offer.expiration,
+            "lender": offer.lender,
+            "borrower": offer.borrower,
+            "tracing_id": HexBytes(offer.tracing_id),
+        },
+    }
+    message = encode_typed_data(full_message=typed_data)
+    return Account.recover_message(message, (int(sig.v), sig.r, sig.s))
+
+
 def ape_init_extras(**namespace):  # noqa: ARG001
     extras = {
         "dm": dm,
