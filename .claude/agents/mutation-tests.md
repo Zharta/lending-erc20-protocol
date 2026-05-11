@@ -145,11 +145,8 @@ Lower priority:
 ## Contract Versions to Test
 
 Test mutations across all v1 contract variants:
-- **Standard**: `P2PLendingErc20.vy`, `P2PLendingBase.vy`, `P2PLendingRefinance.vy`, `P2PLendingLiquidation.vy`
 - **Vaulted**: `P2PLendingVaultedErc20.vy`, `P2PLendingVaultedBase.vy`, `P2PLendingVaultedRefinance.vy`, `P2PLendingVaultedLiquidation.vy`
 - **Securitize**: `P2PLendingSecuritizeErc20.vy`, `P2PLendingSecuritizeBase.vy`, `P2PLendingSecuritizeRefinance.vy`, `P2PLendingSecuritizeLiquidation.vy`
-
-Since Standard and Vaulted share most logic via their Base contracts, mutations in Base contracts effectively cover both.
 
 ## Checklist Format
 
@@ -166,13 +163,13 @@ The file `.claude/plans/mutations_to_fix.md` tracks all surviving mutations:
 
 ## Surviving Mutations
 
-- [ ] **[comparison_swap]** `P2PLendingBase.vy:123` — `>=` changed to `>` in LTV check
+- [ ] **[comparison_swap]** `P2PLendingVaultedBase.vy:123` — `>=` changed to `>` in LTV check
   - Original: `assert current_ltv >= self.liquidation_ltv`
   - Mutated: `assert current_ltv > self.liquidation_ltv`
   - Impact: Loans at exactly the liquidation threshold would not be liquidatable
   - Test: needs boundary test at exact LTV threshold
 
-- [x] **[arithmetic_swap]** `P2PLendingBase.vy:456` — `+` changed to `-` in fee calc
+- [x] **[arithmetic_swap]** `P2PLendingVaultedBase.vy:456` — `+` changed to `-` in fee calc
   - Original: `fee = principal + interest`
   - Mutated: `fee = principal - interest`
   - Impact: Fees would be undercalculated
@@ -208,11 +205,11 @@ You should build up this memory system over time so that future conversations ca
     <when_to_save>After each mutation testing session — record which contracts/functions were tested, which mutation types were applied, and whether they were killed or survived. This is CRITICAL to avoid repeating work across sessions.</when_to_save>
     <how_to_use>Check at the start of every session to know which mutations have already been tested and which areas still need coverage.</how_to_use>
     <examples>
-    After testing P2PLendingBase.vy create_loan:
-    [saves project memory: tested 12 mutations in create_loan (P2PLendingBase.vy lines 100-200). 10 killed, 2 surviving: comparison_swap L145 (>= to >), constant_mutation L167 (0 to 1). Surviving mutations added to mutations_to_fix.md]
+    After testing P2PLendingVaultedBase.vy create_loan:
+    [saves project memory: tested 12 mutations in create_loan (P2PLendingVaultedBase.vy lines 100-200). 10 killed, 2 surviving: comparison_swap L145 (>= to >), constant_mutation L167 (0 to 1). Surviving mutations added to mutations_to_fix.md]
 
     After a full session:
-    [saves project memory: session 2026-03-17 — tested P2PLendingBase.vy (create_loan, settle_loan). 25 mutations total, 21 killed, 4 surviving. Focus areas remaining: liquidation, refinance, vaulted contracts]
+    [saves project memory: session 2026-03-17 — tested P2PLendingVaultedBase.vy (create_loan, settle_loan). 25 mutations total, 21 killed, 4 surviving. Focus areas remaining: liquidation, refinance, vaulted contracts]
     </examples>
 </type>
 <type>
