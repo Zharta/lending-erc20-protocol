@@ -2,9 +2,10 @@ import json
 from dataclasses import dataclass
 
 from ape import project
+from rich.markup import escape
 
 from .basetypes import ContractConfig, DeploymentContext, abi_key
-from .transactions import execute
+from .transactions import execute, execute_read
 
 ZERO_ADDRESS = "0x" + "00" * 20
 ZERO_BYTES32 = "0x" + "00" * 32
@@ -284,9 +285,7 @@ class P2PLendingVaultedErc20(ContractConfig):
                 collateral_token_key,
                 oracle_key,
                 kyc_validator_key,
-                refinance_impl_key,
                 vault_impl_key,
-                liquidation_impl_key,
             }
             | ({vault_registrar_connector_key} if vault_registrar_connector_key else set()),
             deployment_args=[
@@ -308,8 +307,14 @@ class P2PLendingVaultedErc20(ContractConfig):
                 transfer_agent,
                 vault_registrar_connector_key or ZERO_ADDRESS,
             ],
+            config_deps={
+                refinance_impl_key: self.set_refinance_impl,
+                liquidation_impl_key: self.set_liquidation_impl,
+            },
         )
         self.vault_registrar_connector_key = vault_registrar_connector_key
+        self.refinance_impl_key = refinance_impl_key
+        self.liquidation_impl_key = liquidation_impl_key
         if address:
             self.load_contract(address)
 
@@ -323,6 +328,28 @@ class P2PLendingVaultedErc20(ContractConfig):
                 self.key,
                 True,  # noqa: FBT003
             )
+
+    def set_refinance_impl(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "set_refinance_address", self.refinance_impl_key)
+        else:
+            current_addr = execute_read(context, self.key, "refinance_addr")
+            new_addr = context[self.refinance_impl_key].address()
+            if current_addr == new_addr:
+                print(f"Contract [blue]{escape(self.key)}[/] refinance impl already {new_addr}, skipping update")
+            else:
+                execute(context, self.key, "set_refinance_addr", self.refinance_impl_key)
+
+    def set_liquidation_impl(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
+        else:
+            current_addr = execute_read(context, self.key, "liquidation_addr")
+            new_addr = context[self.liquidation_impl_key].address()
+            if current_addr == new_addr:
+                print(f"Contract [blue]{escape(self.key)}[/] liquidation impl already {new_addr}, skipping update")
+            else:
+                execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
 
 
 @dataclass
@@ -706,8 +733,6 @@ class P2PLendingSecuritizeErc20(ContractConfig):
                 collateral_token_key,
                 oracle_key,
                 kyc_validator_key,
-                refinance_impl_key,
-                liquidation_impl_key,
                 vault_impl_key,
                 vault_registrar_connector_key,
             },
@@ -731,8 +756,14 @@ class P2PLendingSecuritizeErc20(ContractConfig):
                 securitize_redemption_wallet,
                 vault_registrar_connector_key,
             ],
+            config_deps={
+                refinance_impl_key: self.set_refinance_impl,
+                liquidation_impl_key: self.set_liquidation_impl,
+            },
         )
         self.vault_registrar_connector_key = vault_registrar_connector_key
+        self.refinance_impl_key = refinance_impl_key
+        self.liquidation_impl_key = liquidation_impl_key
         if address:
             self.load_contract(address)
 
@@ -745,6 +776,28 @@ class P2PLendingSecuritizeErc20(ContractConfig):
             self.key,
             True,  # noqa: FBT003
         )
+
+    def set_refinance_impl(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "set_refinance_address", self.refinance_impl_key)
+        else:
+            current_addr = execute_read(context, self.key, "refinance_addr")
+            new_addr = context[self.refinance_impl_key].address()
+            if current_addr == new_addr:
+                print(f"Contract [blue]{escape(self.key)}[/] refinance impl already {new_addr}, skipping update")
+            else:
+                execute(context, self.key, "set_refinance_addr", self.refinance_impl_key)
+
+    def set_liquidation_impl(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
+        else:
+            current_addr = execute_read(context, self.key, "liquidation_addr")
+            new_addr = context[self.liquidation_impl_key].address()
+            if current_addr == new_addr:
+                print(f"Contract [blue]{escape(self.key)}[/] liquidation impl already {new_addr}, skipping update")
+            else:
+                execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
 
 
 @dataclass

@@ -38,6 +38,6 @@ def cli(network):
     # "proxies.securitize_loop"
     # }
 
-    dm.deploy(changes, dryrun=True)
+    dm.deploy(changes, dryrun=False)
 
     print("Done")

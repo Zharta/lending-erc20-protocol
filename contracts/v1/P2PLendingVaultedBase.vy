@@ -160,6 +160,8 @@ authorized_proxies: public(HashMap[address, bool])
 pending_transfers: public(HashMap[address, uint256])
 
 vault_registrar: public(address)
+refinance_addr: public(address)
+liquidation_addr: public(address)
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"

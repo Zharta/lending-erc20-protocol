@@ -191,6 +191,8 @@ vault_count: public(HashMap[address, uint256])
 
 securitize_redemption_wallet: public(address)
 vault_registrar: public(address)
+refinance_addr: public(address)
+liquidation_addr: public(address)
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
