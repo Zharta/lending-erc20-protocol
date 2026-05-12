@@ -405,3 +405,61 @@ def test_change_vault_registrar_logs_event(p2p_usdc_weth, owner):
 
     assert event.old_registrar == old_registrar
     assert event.new_registrar == new_registrar
+
+
+def test_set_refinance_addr_reverts_if_not_owner(p2p_usdc_weth):
+    random = boa.env.generate_address("random")
+    new_addr = boa.env.generate_address("new_refinance")
+    with boa.reverts():
+        p2p_usdc_weth.set_refinance_addr(new_addr, sender=random)
+
+
+def test_set_refinance_addr_reverts_if_zero_address(p2p_usdc_weth, owner):
+    with boa.reverts():
+        p2p_usdc_weth.set_refinance_addr(ZERO_ADDRESS, sender=owner)
+
+
+def test_set_refinance_addr(p2p_usdc_weth, owner):
+    new_addr = boa.env.generate_address("new_refinance")
+    p2p_usdc_weth.set_refinance_addr(new_addr, sender=owner)
+    assert p2p_usdc_weth.refinance_addr() == new_addr
+
+
+def test_set_refinance_addr_logs_event(p2p_usdc_weth, owner):
+    old_addr = p2p_usdc_weth.refinance_addr()
+    new_addr = boa.env.generate_address("new_refinance")
+
+    p2p_usdc_weth.set_refinance_addr(new_addr, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "RefinanceAddrChanged")
+
+    assert event.old_addr == old_addr
+    assert event.new_addr == new_addr
+
+
+def test_set_liquidation_addr_reverts_if_not_owner(p2p_usdc_weth):
+    random = boa.env.generate_address("random")
+    new_addr = boa.env.generate_address("new_liquidation")
+    with boa.reverts():
+        p2p_usdc_weth.set_liquidation_addr(new_addr, sender=random)
+
+
+def test_set_liquidation_addr_reverts_if_zero_address(p2p_usdc_weth, owner):
+    with boa.reverts():
+        p2p_usdc_weth.set_liquidation_addr(ZERO_ADDRESS, sender=owner)
+
+
+def test_set_liquidation_addr(p2p_usdc_weth, owner):
+    new_addr = boa.env.generate_address("new_liquidation")
+    p2p_usdc_weth.set_liquidation_addr(new_addr, sender=owner)
+    assert p2p_usdc_weth.liquidation_addr() == new_addr
+
+
+def test_set_liquidation_addr_logs_event(p2p_usdc_weth, owner):
+    old_addr = p2p_usdc_weth.liquidation_addr()
+    new_addr = boa.env.generate_address("new_liquidation")
+
+    p2p_usdc_weth.set_liquidation_addr(new_addr, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "LiquidationAddrChanged")
+
+    assert event.old_addr == old_addr
+    assert event.new_addr == new_addr

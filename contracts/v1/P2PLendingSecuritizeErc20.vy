@@ -208,6 +208,14 @@ event VaultRegistrarChanged:
     old_registrar: address
     new_registrar: address
 
+event RefinanceAddrChanged:
+    old_addr: address
+    new_addr: address
+
+event LiquidationAddrChanged:
+    old_addr: address
+    new_addr: address
+
 
 event ProtocolFeeSet:
     old_upfront_fee: uint256
@@ -273,8 +281,6 @@ collateral_token_decimals: public(immutable(uint256))
 
 offer_sig_domain_separator: immutable(bytes32)
 
-refinance_addr: public(immutable(address))
-liquidation_addr: public(immutable(address))
 vault_impl_addr: public(immutable(address))
 
 @deploy
@@ -329,8 +335,8 @@ def __init__(
     kyc_validator_addr = _kyc_validator_addr
     max_protocol_upfront_fee = _max_protocol_upfront_fee
     max_protocol_settlement_fee = _max_protocol_settlement_fee
-    refinance_addr = _refinance_addr
-    liquidation_addr = _liquidation_addr
+    base.refinance_addr = _refinance_addr
+    base.liquidation_addr = _liquidation_addr
     vault_impl_addr = _vault_impl_addr
     collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
@@ -516,6 +522,36 @@ def change_vault_registrar(new_vault_registrar: address):
     assert msg.sender == base.owner
     log VaultRegistrarChanged(old_registrar=base.vault_registrar, new_registrar=new_vault_registrar)
     base.vault_registrar = new_vault_registrar
+
+
+@external
+def set_refinance_addr(_address: address):
+
+    """
+    @notice Set the refinance facet address
+    @dev Changes the refinance facet contract address. Admin function.
+    @param _address The address of the new refinance facet contract.
+    """
+
+    assert msg.sender == base.owner
+    assert _address != empty(address)
+    log RefinanceAddrChanged(old_addr=base.refinance_addr, new_addr=_address)
+    base.refinance_addr = _address
+
+
+@external
+def set_liquidation_addr(_address: address):
+
+    """
+    @notice Set the liquidation facet address
+    @dev Changes the liquidation facet contract address. Admin function.
+    @param _address The address of the new liquidation facet contract.
+    """
+
+    assert msg.sender == base.owner
+    assert _address != empty(address)
+    log LiquidationAddrChanged(old_addr=base.liquidation_addr, new_addr=_address)
+    base.liquidation_addr = _address
 
 
 # Core functions
@@ -711,7 +747,7 @@ def partially_liquidate_loan(loan: base.Loan):
     @param loan The loan to be soft liquidated.
     """
     raw_call(
-        liquidation_addr,
+        base.liquidation_addr,
         abi_encode(
             loan,
             payment_token,
@@ -739,7 +775,7 @@ def liquidate_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
     """
 
     raw_call(
-        liquidation_addr,
+        base.liquidation_addr,
         abi_encode(
             loan,
             redeem_result,
@@ -911,7 +947,7 @@ def extend_loan(
     """
 
     raw_call(
-        refinance_addr,
+        base.refinance_addr,
         abi_encode(
             loan,
             offer,
@@ -935,7 +971,7 @@ def extend_loan_lender(loan: base.Loan, new_maturity: uint256):
     """
 
     raw_call(
-        refinance_addr,
+        base.refinance_addr,
         abi_encode(
             loan,
             new_maturity,
@@ -1032,7 +1068,7 @@ def _simulate_partial_liquidation(loan: base.Loan) -> base.PartialLiquidationRes
 
     assert msg.sender == self
     return abi_decode(raw_call(
-        liquidation_addr,
+        base.liquidation_addr,
         abi_encode(
             loan,
             oracle_addr,
@@ -1066,7 +1102,7 @@ def replace_loan(
     @return The ID of the new loan.
     """
     return convert(raw_call(
-        refinance_addr,
+        base.refinance_addr,
         abi_encode(
             loan,
             offer,
@@ -1108,7 +1144,7 @@ def replace_loan_lender(
     """
 
     return convert(raw_call(
-        refinance_addr,
+        base.refinance_addr,
         abi_encode(
             loan,
             offer,
@@ -1239,7 +1275,7 @@ def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base
     """
 
     raw_call(
-        liquidation_addr,
+        base.liquidation_addr,
         abi_encode(
             loan,
             new_borrower,
