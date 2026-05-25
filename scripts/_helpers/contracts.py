@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 
 from ape import project
+from rich import print
 from rich.markup import escape
 
 from .basetypes import ContractConfig, DeploymentContext, abi_key
@@ -353,29 +354,6 @@ class P2PLendingVaultedErc20(ContractConfig):
 
 
 @dataclass
-class LiquidationImpl(ContractConfig):
-    def __init__(
-        self,
-        *,
-        key: str,
-        version: str | None = None,
-        abi_key: str | None = None,
-        address: str | None = None,
-    ):
-        super().__init__(
-            key,
-            None,
-            project.P2PLendingLiquidation,
-            version=version,
-            abi_key=abi_key,
-            token=False,
-            deployment_args=[],
-        )
-        if address:
-            self.load_contract(address)
-
-
-@dataclass
 class LiquidationVaultedImpl(ContractConfig):
     def __init__(
         self,
@@ -412,29 +390,6 @@ class RefinanceV0Impl(ContractConfig):
             key,
             None,
             project.P2PLendingV0Refinance,
-            version=version,
-            abi_key=abi_key,
-            token=False,
-            deployment_args=[],
-        )
-        if address:
-            self.load_contract(address)
-
-
-@dataclass
-class RefinanceImpl(ContractConfig):
-    def __init__(
-        self,
-        *,
-        key: str,
-        version: str | None = None,
-        abi_key: str | None = None,
-        address: str | None = None,
-    ):
-        super().__init__(
-            key,
-            None,
-            project.P2PLendingRefinance,
             version=version,
             abi_key=abi_key,
             token=False,
