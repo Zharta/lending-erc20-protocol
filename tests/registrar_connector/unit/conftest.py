@@ -455,3 +455,40 @@ def connector(connector_def, vault_registrar, p2p_vaulted, p2p_securitize, owner
     c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
     c.change_authorized_contract(p2p_securitize.address, True, sender=owner)
     return c
+
+
+# V2 Vault Registrar and Connector fixtures
+
+
+@pytest.fixture(scope="session")
+def investor_account():
+    return Account.create()
+
+
+@pytest.fixture
+def investor(investor_account, boa_env):
+    boa.env.set_balance(investor_account.address, 10**21)
+    return investor_account.address
+
+
+@pytest.fixture(scope="session")
+def v2_vault_registrar_contract_def(boa_env):
+    return boa.load_partial("contracts/auxiliary/VaultRegistrarV2Mock.vy")
+
+
+@pytest.fixture
+def v2_vault_registrar(v2_vault_registrar_contract_def, usdc, owner):
+    return v2_vault_registrar_contract_def.deploy(usdc.address)
+
+
+@pytest.fixture(scope="session")
+def v2_connector_def(boa_env):
+    return boa.load_partial("contracts/SecuritizeRegistrarV2Connector.vy")
+
+
+@pytest.fixture
+def v2_connector(v2_connector_def, v2_vault_registrar, p2p_vaulted, p2p_securitize, owner):
+    c = v2_connector_def.deploy(v2_vault_registrar.address)
+    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
+    c.change_authorized_contract(p2p_securitize.address, True, sender=owner)
+    return c

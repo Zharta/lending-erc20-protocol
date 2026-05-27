@@ -38,6 +38,7 @@ These files contain binding rules for how code and tests must be structured. You
 - Use `boa.env.time_travel()` for time-dependent tests
 - Use `boa.reverts("exact error message")` for revert assertions — always match the exact string from the contract
 - Mock external dependencies (ERC20, oracles, KYC validator) — unit tests must not depend on external state
+- **Never test unintended behavior as correct.** If a code path produces an incorrect or dangerous result (e.g., forwarding empty/zero values where valid data is required), write a revert test asserting the code *should* reject it. If the contract doesn't revert yet, mark the test `@pytest.mark.xfail(reason="...", strict=True)` until the contract is fixed. Never write a happy-path assertion for a known-bad outcome.
 
 ### 3. Validating Tests
 When validating existing tests:
