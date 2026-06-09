@@ -319,6 +319,11 @@ class P2PLendingVaultedErc20(ContractConfig):
         if address:
             self.load_contract(address)
 
+    def deployment_dependencies(self, context: DeploymentContext) -> set[str]:
+        deploy_or_config_deps = [self.refinance_impl_key, self.liquidation_impl_key]
+        optional_deps = {c for c in deploy_or_config_deps if context[c].contract is None}
+        return self.deployment_deps | optional_deps
+
     def deploy(self, context: DeploymentContext):
         super().deploy(context)
         if self.vault_registrar_connector_key:

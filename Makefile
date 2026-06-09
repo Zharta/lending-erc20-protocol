@@ -78,16 +78,18 @@ lint:
 %-prod: export ENV=prod
 
 %-zethereum %-zapechain: export ENV=dev
-%-sepolia %-curtis: export ENV=int
-%-ethereum %-apechain: export ENV=prod
+%-sepolia %-curtis %-base-sepolia: export ENV=int
+%-ethereum %-apechain %-base: export ENV=prod
 
 %-local: export CHAIN=foundry
 %-zethereum: export CHAIN=zethereum
 %-zapechain: export CHAIN=zapechain
 %-sepolia: export CHAIN=sepolia
 %-curtis: export CHAIN=curtis
+%-base-sepolia: export CHAIN=base-sepolia
 %-ethereum: export CHAIN=ethereum
 %-apechain: export CHAIN=apechain
+%-base: export CHAIN=base
 
 %-local: export NETWORK=ethereum:local:foundry
 %-zethereum: export NETWORK=ethereum:local:https://network.dev.zharta.io/dev1/
@@ -95,8 +97,10 @@ lint:
 
 %-sepolia: export NETWORK=ethereum:sepolia:alchemy
 %-curtis: export NETWORK=apechain:curtis:https://curtis.rpc.caldera.xyz/http
+%-base-sepolia: export NETWORK=base:sepolia:alchemy
 %-ethereum: export NETWORK=ethereum:mainnet:alchemy
 %-apechain: export NETWORK=apechain:mainnet:alchemy
+%base: export NETWORK=base:mainnet:alchemy
 
 add-account:
 	${VENV}/bin/ape accounts import $(alias)
@@ -105,16 +109,16 @@ compile:
 	rm -rf .build/*
 	${VENV}/bin/ape compile
 
-console-local console-zethereum console-zapechain console-sepolia console-curtis console-ethereum console-apechain:
+console-local console-zethereum console-zapechain console-sepolia console-curtis console-base-sepolia console-ethereum console-apechain console-base:
 	${VENV}/bin/ape console --network ${NETWORK} # --verbosity DEBUG
 
-deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-ethereum deploy-apechain:
+deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-base-sepolia deploy-ethereum deploy-apechain deploy-base:
 	${VENV}/bin/ape run -I deployment --network ${NETWORK}
 
-publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-ethereum publish-apechain:
+publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-base-sepolia publish-ethereum publish-apechain publish-base:
 	${VENV}/bin/ape run publish
 
-get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-ethereum get-metadata-apechain:
+get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-base-sepolia get-metadata-ethereum get-metadata-apechain get-metadata-base:
 	${VENV}/bin/ape run get_tokens
 
 contract-sizes:

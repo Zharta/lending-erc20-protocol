@@ -77,6 +77,7 @@ def store_contracts(env: Environment, chain: str, contracts: list[ContractConfig
 
     with open(config_file, "w") as f:
         f.write(json.dumps(config, indent=4, sort_keys=True))
+        f.write("\n")
 
 
 def load_tokens(env: Environment, chain: str) -> list[ContractConfig]:

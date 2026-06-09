@@ -112,10 +112,11 @@ class ContractConfig:
         )
 
         if not context.dryrun:
-            deploy_args = self.container.constructor.encode_input(*self.deployment_args_values(context))
+            deploy_args_vals = self.deployment_args_values(context)
+            deploy_args = self.container.constructor.encode_input(*deploy_args_vals)
             rprint(f"Deployment args for [blue]{self.key}[/]: [bright_black]{deploy_args.hex()}[/]")
 
-            self.contract = self.container.deploy(*self.deployment_args_values(context), **kwargs)
+            self.contract = self.container.deploy(*deploy_args_vals, **kwargs)
             self.abi_key = abi_key(self.contract.contract_type.dict()["abi"])
 
 
