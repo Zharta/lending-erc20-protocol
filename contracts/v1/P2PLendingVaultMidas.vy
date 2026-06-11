@@ -1,9 +1,9 @@
 # @version 0.4.3
 
 """
-@title P2PLendingVault
+@title P2PLendingVaultMidas
 @author [Zharta](https://zharta.io/)
-@notice This contract implements a vault to hold collateral for peer-to-peer loans
+@notice This contract implements a vault to hold Midas mToken collateral for peer-to-peer loans
 @dev Actual vaults are minimal proxy contracts to this, deployed via CREATE2 by the lending contract
 
 """
@@ -12,39 +12,39 @@
 
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
+from contracts.v1 import P2PLendingMultiVaultBase as base
 
-interface Vault:
-    def initialise(_owner: address, _token: address): nonpayable
-    def deposit(amount: uint256, wallet: address): nonpayable
-    def withdraw(amount: uint256, wallet: address): nonpayable
-    def withdrawable_balance() -> uint256: view
-    def withdraw_funds(payment_token: address, amount: uint256): nonpayable
-    def transfer_funds(payment_token: address, amount: uint256, wallet: address): nonpayable
-    def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> uint256: nonpayable
+interface MidasDepositVault:
+    def depositInstant(tokenIn: address, amountToken: uint256, minReceiveAmount: uint256, referrerId: bytes32, tokensReceiver: address): nonpayable
 
-struct DsTokenAmountResult:
-    ds_token_amount: uint256
-    rate: uint256
-    fee: uint256
-
-interface SecuritizeSwap:
-    def calculateDsTokenAmount(_stableCoinAmount: uint256) -> DsTokenAmountResult: view
-    def swap(_liquidityAmount: uint256, _minOutAmount: uint256): nonpayable
-
-
-interface SecuritizeDSToken:
-    def getDSService(_serviceId: uint256) -> address: view
+interface MidasRedemptionVault:
+    def redeemInstant(tokenOut: address, amountMTokenIn: uint256, minReceiveAmount: uint256): nonpayable
+    def instantFee() -> uint256: view
+    def tokensConfig(token: address) -> MidasTokenConfig: view
+    def waivedFeeRestriction(user: address) -> bool: view
 
 interface P2PLendingContract:
     def authorized_proxies(proxy: address) -> bool: view
 
-implements: Vault
+
+BPS: constant(uint256) = 10000
+
+implements: base.Vault
 
 
-VERSION: public(constant(String[30])) = "P2PLendingVaultSecur.20260310"
+VERSION: public(constant(String[30])) = "P2PLendingVaultMidas.20260423"
 
 # Structs
 
+struct MidasTokenConfig:
+    dataFeed: address
+    fee: uint256
+    allowance: uint256
+    stable: bool
+
+
+# Events
+#
 event Deposit:
     wallet: address
     amount: uint256
@@ -60,6 +60,18 @@ event TransferFailed:
 event WithdrawPending:
     wallet: address
     amount: uint256
+
+event Buy:
+    owner: address
+    deposit_vault: address
+    stable_coin_amount: uint256
+    mtoken_received: uint256
+
+event Redeem:
+    owner: address
+    redemption_vault: address
+    mtoken_amount: uint256
+    token_out_received: uint256
 
 # Global variables
 
@@ -91,6 +103,7 @@ def initialise(_owner: address, _token: address):
     self.caller = msg.sender
     self.owner = _owner
     self.token = _token
+
 
 
 @external
@@ -201,56 +214,102 @@ def transfer_funds(payment_token: address, amount: uint256, wallet: address):
 
 
 @external
-def buy(payment_token: address, min_ds_token_amount: uint256, stable_coin_amount: uint256):
+@nonreentrant
+def buy(payment_token: address, deposit_vault: address, min_mtoken_amount: uint256, stable_coin_amount: uint256):
     """
-    @notice Buy DS tokens using stable coins via the SecuritizeSwap contract.
-    @dev Approves the SecuritizeSwap contract to spend stable coins and executes the buy operation.
-    @param min_ds_token_amount The minimum amount of DS tokens to receive.
-    @param stable_coin_amount The amount of stable coins to spend.
+    @notice Buy mTokens using stablecoins via a Midas DepositVault contract.
+    @dev Approves the DepositVault to spend stablecoins and executes the deposit operation.
+    @param payment_token The address of the stablecoin to spend.
+    @param deposit_vault The address of the Midas DepositVault contract.
+    @param min_mtoken_amount The minimum amount of mTokens to receive
+    @param stable_coin_amount The amount of stablecoins to spend (in native token decimals).
     """
 
     assert self._check_user(self.owner), "unauthorized"
 
-    securitize_swap_contract: address = staticcall SecuritizeDSToken(self.token).getDSService(1<<14)
-
-    ds_token_amount: DsTokenAmountResult = staticcall SecuritizeSwap(securitize_swap_contract).calculateDsTokenAmount(stable_coin_amount)
-    assert ds_token_amount.ds_token_amount >= min_ds_token_amount, "ds token amount lt min"
+    token_decimals: uint256 = convert(staticcall IERC20Detailed(payment_token).decimals(), uint256)
+    mtoken_decimals: uint256 = convert(staticcall IERC20Detailed(self.token).decimals(), uint256)
 
     initial_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
-    assert extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount), "transferFrom failed"
-    extcall IERC20(payment_token).approve(securitize_swap_contract, stable_coin_amount)
-    extcall SecuritizeSwap(securitize_swap_contract).swap(stable_coin_amount, min_ds_token_amount)
+    initial_mtoken_balance: uint256 = staticcall IERC20(self.token).balanceOf(self)
 
-    self.pending_transfers[self.owner] += ds_token_amount.ds_token_amount
-    self.pending_transfers_total += ds_token_amount.ds_token_amount
+    assert extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount), "transferFrom failed"
+    extcall IERC20(payment_token).approve(deposit_vault, stable_coin_amount)
+    extcall MidasDepositVault(deposit_vault).depositInstant(
+        payment_token,
+        stable_coin_amount * (10 ** 18) // (10 ** token_decimals),
+        min_mtoken_amount * (10 ** 18) // (10 ** mtoken_decimals),
+        empty(bytes32),
+        self
+    )
+
+    mtoken_received: uint256 = staticcall IERC20(self.token).balanceOf(self) - initial_mtoken_balance
+    self.pending_transfers[self.owner] += mtoken_received
+    self.pending_transfers_total += mtoken_received
 
     remaining_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
     if remaining_balance > initial_balance:
         extcall IERC20(payment_token).transfer(msg.sender, remaining_balance - initial_balance)
 
+    log Buy(owner=self.owner, deposit_vault=deposit_vault, stable_coin_amount=stable_coin_amount, mtoken_received=mtoken_received)
+
 
 @external
-def redeem(redemption_vault: address, token_out: address, amount_in: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> uint256:
+@nonreentrant
+def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> uint256:
     """
-    @notice Redeem DS tokens for a specified output token via the SecuritizeSwap contract.
-    @dev Approves the SecuritizeSwap contract to spend DS tokens and executes the redeem operation.
-    @param redemption_vault The address of the vault to which redeemed tokens will be sent.
-    @param token_out Ignored in this implementation.
-    @param amount_in The amount of DS tokens to redeem.
-    @param oracle_rate_num Ignored in this implementation (redemption is async, attested off-chain).
-    @param oracle_rate_den Ignored in this implementation (redemption is async, attested off-chain).
-    @return Returns 0 as the redeem process is async.
+    @notice Redeem mTokens back to stablecoins via a Midas RedemptionVault contract.
+    @dev Approves the RedemptionVault to spend mTokens and executes the redemption. The minimum
+         receive amount is the oracle-implied value of the redeemed mTokens, discounted by the
+         RedemptionVault's instant-redeem fee so the call does not revert on that fee.
+    @param redemption_vault The address of the Midas RedemptionVault contract.
+    @param token_out The address of the token to receive from redemption.
+    @param amount_mtoken The amount of mTokens to redeem
+    @param oracle_rate_num The numerator of the collateral->payment token oracle rate.
+    @param oracle_rate_den The denominator of the collateral->payment token oracle rate.
     """
 
     assert self._check_user(self.caller), "unauthorized"
-    if amount_in == 0:
+
+    token_decimals: uint256 = convert(staticcall IERC20Detailed(token_out).decimals(), uint256)
+    mtoken_decimals: uint256 = convert(staticcall IERC20Detailed(self.token).decimals(), uint256)
+    initial_balance: uint256 = staticcall IERC20(token_out).balanceOf(self)
+
+    amount_mtoken_base18: uint256 = amount_mtoken * (10 ** 18) // (10 ** mtoken_decimals)
+
+    fee_percent: uint256 = self._midas_redeem_fee(redemption_vault, token_out)
+    amount_without_fee: uint256 = amount_mtoken_base18 - amount_mtoken_base18 * fee_percent // BPS
+    scale: uint256 = 10 ** (18 - token_decimals)
+    min_receive_amount: uint256 = amount_without_fee * oracle_rate_num // (oracle_rate_den * scale * scale)
+
+    extcall IERC20(self.token).approve(redemption_vault, amount_mtoken)
+    extcall MidasRedemptionVault(redemption_vault).redeemInstant(
+        token_out,
+        amount_mtoken_base18,
+        min_receive_amount,
+    )
+
+    token_out_received: uint256 = staticcall IERC20(token_out).balanceOf(self) - initial_balance
+
+    log Redeem(owner=self.owner, redemption_vault=redemption_vault, mtoken_amount=amount_mtoken, token_out_received=token_out_received)
+
+    return token_out_received
+
+
+@view
+@internal
+def _midas_redeem_fee(redemption_vault: address, token_out: address) -> uint256:
+    """
+    @notice The Midas instant-redeem fee for this vault, in  BPS.
+    @dev Mirrors ManageableVault._getFeeAmount: instant fee + per-token fee, waived for whitelisted users.
+    """
+    if staticcall MidasRedemptionVault(redemption_vault).waivedFeeRestriction(self):
         return 0
-
-    assert amount_in + self.pending_transfers_total <= staticcall IERC20(self.token).balanceOf(self), "insufficient balance"
-    assert (extcall IERC20(self.token).transfer(redemption_vault, amount_in, default_return_value=True)), "transfer failed"
-    log Withdraw(wallet=redemption_vault, amount=amount_in)
-
-    return 0
+    fee_percent: uint256 = (
+        staticcall MidasRedemptionVault(redemption_vault).instantFee()
+        + (staticcall MidasRedemptionVault(redemption_vault).tokensConfig(token_out)).fee
+    )
+    return min(fee_percent, BPS)
 
 
 @internal

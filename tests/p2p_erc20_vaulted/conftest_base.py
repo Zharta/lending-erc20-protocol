@@ -38,7 +38,7 @@ def get_last_event(contract: VyperContract, name: str | None = None):
 def get_events(contract: VyperContract, name: str | None = None):
     return [
         EventWrapper(e)
-        for e in contract.get_logs()
+        for e in contract.get_logs(strict=False)
         if not isinstance(e, RawLogEntry) and (name is None or name == type(e).__name__)
     ]
 
