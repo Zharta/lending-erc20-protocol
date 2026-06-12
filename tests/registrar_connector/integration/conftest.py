@@ -11,18 +11,19 @@ from eth_account.messages import encode_typed_data
 from tests.p2p_erc20_securitize.conftest_base import sign_kyc
 
 # ---------------------------------------------------------------------------
-# Securitize Sepolia testnet addresses (https://labs.securitize.io)
+# Securitize mainnet addresses (ACRED fund)
 # ---------------------------------------------------------------------------
-DS_TOKEN = "0xE52c3eAf88138762E24916F25124Ab7bE0c9817a"  # Securitize DS Token (collateral)
-VAULT_REGISTRAR_V2 = "0x8D7aee4813432C19209c2CBBb3095c71384c1d43"  # VaultRegistrar V2
-REGISTRY_SERVICE = "0xdAE984876F612F5505710268EB901644985e0aEe"  # Securitize registry service
-# Holder of the DS token MASTER/issuer role - can register investors and issue tokens.
-DS_MASTER = "0x3A8A0baC3481C452de5d53946c73De4980c8C668"
+DS_TOKEN = "0x17418038ecF73BA4026c4f428547BF099706F27B"  # ACRED DS Token (collateral)
+# Holder of the issuer role - can register investors and issue tokens.
+TOKEN_ISSUER = "0x1ffD2C4373A0CBee33f974e4142611C8c4A4f366"
+# Securitize owner: admin allowed to add operators on the registrar and grant trust roles.
+SECURITIZE_OWNER = "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
 
-# The registrar's EIP-712 domain separator is baked in at its real deployment on
-# Sepolia, so signatures must use the real Sepolia chain id. titanoboa exposes the
-# forked chain id through the `chain.id` opcode (even though boa.env.evm.chain.chain_id
-# reports the local default of 1).
+TRUST_ROLE_TRANSFER_AGENT = 8
+
+# The registrar's EIP-712 domain separator is baked in at its real deployment, so
+# signatures must use the real chain id. titanoboa exposes the forked chain id through
+# the `chain.id` opcode (even though boa.env.evm.chain.chain_id reports the local default of 1).
 
 
 # ---------------------------------------------------------------------------
@@ -72,8 +73,8 @@ def sign_register_vault(account, connector_address, vault_registrar, deadline, i
 def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
-        fork_uri = os.environ["BOA_SEPOLIA_FORK_RPC_URL"]
-        boa.env.fork(fork_uri)
+        fork_uri = os.environ["BOA_FORK_RPC_URL"]
+        boa.env.fork(fork_uri, block_identifier=25300898)
         yield
 
 
@@ -166,9 +167,9 @@ def now():
 # Securitize on-chain contracts (forked) + investor registration
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def ds_master(boa_env):
-    boa.env.set_balance(DS_MASTER, 10**21)
-    return DS_MASTER
+def token_issuer(boa_env):
+    boa.env.set_balance(TOKEN_ISSUER, 10**21)
+    return TOKEN_ISSUER
 
 
 @pytest.fixture(scope="session")
@@ -189,17 +190,24 @@ def acred(erc20_contract_def, boa_env):
 
 @pytest.fixture
 def securitize_registry(boa_env):
-    return boa.load_abi("contracts/auxiliary/SecuritizeRegistryService_abi.json").at(REGISTRY_SERVICE)
+    return boa.load_abi("contracts/auxiliary/SecuritizeRegistryService_abi.json").at(
+        "0x3A8E9CD2E17E1F2904b7f745Da29C9cA765Cc319"
+    )
+
+
+@pytest.fixture
+def securitize_trust_service(boa_env):
+    return boa.load_abi("contracts/auxiliary/SecuritizeTrustService_abi.json").at("0xc397436742eAF7C325DDBFc4dc63D95822b27101")
 
 
 @pytest.fixture(autouse=True)
-def register_borrower_investor(securitize_registry, acred_ds_token, borrower, ds_master):
+def register_borrower_investor(securitize_registry, acred_ds_token, borrower, token_issuer):
     """Register the borrower as a Securitize investor and issue collateral DS tokens."""
     investor_id = "zharta_test_investor"
-    securitize_registry.registerInvestor(investor_id, "", sender=ds_master)
-    securitize_registry.setCountry(investor_id, "US", sender=ds_master)
-    securitize_registry.addWallet(borrower, investor_id, sender=ds_master)
-    acred_ds_token.issueTokens(borrower, 200 * int(1e6), sender=ds_master)
+    securitize_registry.registerInvestor(investor_id, "", sender=token_issuer)
+    securitize_registry.setCountry(investor_id, "US", sender=token_issuer)
+    securitize_registry.addWallet(borrower, investor_id, sender=token_issuer)
+    acred_ds_token.issueTokens(borrower, 200 * int(1e6), sender=token_issuer)
     return investor_id
 
 
@@ -309,13 +317,14 @@ def securitize_vault_impl(securitize_vault_contract_def):
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def vault_registrar(boa_env):
-    return boa.load_abi("contracts/auxiliary/VaultRegistrarV2_abi.json").at(VAULT_REGISTRAR_V2)
+    return boa.load_abi("contracts/auxiliary/VaultRegistrarV2_abi.json").at("0xD280bcA62a7FC67011cAef77815e8606071BEf9F")
 
 
 @pytest.fixture
-def securitize_owner(accounts):
-    # On Sepolia any wallet may register itself/an operator on the registrar.
-    return accounts[4]
+def securitize_owner(boa_env):
+    # Admin allowed to add operators on the registrar and grant trust roles.
+    boa.env.set_balance(SECURITIZE_OWNER, 10**21)
+    return SECURITIZE_OWNER
 
 
 @pytest.fixture(scope="session")
@@ -324,10 +333,12 @@ def v2_connector_def():
 
 
 @pytest.fixture
-def registrar_connector(v2_connector_def, vault_registrar, securitize_owner, owner):
+def registrar_connector(v2_connector_def, vault_registrar, securitize_trust_service, securitize_owner, owner):
     assert boa.env.eoa == owner
     connector = v2_connector_def.deploy(vault_registrar.address)
     vault_registrar.addOperator(connector.address, sender=securitize_owner)
+    # The registrar needs the TRANSFER_AGENT trust role to register vaults in the registry.
+    securitize_trust_service.setRole(vault_registrar.address, TRUST_ROLE_TRANSFER_AGENT, sender=securitize_owner)
     return connector
 
 
