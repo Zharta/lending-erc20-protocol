@@ -1,8 +1,3 @@
-#
-# This test is temporary. As soon as the registrar v2 is on mainnet, replace it by a test in the p2p_erc20_securitize suite with the same logic, and remove the registrar_connector suite.
-#
-#
-
 import boa
 import pytest
 
