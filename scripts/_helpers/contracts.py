@@ -287,8 +287,7 @@ class P2PLendingVaultedErc20(ContractConfig):
                 oracle_key,
                 kyc_validator_key,
                 vault_impl_key,
-            }
-            | ({vault_registrar_connector_key} if vault_registrar_connector_key else set()),
+            },
             deployment_args=[
                 payment_token_key,
                 collateral_token_key,
@@ -311,6 +310,7 @@ class P2PLendingVaultedErc20(ContractConfig):
             config_deps={
                 refinance_impl_key: self.set_refinance_impl,
                 liquidation_impl_key: self.set_liquidation_impl,
+                vault_registrar_connector_key: self.set_vault_registrar_connector,
             },
         )
         self.vault_registrar_connector_key = vault_registrar_connector_key
@@ -351,6 +351,19 @@ class P2PLendingVaultedErc20(ContractConfig):
                 print(f"Contract [blue]{escape(self.key)}[/] liquidation impl already {new_addr}, skipping update")
             else:
                 execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
+
+    def set_vault_registrar_connector(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "change_vault_registrar", self.vault_registrar_connector_key)
+            execute(context, self.vault_registrar_connector_key, "change_authorized_contract", self.key, True)  # noqa: FBT003
+        else:
+            current_vault_registrar = execute_read(context, self.key, "vault_registrar")
+            new_vault_registrar = context[self.vault_registrar_connector_key].address()
+            if current_vault_registrar == new_vault_registrar:
+                print(f"Contract [blue]{escape(self.key)}[/] vault registrar already {new_vault_registrar}, skipping update")
+            else:
+                execute(context, self.key, "change_vault_registrar", self.vault_registrar_connector_key)
+                execute(context, self.vault_registrar_connector_key, "change_authorized_contract", self.key, True)  # noqa: FBT003
 
 
 @dataclass
@@ -689,7 +702,6 @@ class P2PLendingSecuritizeErc20(ContractConfig):
                 oracle_key,
                 kyc_validator_key,
                 vault_impl_key,
-                vault_registrar_connector_key,
             },
             deployment_args=[
                 payment_token_key,
@@ -714,6 +726,7 @@ class P2PLendingSecuritizeErc20(ContractConfig):
             config_deps={
                 refinance_impl_key: self.set_refinance_impl,
                 liquidation_impl_key: self.set_liquidation_impl,
+                vault_registrar_connector_key: self.set_vault_registrar_connector,
             },
         )
         self.vault_registrar_connector_key = vault_registrar_connector_key
@@ -753,6 +766,19 @@ class P2PLendingSecuritizeErc20(ContractConfig):
                 print(f"Contract [blue]{escape(self.key)}[/] liquidation impl already {new_addr}, skipping update")
             else:
                 execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
+
+    def set_vault_registrar_connector(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "change_vault_registrar", self.vault_registrar_connector_key)
+            execute(context, self.vault_registrar_connector_key, "change_authorized_contract", self.key, True)  # noqa: FBT003
+        else:
+            current_vault_registrar = execute_read(context, self.key, "vault_registrar")
+            new_vault_registrar = context[self.vault_registrar_connector_key].address()
+            if current_vault_registrar == new_vault_registrar:
+                print(f"Contract [blue]{escape(self.key)}[/] vault registrar already {new_vault_registrar}, skipping update")
+            else:
+                execute(context, self.key, "change_vault_registrar", self.vault_registrar_connector_key)
+                execute(context, self.vault_registrar_connector_key, "change_authorized_contract", self.key, True)  # noqa: FBT003
 
 
 @dataclass
@@ -827,6 +853,31 @@ class VaultRegistrarMock(ContractConfig):
 
 
 @dataclass
+class VaultRegistrarV2Mock(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        token_key: str,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.VaultRegistrarV2Mock,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={token_key},
+            deployment_args=[token_key],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
 class SecuritizeRegistrarV1Connector(ContractConfig):
     def __init__(
         self,
@@ -842,6 +893,33 @@ class SecuritizeRegistrarV1Connector(ContractConfig):
             key,
             None,
             project.SecuritizeRegistrarV1Connector,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_deps={vault_registrar_key},
+            deployment_args=[vault_registrar_key],
+        )
+        self.vault_registrar_key = vault_registrar_key
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class SecuritizeRegistrarV2Connector(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        vault_registrar_key: str,
+        address: str | None = None,
+    ):
+        self._vault_registrar_key = vault_registrar_key
+        super().__init__(
+            key,
+            None,
+            project.SecuritizeRegistrarV2Connector,
             version=version,
             abi_key=abi_key,
             token=False,
