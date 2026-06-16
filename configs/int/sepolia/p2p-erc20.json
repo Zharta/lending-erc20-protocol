@@ -52,6 +52,28 @@
                 "stablecoin": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2"
             }
         },
+        "dstoken_registrar_connector": {
+            "abi_key": "d06a9b6529159666463ffbc588a24ed1742dcbce",
+            "address": "0x23A073468dDb7AE3c8d07eEFCf51A2E7dd010241",
+            "contract": "SecuritizeRegistrarV2Connector",
+            "properties": {
+                "vault_registrar_key": "common.dstoken_vault_registrar"
+            },
+            "properties_addresses": {
+                "vault_registrar": "0x8D7aee4813432C19209c2CBBb3095c71384c1d43"
+            }
+        },
+        "dstoken_vault_registrar": {
+            "abi_key": "e8bfb4c2b2e433c9e02e438e0ef58a0625758fa6",
+            "address": "0x8D7aee4813432C19209c2CBBb3095c71384c1d43",
+            "contract": "VaultRegistrarV2Mock",
+            "properties": {
+                "token_key": "common.dst"
+            },
+            "properties_addresses": {
+                "token": "0xE52c3eAf88138762E24916F25124Ab7bE0c9817a"
+            }
+        },
         "hlscope_with_swap": {
             "abi_key": "e9ef2ad98d2aa6d54ba3b85beded567415895561",
             "address": "0x2d3df3312128d1c2277FC9e5e945b6A6b71280F4",
@@ -166,6 +188,16 @@
             "properties": {
                 "decimals": 8,
                 "rate": "102700000"
+            },
+            "properties_addresses": {}
+        },
+        "oracle_dst_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0x2b3FC5707d17E81CB7B32D59912d5FE14E51F465",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "106618250900"
             },
             "properties_addresses": {}
         },
@@ -540,6 +572,43 @@
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
                 "refinance_impl": "0x96fa22A62dbB6db6EdFC1702d3Ab8783f48f3FE3",
                 "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_dstoken_vaulted": {
+            "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
+            "address": "0x9Ee43B0a4993F101c597Aa9a60181a41c77B6fC8",
+            "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "RedStone Feed: DSToken / USD",
+            "properties": {
+                "collateral_token_key": "common.dst",
+                "full_liquidation_fee": 1000,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_vaulted_impl",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_dst_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 1000,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "refinance_impl_key": "common.refinance_vaulted_impl",
+                "transfer_agent": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "vault_impl_key": "common.vault_impl",
+                "vault_registrar_connector_key": "common.dstoken_registrar_connector"
+            },
+            "properties_addresses": {
+                "collateral_token": "0xE52c3eAf88138762E24916F25124Ab7bE0c9817a",
+                "kyc_validator": "0xEB9934797399099acB719786eaA1C81d7C97bF40",
+                "liquidation_impl": "0x5Bf5D45DAad7bBa93818c98DC0DdE0aB6e4bfEc4",
+                "oracle": "0x2b3FC5707d17E81CB7B32D59912d5FE14E51F465",
+                "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
+                "refinance_impl": "0x96fa22A62dbB6db6EdFC1702d3Ab8783f48f3FE3",
+                "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2",
+                "vault_registrar_connector": "0x23A073468dDb7AE3c8d07eEFCf51A2E7dd010241"
             },
             "token_symbol": "USDC",
             "version": "1"
