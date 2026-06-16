@@ -63,7 +63,7 @@
     },
     "configs": {},
     "p2p": {
-        "usdc_cbbtc_vaulted": {
+        "base_usdc_cbbtc_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0xB7603602860a4816154F2A3bA4d6aBDDd8937b84",
             "contract": "P2PLendingVaultedErc20",
@@ -98,7 +98,7 @@
             "token_symbol": "USDC",
             "version": "1"
         },
-        "usdc_despxa_vaulted": {
+        "base_usdc_despxa_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0xbe3eDea464493fC63A030ab8C471666c155E79CB",
             "contract": "P2PLendingVaultedErc20",
@@ -133,7 +133,7 @@
             "token_symbol": "USDC",
             "version": "1"
         },
-        "usdc_weth_vaulted": {
+        "base_usdc_weth_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0xbF2f1565C894ccE3c74F89602280F417f8970538",
             "contract": "P2PLendingVaultedErc20",
