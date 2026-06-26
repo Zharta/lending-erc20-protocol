@@ -4,12 +4,12 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_offer,
 )
@@ -72,6 +72,31 @@ def offer_usdc_weth(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_u
 
 
 @pytest.fixture
+def offer_usdc_weth_sync(now, borrower, lender, oracle, lender_key, usdc, weth, p2p_usdc_weth_sync):
+    principal = 1000 * 10**6
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=100,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    return sign_offer(offer, lender_key, p2p_usdc_weth_sync.address)
+
+
+@pytest.fixture
 def ongoing_loan_usdc_weth(
     p2p_usdc_weth,
     offer_usdc_weth,
@@ -101,7 +126,7 @@ def ongoing_loan_usdc_weth(
     )
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -111,6 +136,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -130,15 +156,79 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
     print(event)
     print(loan)
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
+def test_redeem_reverts_on_sync_vault(
+    p2p_usdc_weth_sync,
+    offer_usdc_weth_sync,
+    usdc,
+    weth,
+    borrower,
+    lender,
+    now,
+    kyc_borrower,
+    kyc_lender,
+):
+    """A REDEEM_SYNC vault must use the atomic redeem_and_settle path, so redeem() is rejected."""
+    offer = offer_usdc_weth_sync.offer
+    principal = offer.principal
+    collateral_amount = int(1e18)
+    lender_approval = principal + (p2p_usdc_weth_sync.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth_sync.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.mint(lender, lender_approval)
+    usdc.approve(p2p_usdc_weth_sync.address, lender_approval, sender=lender)
+
+    loan_id = p2p_usdc_weth_sync.create_loan(
+        offer_usdc_weth_sync, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
+    )
+    loan = Loan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(offer_usdc_weth_sync),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        create_time=now,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_amount=collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth_sync.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p_usdc_weth_sync.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth_sync.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth_sync.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+        vault_id=0,
+        redeem_start=0,
+        redeem_residual_collateral=0,
+        max_pending_window=0,
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_weth_sync.loans(loan_id)
+
+    with boa.reverts("use redeem_and_settle"):
+        p2p_usdc_weth_sync.redeem(loan, 0, sender=borrower)
+
+
 def test_redeem_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth):
-    for loan in get_securitize_loan_mutations(ongoing_loan_usdc_weth):
+    for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.redeem(loan, 0, sender=ongoing_loan_usdc_weth.borrower)
@@ -174,6 +264,7 @@ def test_redeem_reverts_if_already_redeemed(p2p_usdc_weth, ongoing_loan_usdc_wet
         ongoing_loan_usdc_weth,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     # Try to redeem again
@@ -197,8 +288,9 @@ def test_redeem_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, now):
         ongoing_loan_usdc_weth,
         redeem_start=now,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
 
 
 def test_redeem_transfers_collateral_to_redemption_wallet(
@@ -276,6 +368,7 @@ def test_redeem_marks_loan_as_redeemed(p2p_usdc_weth, ongoing_loan_usdc_weth, no
         ongoing_loan_usdc_weth,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
     assert p2p_usdc_weth.is_loan_redeemed(updated_loan)
 
@@ -289,6 +382,7 @@ def test_add_collateral_to_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ongoing_
         ongoing_loan_usdc_weth,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     # Try to add collateral
@@ -315,6 +409,7 @@ def test_remove_collateral_from_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ong
         ongoing_loan_usdc_weth,
         redeem_start=now,
         redeem_residual_collateral=residual,
+        max_pending_window=0,
     )
 
     # Try to remove collateral

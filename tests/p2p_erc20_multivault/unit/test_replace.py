@@ -6,16 +6,16 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
     SignedOffer,
     SignedRedeemResult,
     calc_ltv,
     compute_liquidity_key,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_kyc,
     sign_offer,
@@ -143,7 +143,7 @@ def ongoing_loan_usdc_weth(
     )
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -153,6 +153,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -172,15 +173,16 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
     print(event)
     print(loan)
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
 def test_replace_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth, offer_usdc_weth2, kyc_lender2):
-    for loan in get_securitize_loan_mutations(ongoing_loan_usdc_weth):
+    for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.replace_loan(loan, offer_usdc_weth2, 0, loan.collateral_amount, kyc_lender2, sender=loan.borrower)
@@ -932,6 +934,7 @@ def test_replace_loan_reverts_if_loan_redeemed(
         loan,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     with boa.reverts("loan redeemed"):

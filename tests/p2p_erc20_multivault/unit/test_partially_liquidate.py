@@ -6,15 +6,15 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
     calc_collateral_from_ltv,
     calc_ltv,
     calc_partial_liquidation,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_offer,
 )
@@ -108,7 +108,7 @@ def ongoing_loan_usdc_weth(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -118,6 +118,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -138,8 +139,9 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
@@ -171,7 +173,7 @@ def ongoing_loan_usdc_weth_without_partial_liquidation(
 
     loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(signed_offer),
         offer_tracing_id=offer.tracing_id,
@@ -181,6 +183,7 @@ def ongoing_loan_usdc_weth_without_partial_liquidation(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -201,8 +204,9 @@ def ongoing_loan_usdc_weth_without_partial_liquidation(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
@@ -212,7 +216,7 @@ def p2p_erc20_proxy(p2p_usdc_weth, p2p_lending_erc20_proxy_contract_def):
 
 
 def test_partially_liquidate_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth):
-    for loan in get_securitize_loan_mutations(ongoing_loan_usdc_weth):
+    for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.partially_liquidate_loan(loan, sender=ongoing_loan_usdc_weth.borrower)
@@ -315,7 +319,7 @@ def test_partially_liquidate_loan_works_when_liquidator_is_lender(
         amount=loan.amount + loan.get_interest(now) - principal_written_off,
         accrual_start_time=now,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
 
 
 def test_partially_liquidate_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, weth, oracle, usdc, now):
@@ -337,7 +341,7 @@ def test_partially_liquidate_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan
         amount=loan.amount + loan.get_interest(now) - principal_written_off,
         accrual_start_time=now,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
 
 
 def test_partially_liquidate_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle, now):
@@ -457,7 +461,7 @@ def test_partially_liquidate_loan_consistent_with_simulation(p2p_usdc_weth, ongo
         amount=loan.amount + loan.get_interest(now) - principal_written_off,
         accrual_start_time=now,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
 
     assert partial_liquidation_result.collateral_claimed == collateral_claimed
     assert partial_liquidation_result.liquidation_fee == liquidation_fee
@@ -485,6 +489,7 @@ def test_simulate_partial_liquidation_callable_via_staticcall(p2p_usdc_weth, ong
                 apr: uint256
                 payment_token: address
                 maturity: uint256
+                create_time: uint256
                 start_time: uint256
                 accrual_start_time: uint256
                 borrower: address
@@ -506,6 +511,7 @@ def test_simulate_partial_liquidation_callable_via_staticcall(p2p_usdc_weth, ong
                 vault_id: uint256
                 redeem_start: uint256
                 redeem_residual_collateral: uint256
+                max_pending_window: uint256
 
             struct PartialLiquidationResult:
                 collateral_claimed: uint256
@@ -558,6 +564,7 @@ def test_partially_liquidate_loan_reverts_if_loan_redeemed(p2p_usdc_weth, ongoin
         loan,
         redeem_start=now,
         redeem_residual_collateral=loan.collateral_amount // 2,
+        max_pending_window=0,
     )
 
     # Set oracle to trigger liquidation condition

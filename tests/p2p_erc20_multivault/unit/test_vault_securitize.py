@@ -410,17 +410,8 @@ def test_buy_succeeds_with_exact_min_ds_token_amount(vault_acred, usdc, owner):
     assert vault_acred.pending_transfers(owner) == expected_ds_tokens
 
 
-# ===========================================================================
-# Mutation-killing tests
-# ===========================================================================
-
-
 def test_initialise_sets_owner_to_param_not_sender(securitize_vault_contract_def, token):
-    """Kills mutation L91: `self.owner = _owner` -> `self.owner = msg.sender`.
-
-    After initialise(_owner, _token), vault.owner() must be _owner (the borrower),
-    not msg.sender (the lending contract). We use distinct addresses to distinguish.
-    """
+    """After initialise(_owner, _token), owner() is _owner (the borrower), not msg.sender."""
     borrower = boa.env.generate_address("borrower_addr")
     lending_contract = boa.env.generate_address("lending_addr")
     assert borrower != lending_contract  # precondition
@@ -434,11 +425,7 @@ def test_initialise_sets_owner_to_param_not_sender(securitize_vault_contract_def
 
 
 def test_deposit_partial_pending_clears_pending_to_zero(vault_with_token, caller_addr, token, owner):
-    """Kills mutation L113: `self.pending_transfers[wallet] = 0` -> `= amount`.
-
-    In the elif branch (0 < pending < amount), pending_transfers[wallet] must be
-    set to 0 after deposit, not to the deposit amount.
-    """
+    """In the elif branch (0 < pending < amount), pending_transfers[wallet] is zeroed after deposit."""
     v = vault_with_token
 
     # Build vault balance
@@ -462,18 +449,13 @@ def test_deposit_partial_pending_clears_pending_to_zero(vault_with_token, caller
 
     v.deposit(larger_deposit, owner, sender=caller_addr)
 
-    # Original: pending_transfers[wallet] = 0
-    # Mutation: pending_transfers[wallet] = amount (800)
     assert v.pending_transfers(owner) == 0
     assert v.pending_transfers_total() == 0
 
 
 def test_withdraw_reverts_when_amount_plus_pending_exceeds_balance(vault_with_token, caller_addr, token, owner):
-    """Kills mutation L129: `amount + self.pending_transfers_total` -> `amount - self.pending_transfers_total`.
-
-    When amount + pending_total > balance but amount - pending_total < balance,
-    the original code reverts ("insufficient balance") but the mutation would pass.
-    """
+    """withdraw checks amount + pending_total against balance, so a withdraw that fits without
+    counting pending must still revert with "insufficient balance"."""
     v = vault_with_token
 
     # Deposit tokens to build vault balance
@@ -491,12 +473,10 @@ def test_withdraw_reverts_when_amount_plus_pending_exceeds_balance(vault_with_to
     assert v.pending_transfers_total() == pending_amount  # precondition
     assert token.balanceOf(v.address) == vault_balance  # precondition
 
-    # Try to withdraw 500: amount(500) + pending(600) = 1100 > balance(1000) -> should revert
-    # But with mutation: amount(500) - pending(600) underflows (uint256) -> would revert differently
-    # Use a value where amount + pending > balance but amount < balance:
+    # amount + pending > balance but amount < balance: must revert
     withdraw_amount = 500
-    assert withdraw_amount + pending_amount > vault_balance  # precondition: original reverts
-    assert withdraw_amount < vault_balance  # precondition: without pending check, might pass
+    assert withdraw_amount + pending_amount > vault_balance  # precondition
+    assert withdraw_amount < vault_balance  # precondition
 
     wallet = boa.env.generate_address("recipient")
     with boa.reverts("insufficient balance"):
@@ -504,11 +484,7 @@ def test_withdraw_reverts_when_amount_plus_pending_exceeds_balance(vault_with_to
 
 
 def test_withdraw_failure_credits_pending_to_wallet_not_sender(securitize_vault_contract_def, failing_transfer_erc20, owner):
-    """Kills mutation L143: `pending_transfers[wallet]` -> `pending_transfers[msg.sender]`.
-
-    When withdraw transfer fails, pending must be credited to `wallet` (the intended
-    recipient), not `msg.sender` (the lending contract/caller).
-    """
+    """When withdraw transfer fails, pending is credited to `wallet` (the recipient), not msg.sender."""
     caller = boa.env.generate_address("lending_contract")
     wallet = boa.env.generate_address("recipient_wallet")
     assert caller != wallet  # precondition: caller and wallet are different
@@ -523,18 +499,12 @@ def test_withdraw_failure_credits_pending_to_wallet_not_sender(securitize_vault_
     # Withdraw to wallet; transfer fails -> pending credited
     v.withdraw(deposit_amount, wallet, sender=caller)
 
-    # Original: pending_transfers[wallet] += amount
-    # Mutation: pending_transfers[msg.sender] += amount (msg.sender == caller)
     assert v.pending_transfers(wallet) == deposit_amount
     assert v.pending_transfers(caller) == 0
 
 
 def test_withdraw_pending_transfers_actual_tokens(vault_with_token, caller_addr, token, owner):
-    """Kills mutation L170: `transfer(msg.sender, amount)` -> `transfer(msg.sender, 0)`.
-
-    After withdraw_pending, the caller must receive actual tokens (balance increases
-    by `amount`), not zero.
-    """
+    """After withdraw_pending, the caller receives actual tokens (balance up by `amount`)."""
     v = vault_with_token
 
     # Build pending via deposit + failed withdraw
@@ -553,19 +523,12 @@ def test_withdraw_pending_transfers_actual_tokens(vault_with_token, caller_addr,
 
     v.withdraw_pending(amount, sender=owner)
 
-    # Original: transfers `amount` tokens to msg.sender
-    # Mutation: transfers 0 tokens
     assert token.balanceOf(owner) == owner_balance_before + amount
     assert token.balanceOf(v.address) == vault_balance_before - amount
 
 
 def test_deposit_pending_equals_one_takes_partial_path(securitize_vault_contract_def, tracking_erc20, owner):
-    """Kills mutation L111: `pending > 0` -> `pending > 1`.
-
-    When pending_transfers[wallet] == 1, the elif branch (partial pending) should
-    be taken. With the mutation, pending == 1 falls through to the else branch,
-    incorrectly transferring the full amount from wallet.
-    """
+    """When pending_transfers[wallet] == 1 (boundary), the partial-pending elif branch is taken."""
     caller = boa.env.generate_address("lending_contract")
     wallet = boa.env.generate_address("wallet")
 
@@ -583,19 +546,14 @@ def test_deposit_pending_equals_one_takes_partial_path(securitize_vault_contract
 
     v.deposit(deposit_amount, wallet, sender=caller)
 
-    # Original (elif pending > 0): transferFrom(wallet, self, amount - pending) = 9
-    # Mutation (elif pending > 1): falls to else, transferFrom(wallet, self, amount) = 10
+    # elif branch: transferFrom pulls amount - pending = 9
     assert tracking_erc20.last_transfer_from_amount() == deposit_amount - 1
     assert v.pending_transfers(wallet) == 0
     assert v.pending_transfers_total() == 0
 
 
 def test_withdraw_pending_reverts_if_amount_exceeds_pending(vault_with_token, caller_addr, token, owner):
-    """Kills mutation L167: delete `assert self.pending_transfers[msg.sender] >= amount`.
-
-    Calling withdraw_pending with amount > pending must revert with the exact
-    message "insufficient pending collateral".
-    """
+    """withdraw_pending with amount > pending reverts "insufficient pending collateral"."""
     v = vault_with_token
 
     # Build pending via deposit + failed withdraw
@@ -614,17 +572,8 @@ def test_withdraw_pending_reverts_if_amount_exceeds_pending(vault_with_token, ca
         v.withdraw_pending(pending_amount + 1, sender=owner)
 
 
-# ===========================================================================
-# Session 3 mutation-killing tests
-# ===========================================================================
-
-
 def test_withdraw_multiple_failures_accumulate_pending(vault_with_token, caller_addr, token, owner):
-    """Kills mutations L143 (+=to=) and L144 (+=to=) in withdraw.
-
-    Two consecutive failed withdrawals to the same wallet must accumulate
-    pending_transfers and pending_transfers_total additively, not overwrite.
-    """
+    """Two consecutive failed withdrawals to the same wallet accumulate pending additively."""
     v = vault_with_token
 
     # Deposit enough tokens for two withdrawals
@@ -642,22 +591,16 @@ def test_withdraw_multiple_failures_accumulate_pending(vault_with_token, caller_
     assert v.pending_transfers(owner) == first_amount
     assert v.pending_transfers_total() == first_amount
 
-    # Second failed withdraw -- must ACCUMULATE, not overwrite
+    # Second failed withdraw must accumulate, not overwrite
     second_amount = 300
     v.withdraw(second_amount, owner, sender=caller_addr)
 
-    # With original (+=): pending = 400 + 300 = 700
-    # With mutation (=):  pending = 300 (only last amount)
     assert v.pending_transfers(owner) == first_amount + second_amount
     assert v.pending_transfers_total() == first_amount + second_amount
 
 
 def test_withdraw_funds_transfers_correct_amount(securitize_vault_contract_def, weth9_contract_def, owner, min_vault_manager):
-    """Kills mutation L184: transfer(self.caller, amount) -> transfer(self.caller, 0).
-
-    After withdraw_funds, the caller (lending contract) must receive the
-    actual requested amount, not zero.
-    """
+    """After withdraw_funds, the caller (lending contract) receives the requested amount."""
     payment_tok = weth9_contract_def.deploy("PaymentToken", "PT", 6, 10**20)
 
     v = securitize_vault_contract_def.deploy()
@@ -681,11 +624,7 @@ def test_withdraw_funds_transfers_correct_amount(securitize_vault_contract_def, 
 def test_withdraw_funds_uses_payment_token_not_collateral(
     securitize_vault_contract_def, weth9_contract_def, owner, min_vault_manager
 ):
-    """Kills mutation L184: IERC20(payment_token) -> IERC20(self.token).
-
-    withdraw_funds must transfer the payment_token parameter, not self.token
-    (the collateral token). When they differ, the correct token must move.
-    """
+    """withdraw_funds transfers the payment_token parameter, not self.token (collateral)."""
     collateral_tok = weth9_contract_def.deploy("Collateral", "COL", 18, 10**20)
     payment_tok = weth9_contract_def.deploy("PaymentToken", "PT", 6, 10**20)
 
@@ -710,11 +649,7 @@ def test_withdraw_funds_uses_payment_token_not_collateral(
 
 
 def test_buy_twice_accumulates_pending(vault_acred, caller_addr, usdc, owner):
-    """Kills mutations L223 (+=to=) and L224 (+=to=) in buy.
-
-    Two consecutive buy() calls must accumulate pending_transfers and
-    pending_transfers_total additively, not overwrite with latest amount.
-    """
+    """Two consecutive buy() calls accumulate pending additively, not overwrite."""
     v = vault_acred
 
     # First buy
@@ -737,18 +672,12 @@ def test_buy_twice_accumulates_pending(vault_acred, caller_addr, usdc, owner):
     second_ds = v.pending_transfers(owner)
     second_total = v.pending_transfers_total()
 
-    # With original (+=): pending = first_ds + first_ds = 2 * first_ds
-    # With mutation (=):  pending = first_ds (only last buy amount)
     assert second_ds == first_ds * 2
     assert second_total == first_total * 2
 
 
 def test_buy_approves_correct_spender(securitize_vault_contract_def, acred, usdc, owner):
-    """Kills mutation L220: approve(securitize_swap_contract, ...) -> approve(self.token, ...).
-
-    The approve must go to the SecuritizeSwap contract address (returned by
-    getDSService(1<<14)), not to self.token. We verify by checking allowance.
-    """
+    """The approve targets the SecuritizeSwap contract (getDSService(1<<14)), not self.token."""
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, acred.address, sender=owner)
 
@@ -756,6 +685,9 @@ def test_buy_approves_correct_spender(securitize_vault_contract_def, acred, usdc
     swap_addr = acred.getDSService(1 << 14)
 
     stable_amount = 10
+    # oracle num=3, den=10: ds = 10*10//3 = 33, swap pulls 33*3//10 = 9, leaving 1 of the approval unused
+    liquidity_pulled = (stable_amount * 10 // 3) * 3 // 10  # 9
+    residual_allowance = stable_amount - liquidity_pulled  # 1
     usdc.mint(owner, stable_amount)
     usdc.approve(v.address, stable_amount, sender=owner)
 
@@ -764,21 +696,15 @@ def test_buy_approves_correct_spender(securitize_vault_contract_def, acred, usdc
 
     v.buy(usdc.address, 0, stable_amount, sender=owner)
 
-    # After buy, the swap contract should have been approved.
-    # The mock swap contract consumes the allowance via transferFrom,
-    # but the approve happened to the correct address (not self.token).
-    # If the mutation changed it to self.token, the approve would go to acred.address.
-    # We verify the allowance on self.token (acred) is NOT set:
-    assert usdc.allowance(v.address, acred.address) == 0
+    # buy approved the swap contract for stable_amount; the swap's transferFrom then pulled 9,
+    # leaving the residual allowance on the swap contract. A nonzero residual proves the approve
+    # (and the consuming transferFrom) targeted the swap contract, not some other address.
+    assert usdc.allowance(v.address, swap_addr) == residual_allowance
 
 
 def test_deposit_partial_pending_multi_wallet(securitize_vault_contract_def, failing_transfer_erc20, owner):
-    """Kills mutation L112: pending_transfers_total -= pending -> = 0.
-
-    When multiple wallets have pending and one does a partial-pending deposit,
-    pending_transfers_total must be decremented by that wallet's pending only,
-    not zeroed entirely. The other wallet's pending must remain in the total.
-    """
+    """A partial-pending deposit decrements pending_transfers_total by that wallet's pending
+    only, leaving other wallets' pending in the total."""
     caller = boa.env.generate_address("lending_contract")
     wallet_a = boa.env.generate_address("wallet_a")
     wallet_b = boa.env.generate_address("wallet_b")
@@ -810,21 +736,15 @@ def test_deposit_partial_pending_multi_wallet(securitize_vault_contract_def, fai
     # wallet_a's pending should be cleared (0)
     assert v.pending_transfers(wallet_a) == 0
 
-    # Total should be decremented by wallet_a's pending (500), leaving wallet_b's (300)
-    # Original: total -= pending => total = 800 - 500 = 300
-    # Mutation: total = 0 => total = 0 (wrong!)
+    # Total decremented by wallet_a's pending (500), leaving wallet_b's (300)
     assert v.pending_transfers_total() == deposit_b
 
 
 def test_check_user_proxy_requires_tx_origin_match(
     securitize_vault_contract_def, acred, usdc, owner, min_vault_manager, vault_proxy
 ):
-    """Kills mutation L232: remove `and user == tx.origin` from _check_user.
-
-    An authorized proxy should only be able to act when user == tx.origin.
-    If the proxy is called by someone other than the vault owner, it should
-    fail even though the proxy is authorized.
-    """
+    """An authorized proxy may act only when user == tx.origin; a call from anyone other than
+    the vault owner reverts even though the proxy is authorized."""
     vault_owner = boa.env.generate_address("vault_owner")
     different_user = boa.env.generate_address("different_user")
     boa.env.set_balance(vault_owner, 10**21)
@@ -846,33 +766,17 @@ def test_check_user_proxy_requires_tx_origin_match(
 
     assert v.pending_transfers(vault_owner) > 0  # buy succeeded
 
-    # When a different_user initiates the transaction through the same proxy,
-    # tx.origin == different_user != vault_owner (== user), so _check_user should fail
-    # With mutation (no tx.origin check): would pass because proxy is authorized
+    # When a different_user initiates through the same proxy,
+    # tx.origin == different_user != vault_owner, so _check_user fails
     usdc.mint(different_user, stable_amount)
     usdc.approve(vault_proxy.address, stable_amount, sender=different_user)
     with boa.reverts("unauthorized"):
         vault_proxy.proxy_buy(v.address, usdc.address, 0, stable_amount, sender=different_user)
 
 
-# ===========================================================================
-# Session 4 mutation-killing tests (proxy-based)
-# ===========================================================================
-
-
-# ===================================================================
-# Mutation: L88 -- self.caller -> self.owner in initialise guard
-# ===================================================================
-
-
 def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, owner):
-    """Initialise guard must check self.caller == empty(address), not self.owner.
-
-    Kills mutation: assert self.caller == empty(address) -> assert self.owner == empty(address)
-    If the guard checks owner instead of caller, initialising with _owner=empty(address)
-    and then re-initialising would succeed (because owner is still empty(address)).
-    With the correct guard on caller, the second initialise must revert.
-    """
+    """Initialise guard checks self.caller == empty(address), not self.owner: re-initialising
+    after a first init with _owner=empty(address) must still revert."""
     acred = boa.load(
         "contracts/auxiliary/AcredMock.vy",
         "ACRED",
@@ -896,20 +800,10 @@ def test_initialise_checks_caller_not_owner(securitize_vault_contract_def, owner
         vault.initialise(owner, acred.address, sender=owner)
 
 
-# ===================================================================
-# Mutation: L107 -- >= changed to == in deposit pending check
-# ===================================================================
-
-
 def test_deposit_uses_full_pending_path_when_pending_exceeds_amount(
     securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
 ):
-    """When pending_transfers[wallet] > deposit amount, the full-pending branch should be used.
-
-    Kills mutation: if pending >= amount -> if pending == amount
-    If only == is checked, pending > amount falls through to elif/else, causing an
-    unnecessary transferFrom or incorrect accounting.
-    """
+    """When pending_transfers[wallet] > deposit amount, the full-pending (pending >= amount) branch is used."""
     token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, token.address, sender=min_vault_manager.address)
@@ -945,20 +839,11 @@ def test_deposit_uses_full_pending_path_when_pending_exceeds_amount(
     assert token.balanceOf(vault.address) == 200
 
 
-# ===================================================================
-# Mutation: L184 -- self.caller -> msg.sender in withdraw_funds
-# ===================================================================
-
-
 def test_withdraw_funds_sends_to_caller_not_msg_sender(
     securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner, vault_proxy
 ):
-    """withdraw_funds must transfer to self.caller (lending contract), not msg.sender.
-
-    Kills mutation: transfer(self.caller, amount) -> transfer(msg.sender, amount)
-    When called via an authorized proxy, msg.sender != self.caller. Funds must go
-    to the lending contract (self.caller), not the proxy.
-    """
+    """withdraw_funds transfers to self.caller (lending contract), not msg.sender: via a proxy
+    (msg.sender != caller) funds go to the lending contract, not the proxy."""
     payment_token = weth9_contract_def.deploy("PAY", "PAY", 18, 10**30)
     collateral_token = weth9_contract_def.deploy("COL", "COL", 18, 10**30)
 
@@ -982,20 +867,11 @@ def test_withdraw_funds_sends_to_caller_not_msg_sender(
     assert payment_token.balanceOf(vault_proxy.address) == proxy_balance_before  # proxy gets nothing
 
 
-# ===================================================================
-# Mutation: L219 -- msg.sender -> self.owner in buy transferFrom
-# ===================================================================
-
-
 def test_buy_transfers_from_msg_sender_not_owner(
     securitize_vault_contract_def, min_vault_manager, acred, usdc, owner, vault_proxy
 ):
-    """buy() must transferFrom(msg.sender, ...) not transferFrom(self.owner, ...).
-
-    Kills mutation: transferFrom(msg.sender, self, ...) -> transferFrom(self.owner, self, ...)
-    When the vault owner != msg.sender (e.g., proxy call), funds should come from
-    the actual caller, not the vault owner.
-    """
+    """buy() does transferFrom(msg.sender, ...), not transferFrom(self.owner, ...): via a proxy
+    call the funds come from the actual caller, not the vault owner."""
     # Create vault with a specific owner (different from proxy caller)
     vault_owner = boa.env.generate_address("vault_owner")
     boa.env.set_balance(vault_owner, 10**18)
@@ -1018,20 +894,11 @@ def test_buy_transfers_from_msg_sender_not_owner(
     assert usdc.balanceOf(vault_owner) == 0  # vault_owner spent all their USDC
 
 
-# ===================================================================
-# Mutation: L228 -- msg.sender -> self.caller in buy refund
-# ===================================================================
-
-
 def test_buy_refund_goes_to_msg_sender_not_caller(
     securitize_vault_contract_def, min_vault_manager, acred, usdc, owner, vault_proxy
 ):
-    """buy() refund must go to msg.sender (proxy), not self.caller (lending contract).
-
-    Kills mutation: transfer(msg.sender, ...) -> transfer(self.caller, ...)
-    When there's excess stablecoins after the swap, the refund should go back to
-    whoever called buy (msg.sender), not the lending contract (self.caller).
-    """
+    """buy() refund goes to msg.sender (proxy), not self.caller: excess stablecoins after the
+    swap return to whoever called buy, not the lending contract."""
     vault_owner = boa.env.generate_address("vault_owner2")
     boa.env.set_balance(vault_owner, 10**18)
 
@@ -1041,8 +908,8 @@ def test_buy_refund_goes_to_msg_sender_not_caller(
     # Authorize the vault_proxy in the vault manager mock
     min_vault_manager.set_proxy(vault_proxy.address, True)
 
-    # Use stable_amount=11 to trigger refund (with oracle rate 3/10):
-    # swap(11): dsTokenAmount = 11*3//10 = 3, liquidityAmount = 3*10//3 = 10
+    # Use stable_amount=11 to trigger refund (with oracle rate num=3, den=10):
+    # swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
     # Only 10 of 11 consumed, 1 returned
     stable_amount = 11
     usdc.mint(vault_owner, stable_amount)
@@ -1057,16 +924,8 @@ def test_buy_refund_goes_to_msg_sender_not_caller(
     assert usdc.balanceOf(min_vault_manager.address) == vault_manager_usdc_before  # vault manager unchanged
 
 
-# ===================================================================
-# Event mutations
-# ===================================================================
-
-
 def test_deposit_emits_deposit_event(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
-    """Deposit must emit a Deposit event.
-
-    Kills mutation: delete log Deposit(wallet=wallet, amount=amount) at L118
-    """
+    """Deposit emits a Deposit event."""
     token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, token.address, sender=min_vault_manager.address)
@@ -1084,10 +943,7 @@ def test_deposit_emits_deposit_event(securitize_vault_contract_def, min_vault_ma
 
 
 def test_withdraw_success_emits_withdraw_event(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
-    """Successful withdraw must emit a Withdraw event.
-
-    Kills mutation: delete log Withdraw(wallet=wallet, amount=amount) at L146
-    """
+    """Successful withdraw emits a Withdraw event."""
     token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, token.address, sender=min_vault_manager.address)
@@ -1112,10 +968,7 @@ def test_withdraw_success_emits_withdraw_event(securitize_vault_contract_def, mi
 def test_withdraw_failure_emits_transfer_failed_event(
     securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
 ):
-    """Failed withdraw must emit a TransferFailed event.
-
-    Kills mutation: delete log TransferFailed(wallet=wallet, amount=amount) at L142
-    """
+    """Failed withdraw emits a TransferFailed event."""
     token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, token.address, sender=min_vault_manager.address)
@@ -1139,10 +992,7 @@ def test_withdraw_failure_emits_transfer_failed_event(
 
 
 def test_withdraw_pending_emits_event(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
-    """withdraw_pending must emit a WithdrawPending event.
-
-    Kills mutation: delete log WithdrawPending(...) at L171
-    """
+    """withdraw_pending emits a WithdrawPending event."""
     token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, token.address, sender=min_vault_manager.address)
@@ -1172,10 +1022,7 @@ def test_withdraw_pending_emits_event(securitize_vault_contract_def, min_vault_m
 def test_deposit_full_pending_emits_correct_withdraw_pending_amount(
     securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
 ):
-    """In the full-pending deposit branch, WithdrawPending event must log amount (not pending).
-
-    Kills mutation: log WithdrawPending(wallet=wallet, amount=amount) -> amount=pending at L110
-    """
+    """In the full-pending deposit branch, WithdrawPending logs amount (not pending)."""
     token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, token.address, sender=min_vault_manager.address)
@@ -1205,10 +1052,7 @@ def test_deposit_full_pending_emits_correct_withdraw_pending_amount(
 def test_deposit_partial_pending_emits_correct_withdraw_pending_amount(
     securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner
 ):
-    """In the partial-pending deposit branch, WithdrawPending event must log pending (not amount).
-
-    Kills mutation: log WithdrawPending(wallet=wallet, amount=pending) -> amount=amount at L114
-    """
+    """In the partial-pending deposit branch, WithdrawPending logs pending (not amount)."""
     token = weth9_contract_def.deploy("TOK", "TOK", 18, 10**30)
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, token.address, sender=min_vault_manager.address)
@@ -1240,20 +1084,9 @@ def test_deposit_partial_pending_emits_correct_withdraw_pending_amount(
     assert wp_events[0].amount == 30  # This is the pending amount, not the deposit amount
 
 
-# ===========================================================================
-# Session 5 mutation-killing tests
-# ===========================================================================
-
-
 def test_transfer_funds_reverts_if_not_authorized(securitize_vault_contract_def, min_vault_manager, weth9_contract_def, owner):
-    """Kills mutations L197: delete auth check or change _check_user(self.caller) to _check_user(msg.sender).
-
-    transfer_funds must only be callable by the lending contract (self.caller) or
-    an authorized proxy. An unauthorized sender must be rejected with "unauthorized".
-
-    Mutation A: deleting the assert entirely -> anyone can call transfer_funds
-    Mutation B: _check_user(self.caller) -> _check_user(msg.sender) -> always True
-    """
+    """transfer_funds is callable only by the lending contract (self.caller) or an authorized
+    proxy; an unauthorized sender is rejected with "unauthorized"."""
     token = weth9_contract_def.deploy("COL", "COL", 18, 10**30)
     payment_tok = weth9_contract_def.deploy("PAY", "PAY", 6, 10**20)
 
@@ -1271,14 +1104,10 @@ def test_transfer_funds_reverts_if_not_authorized(securitize_vault_contract_def,
 
 
 def test_buy_passes_min_ds_token_to_swap(vault_acred, acred, usdc, owner):
-    """Kills mutation L221: swap(stable_coin_amount, min_ds_token_amount) -> swap(stable_coin_amount, 0).
-
-    The vault must forward min_ds_token_amount to the swap call, not zero.
-    Uses trace inspection to verify the actual parameter passed to swap().
-    """
+    """The vault forwards min_ds_token_amount to swap(), not zero (verified via trace inspection)."""
 
     stable_amount = 10
-    min_ds = 3  # AcredMock with rate 3/10: calculateDsTokenAmount(10) = 3, so L216 check passes
+    min_ds = 3  # AcredMock rate 3/10: calculateDsTokenAmount(10) = 3, so the min-ds check passes
     usdc.mint(owner, stable_amount)
     usdc.approve(vault_acred.address, stable_amount, sender=owner)
 
@@ -1291,13 +1120,8 @@ def test_buy_passes_min_ds_token_to_swap(vault_acred, acred, usdc, owner):
 
 
 def test_buy_refund_only_excess_not_full_balance(securitize_vault_contract_def, acred, usdc, owner):
-    """Kills mutation L228: remaining_balance - initial_balance -> remaining_balance.
-
-    When the vault has a pre-existing payment token balance, the refund must only
-    return the excess from the swap (remaining - initial), not the full remaining balance.
-    Without pre-existing balance, remaining_balance == remaining_balance - 0, so the
-    mutation is undetectable.
-    """
+    """With a pre-existing payment-token balance, the refund returns only the swap excess
+    (remaining - initial), not the full remaining balance."""
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, acred.address, sender=owner)
 
@@ -1307,8 +1131,8 @@ def test_buy_refund_only_excess_not_full_balance(securitize_vault_contract_def, 
     assert usdc.balanceOf(vault.address) == pre_existing
 
     # Call buy with stable_amount=11 to trigger a 1 USDC refund
-    # With oracle rate 3/10:
-    #   swap(11): _dsTokenAmount = 11*3//10 = 3, _liquidityAmount = 3*10//3 = 10
+    # With oracle rate num=3, den=10:
+    #   swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
     #   Only 10 of 11 stablecoins consumed, 1 returned to vault
     stable_amount = 11
     usdc.mint(owner, stable_amount)
@@ -1317,33 +1141,15 @@ def test_buy_refund_only_excess_not_full_balance(securitize_vault_contract_def, 
     owner_usdc_before = usdc.balanceOf(owner)
     vault.buy(usdc.address, 0, stable_amount, sender=owner)
 
-    # With original code: refund = remaining_balance - initial_balance
-    #   initial_balance = 100 (pre-existing)
-    #   remaining_balance = 100 + 1 = 101 (pre-existing + refund from swap)
-    #   refund = 101 - 100 = 1
-    #   owner receives 1 USDC back
-    #
-    # With mutation: refund = remaining_balance = 101
-    #   owner receives 101 USDC back (draining vault!)
-
-    # Owner spent 11, should get 1 back -> net spend = 10
+    # refund = remaining(101) - initial(100) = 1; owner spent 11, gets 1 back -> net spend 10
     assert usdc.balanceOf(owner) == owner_usdc_before - stable_amount + 1
 
     # Vault should retain its pre-existing 100 USDC
     assert usdc.balanceOf(vault.address) == pre_existing
 
 
-# ===========================================================================
-# Session 6: assert removal and boundary mutations
-# ===========================================================================
-
-
 def test_transfer_funds_transfers_amount_one(securitize_vault_contract_def, weth9_contract_def, owner, min_vault_manager):
-    """Kills mutation L198: `amount > 0` changed to `amount > 1`.
-
-    When amount=1, transfer_funds must still call ERC20.transfer and move the token.
-    With the mutation, amount=1 would be skipped because 1 > 1 is False.
-    """
+    """When amount == 1 (boundary), transfer_funds still calls ERC20.transfer and moves the token."""
     payment_tok = weth9_contract_def.deploy("PayToken", "PT", 6, 10**20)
     collateral_tok = weth9_contract_def.deploy("CollatToken", "CT", 18, 10**20)
 
@@ -1358,8 +1164,6 @@ def test_transfer_funds_transfers_amount_one(securitize_vault_contract_def, weth
 
     v.transfer_funds(payment_tok.address, 1, wallet, sender=min_vault_manager.address)
 
-    # With original code: amount(1) > 0 is True, transfer happens
-    # With mutation: amount(1) > 1 is False, transfer skipped
     assert payment_tok.balanceOf(wallet) == 1
     assert payment_tok.balanceOf(v.address) == 0
 
@@ -1367,11 +1171,7 @@ def test_transfer_funds_transfers_amount_one(securitize_vault_contract_def, weth
 def test_transfer_funds_reverts_if_transfer_returns_false(
     securitize_vault_contract_def, failing_transfer_erc20, owner, min_vault_manager
 ):
-    """Kills mutation L199: remove `assert` on transfer return value.
-
-    When the token's transfer() returns False, transfer_funds must revert
-    with "transfer failed". Without the assert, it would silently succeed.
-    """
+    """When the token's transfer() returns False, transfer_funds reverts with "transfer failed"."""
     collateral_tok = failing_transfer_erc20  # has transfer->False, transferFrom->True
 
     v = securitize_vault_contract_def.deploy()
@@ -1392,11 +1192,7 @@ def test_transfer_funds_reverts_if_transfer_returns_false(
 def test_withdraw_funds_reverts_if_transfer_returns_false(
     securitize_vault_contract_def, failing_transfer_erc20, weth9_contract_def, owner, min_vault_manager
 ):
-    """Kills mutation L184: remove `assert` on transfer return value.
-
-    When the payment token's transfer() returns False, withdraw_funds must revert.
-    Uses the failing_transfer_erc20 fixture (transfer->False, transferFrom->True).
-    """
+    """When the payment token's transfer() returns False, withdraw_funds reverts."""
     collateral_tok = weth9_contract_def.deploy("Collateral", "COL", 18, 10**20)
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, collateral_tok.address, sender=min_vault_manager.address)
@@ -1414,11 +1210,7 @@ def test_withdraw_funds_reverts_if_transfer_returns_false(
 def test_withdraw_pending_reverts_if_collateral_transfer_returns_false(
     securitize_vault_contract_def, failing_transfer_erc20, owner
 ):
-    """Kills mutation L170: remove `assert` on transfer return value.
-
-    When the collateral token's transfer() returns False, withdraw_pending must revert.
-    The failing_transfer_erc20 has transfer->False, transferFrom->True.
-    """
+    """When the collateral token's transfer() returns False, withdraw_pending reverts."""
     caller_addr = boa.env.generate_address("lending_contract")
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, failing_transfer_erc20.address, sender=caller_addr)
@@ -1442,12 +1234,8 @@ def test_withdraw_pending_reverts_if_collateral_transfer_returns_false(
 def test_deposit_partial_pending_reverts_if_transfer_from_returns_false(
     securitize_vault_contract_def, false_transfer_from_erc20, owner
 ):
-    """Kills mutation L115: remove `assert` on transferFrom in deposit elif branch.
-
-    When pending > 0 but pending < amount, deposit enters the elif branch and calls
-    transferFrom(wallet, self, amount - pending). If transferFrom returns False,
-    deposit must revert with "transferFrom failed".
-    """
+    """In the deposit elif branch (0 < pending < amount), a failing transferFrom reverts
+    with "transferFrom failed"."""
     caller_addr = boa.env.generate_address("lending_contract")
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, false_transfer_from_erc20.address, sender=caller_addr)
@@ -1471,12 +1259,7 @@ def test_deposit_partial_pending_reverts_if_transfer_from_returns_false(
 def test_deposit_no_pending_reverts_if_transfer_from_returns_false(
     securitize_vault_contract_def, false_transfer_from_erc20, owner
 ):
-    """Kills mutation L117: remove `assert` on transferFrom in deposit else branch.
-
-    When there is no pending, deposit enters the else branch and calls
-    transferFrom(wallet, self, amount). If transferFrom returns False,
-    deposit must revert with "transferFrom failed".
-    """
+    """In the deposit else branch (no pending), a failing transferFrom reverts with "transferFrom failed"."""
     caller_addr = boa.env.generate_address("lending_contract")
     v = securitize_vault_contract_def.deploy()
     v.initialise(owner, false_transfer_from_erc20.address, sender=caller_addr)
@@ -1494,11 +1277,7 @@ def test_deposit_no_pending_reverts_if_transfer_from_returns_false(
 def test_buy_reverts_if_payment_transfer_from_returns_false(
     securitize_vault_contract_def, false_transfer_from_erc20, acred_contract_def, oracle_contract_def, owner
 ):
-    """Kills mutation L219: remove `assert` on transferFrom in buy.
-
-    When the payment token's transferFrom() returns False, buy must revert
-    with "transferFrom failed", not silently proceed and credit DS tokens.
-    """
+    """When the payment token's transferFrom() returns False, buy reverts with "transferFrom failed"."""
     oracle = oracle_contract_def.deploy(1, 3)
     acred = acred_contract_def.deploy("ACRED", "ACRED", 6, 10**6, oracle.address, false_transfer_from_erc20.address)
 

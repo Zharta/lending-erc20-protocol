@@ -35,6 +35,7 @@ These files contain binding rules for how code and tests must be structured. You
   - **Revert tests**: All validation checks with exact revert messages from the contract
   - **Edge case tests**: Boundary values, zero amounts, expired timestamps
   - **Access control tests**: Unauthorized callers
+- **Keep tests concrete and readable standalone** (see "Keep tests concrete" in test_patterns.md): the contract call under test must appear directly in the test body with its arguments visible — never wrapped in a fixture-provided closure (`s.create()`). Amounts the assertions depend on must be concrete literals in the test, not defaults hidden in a conftest factory. Fixtures may return real objects (contracts, signed offers, `Loan` NamedTuples), never `SimpleNamespace`/dict grab-bags. Prefer a longer, explicit test over a 3-line test whose meaning is buried in conftest indirection.
 - Use `boa.env.time_travel()` for time-dependent tests
 - Use `boa.reverts("exact error message")` for revert assertions — always match the exact string from the contract
 - Mock external dependencies (ERC20, oracles, KYC validator) — unit tests must not depend on external state

@@ -1,6 +1,6 @@
 """
 Integration tests for P2PLendingVaultedErc20 with ACRED token and the real V2 VaultRegistrar.
-These tests use the actual ACRED token and VaultRegistrar on mainnet fork (block 25300898).
+These tests use the actual ACRED token and VaultRegistrar on mainnet fork (block 25400000).
 """
 
 import boa
@@ -162,9 +162,9 @@ def test_oracle_data(oracle_acred_usd, p2p_usdc_acred):
     assert oracle_acred_usd.address == p2p_usdc_acred.oracle_addr()
     assert oracle_acred_usd.decimals() == 8
 
-    # ACRED trades at ~$1,097.55 per token at fork block 25300898. Must change if fork block changes.
-    min_price = 1097 * 10**8
-    max_price = 1098 * 10**8
+    # ACRED trades at ~$1,100.78 per token at fork block 25400000. Must change if fork block changes.
+    min_price = 1100 * 10**8
+    max_price = 1101 * 10**8
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

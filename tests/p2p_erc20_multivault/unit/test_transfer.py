@@ -3,14 +3,14 @@ import pytest
 
 from ..conftest_base import (
     ZERO_BYTES32,
+    Loan,
     Offer,
     RedeemResult,
-    SecuritizeLoan,
     SignedRedeemResult,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_offer,
     sign_redeem_result,
@@ -105,7 +105,7 @@ def ongoing_loan_usdc_weth(
     )
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -115,6 +115,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -134,10 +135,11 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
     print(event)
     print(loan)
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
@@ -151,7 +153,7 @@ def test_transfer_loan_reverts_if_loan_invalid(
 ):
     new_borrower = boa.env.generate_address("new_borrower")
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
-    for loan in get_securitize_loan_mutations(ongoing_loan_usdc_weth):
+    for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.transfer_loan(loan, new_borrower, new_borrower_kyc, EMPTY_REDEEM_RESULT, sender=transfer_agent)
@@ -193,6 +195,7 @@ def test_transfer_loan_reverts_if_redeem_not_concluded(
         loan,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     new_borrower = boa.env.generate_address("new_borrower")
@@ -224,7 +227,7 @@ def test_transfer_loan_changes_borrower(
         id=event.new_loan_id,
         vault_id=0,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(updated_loan.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(updated_loan.id)
 
 
 def test_transfer_loan_clears_old_loan(p2p_usdc_weth, ongoing_loan_usdc_weth, transfer_agent, kyc_for, kyc_validator_contract):
@@ -291,6 +294,7 @@ def test_transfer_redeemed_loan_changes_borrower(
         loan,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     # Simulate redemption conclusion: deposit payment tokens to vault
@@ -318,7 +322,7 @@ def test_transfer_redeemed_loan_changes_borrower(
         id=event.new_loan_id,
         vault_id=0,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(updated_loan.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(updated_loan.id)
     assert p2p_usdc_weth.loans(redeemed_loan.id) == ZERO_BYTES32
 
 
@@ -346,6 +350,7 @@ def test_transfer_redeemed_loan_transfers_collateral_to_new_vault(
         loan,
         redeem_start=now,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -390,6 +395,7 @@ def test_transfer_redeemed_loan_transfers_payment_tokens(
         loan,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     # Simulate redemption conclusion: deposit payment tokens to vault
