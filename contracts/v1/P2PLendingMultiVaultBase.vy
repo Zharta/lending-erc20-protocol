@@ -35,6 +35,13 @@ interface EIP1271Signer:
 interface VaultRegistrar:
     def register_vault(vault: address, investor_wallet: address): nonpayable
 
+# Full ERC-7540 / ERC-7887 async request status (mint or redeem)
+struct AsyncStatus:
+    request_pending: uint256    # assets/shares still being fulfilled (pendingDepositRequest / pendingRedeemRequest)
+    request_claimable: uint256  # settled, ready to claim (claimableDepositRequest / claimableRedeemRequest)
+    cancel_pending: uint256     # 1 if a cancellation is in-flight, else 0
+    cancel_claimable: uint256   # reclaimable payment/collateral after a settled cancellation
+
 interface Vault:
     def initialise(_owner: address, _token: address): nonpayable
     def deposit(amount: uint256, wallet: address): nonpayable
@@ -42,14 +49,41 @@ interface Vault:
     def withdrawable_balance() -> uint256: view
     def withdraw_funds(payment_token: address, amount: uint256): nonpayable
     def transfer_funds(payment_token: address, amount: uint256, wallet: address): nonpayable
-    def buy(payment_token: address, deposit_vault: address, min_mtoken_amount: uint256, stable_coin_amount: uint256): nonpayable
-    def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> uint256: nonpayable
+    def pending_transfers(wallet: address) -> uint256: view
+    def capabilities() -> uint256: view
+
+    def mint_sync(payment_token: address, deposit_vault: address, min_mtoken_amount: uint256, stable_coin_amount: uint256) -> (uint256, uint256): nonpayable
+    def mint_async(payment_token: address, deposit_vault: address, min_collateral_out: uint256, stable_coin_amount: uint256): nonpayable
+    def mint_manual(payment_token: address, deposit_vault: address, min_collateral_out: uint256, stable_coin_amount: uint256): nonpayable
+    def mint_status(mint_vault: address) -> AsyncStatus: view
+    def claim_mint(mint_vault: address, claim_deposit: bool, claim_cancel: bool) -> uint256: nonpayable
+    def cancel_mint(mint_vault: address): nonpayable
+
+    def redeem_sync(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> (uint256, uint256): nonpayable
+    def redeem_manual(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256): nonpayable
+    def redeem_async(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256): nonpayable
+    def redeem_status(redemption_vault: address) -> AsyncStatus: view
+    def claim_redeem(redemption_vault: address, claim_redeem: bool, claim_cancel: bool) -> uint256: nonpayable
+    def cancel_redeem(redemption_vault: address): nonpayable
+
 
 
 # Structs
 
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
+
+# Vault capability flags (bitmask). When multiple available, preference goes in order: _SYNC > _ASYNC > _MANUAL
+REDEEM_SYNC: constant(uint256)   = 1 << 0  # instant redeem
+REDEEM_ASYNC: constant(uint256)  = 1 << 1  # async redeem (ERC-7540)
+REDEEM_MANUAL: constant(uint256) = 1 << 2  # settlement needs an off-chain owner-signed attestation
+REDEEM_STATUS: constant(uint256) = 1 << 3  # redemption status is queryable on-chain (ERC-7540)
+MINT_SYNC: constant(uint256)     = 1 << 4  # instant mint
+MINT_ASYNC: constant(uint256)    = 1 << 5  # async mint (ERC-7540 requestDeposit)
+MINT_MANUAL: constant(uint256)   = 1 << 6  # async mint settled off-chain via owner-signed MintResult
+MINT_STATUS: constant(uint256)   = 1 << 7  # mint resolution is queryable on-chain (ERC-7540)
+MINT_CANCEL: constant(uint256)   = 1 << 8  # vault supports cancelling a pending mint (ERC-7887)
+REDEEM_CANCEL: constant(uint256) = 1 << 9  # vault supports cancelling a pending redeem (ERC-7887)
 
 MALLEABILITY_THRESHOLD: constant(uint256) = 57896044618658097711785492504343953926418782139537452191302581570759080747168
 EIP1271_MAGIC_VALUE: constant(bytes4) = 0x1626ba7e
@@ -120,8 +154,9 @@ struct Loan:
     apr: uint256
     payment_token: address
     maturity: uint256
+    create_time: uint256
     start_time: uint256
-    accrual_start_time: uint256 # either start_time or last soft liquidation time
+    accrual_start_time: uint256 # either create_time or last soft liquidation time
     borrower: address
     lender: address
     collateral_token: address
@@ -141,6 +176,7 @@ struct Loan:
     vault_id: uint256
     redeem_start: uint256
     redeem_residual_collateral: uint256
+    max_pending_window: uint256 # mint window until cancel_pending_loan is allowed
 
 
 struct UInt256Rational:
@@ -167,6 +203,18 @@ struct SignedRedeemResult:
     signature: Signature
 
 
+struct MintResult:
+    vault: address
+    collateral_minted: uint256
+    payment_refunded: uint256
+    timestamp: uint256
+
+
+struct SignedMintResult:
+    result: MintResult
+    signature: Signature
+
+
 event OfferRevoked:
     offer_id: bytes32
     lender: address
@@ -190,6 +238,7 @@ protocol_upfront_fee: public(uint256)
 partial_liquidation_fee: public(uint256)
 full_liquidation_fee: public(uint256)
 protocol_settlement_fee: public(uint256)
+max_pending_window: public(uint256)
 
 commited_liquidity: public(HashMap[bytes32, uint256])
 revoked_offers: public(HashMap[bytes32, bool])
@@ -203,6 +252,7 @@ redemption_addr: public(address)
 vault_registrar: public(address)
 refinance_addr: public(address)
 liquidation_addr: public(address)
+loan_addr: public(address)
 
 ZHARTA_DOMAIN_NAME: constant(String[6]) = "Zharta"
 ZHARTA_DOMAIN_VERSION: constant(String[1]) = "1"
@@ -231,7 +281,7 @@ def _compute_loan_id(loan: Loan) -> bytes32:
     return keccak256(concat(
         convert(loan.borrower, bytes32),
         convert(loan.lender, bytes32),
-        convert(loan.start_time, bytes32),
+        convert(loan.create_time, bytes32),
         loan.offer_id,
     ))
 
@@ -367,10 +417,29 @@ def _validate_redeem_result_sig(redeem_result: SignedRedeemResult):
     ) == self.owner, "invalid redeem result sig"
 
 
+@internal
+@view
+def _validate_mint_result_sig(mint_result: SignedMintResult):
+    # to be used later with MINT_MANUAL, not yet implemented
+    assert ecrecover(
+        keccak256(abi_encode(concat(convert("\x19\x00", Bytes[2]), keccak256(abi_encode(mint_result.result))))),
+         mint_result.signature.v,
+         mint_result.signature.r,
+         mint_result.signature.s
+    ) == self.owner, "invalid mint result sig"
+
+
 @view
 @internal
 def _compute_settlement_interest(loan: Loan) -> uint256:
     return loan.amount * loan.apr * (block.timestamp - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
+
+
+@view
+@internal
+def _compute_capped_interest(loan: Loan) -> uint256:
+    end_time: uint256 = block.timestamp if block.timestamp < loan.maturity else loan.maturity
+    return loan.amount * loan.apr * (end_time - loan.accrual_start_time) // (BPS * YEAR_TO_SECONDS)
 
 
 @internal
@@ -492,7 +561,13 @@ def _is_loan_redeemed(loan: Loan) -> bool:
 
 @view
 @internal
-def _get_redeem_balances(loan: Loan, _vault: Vault, payment_token: address, redeem_result: RedeemResult) -> (uint256, uint256):
+def _is_loan_started(loan: Loan) -> bool:
+    return loan.start_time >= loan.create_time
+
+
+@view
+@internal
+def _get_manual_redeem_balances(loan: Loan, _vault: Vault, payment_token: address, redeem_result: RedeemResult) -> (uint256, uint256):
     assert staticcall IERC20(payment_token).balanceOf(_vault.address) >= redeem_result.payment_redeemed, "invalid redeem payment amount"
     assert staticcall _vault.withdrawable_balance() >= loan.redeem_residual_collateral + redeem_result.collateral_redeemed, "invalid redeem collateral amnt"
     return redeem_result.payment_redeemed, loan.redeem_residual_collateral + redeem_result.collateral_redeemed
@@ -500,15 +575,46 @@ def _get_redeem_balances(loan: Loan, _vault: Vault, payment_token: address, rede
 
 @view
 @internal
-def _is_loan_redeem_concluded(loan: Loan, _vault: Vault, redeem_result: SignedRedeemResult) -> bool:
+def _get_manual_mint_balances(_vault: Vault, payment_token: address, mint_result: MintResult) -> (uint256, uint256):
+    # to be used later with MINT_MANUAL, not yet implemented
+    assert staticcall _vault.withdrawable_balance() >= mint_result.collateral_minted, "invalid mint collateral amnt"
+    assert staticcall IERC20(payment_token).balanceOf(_vault.address) >= mint_result.payment_refunded, "invalid mint payment amount"
+    return mint_result.collateral_minted, mint_result.payment_refunded
+
+
+@view
+@internal
+def _is_loan_redeem_concluded(loan: Loan, _vault: Vault, redeem_result: SignedRedeemResult, vault_capabilities: uint256) -> bool:
     if loan.redeem_start == 0:
         return False
-    if redeem_result.result.timestamp < loan.redeem_start:
-        return False
-    if redeem_result.result.vault != _vault.address:
-        return False
-    self._validate_redeem_result_sig(redeem_result)
-    return True
+    if (vault_capabilities & REDEEM_SYNC) != 0:
+        return True
+    if (vault_capabilities & REDEEM_ASYNC) != 0:
+        status: AsyncStatus = staticcall _vault.redeem_status(self.redemption_addr)
+        return status.request_pending == 0 and status.request_claimable > 0
+    if (vault_capabilities & REDEEM_MANUAL) != 0:
+        if redeem_result.result.timestamp < loan.redeem_start:
+            return False
+        if redeem_result.result.vault != _vault.address:
+            return False
+        self._validate_redeem_result_sig(redeem_result)
+        return True
+    return False
+
+
+@internal
+def _resolve_redeem_balances(loan: Loan, _vault: Vault, payment_token: address, redeem_result: SignedRedeemResult, vault_capabilities: uint256) -> (uint256, uint256):
+    if (vault_capabilities & REDEEM_ASYNC) != 0:
+        status: AsyncStatus = staticcall _vault.redeem_status(self.redemption_addr)
+        assert status.request_pending == 0 and status.request_claimable > 0 and status.cancel_pending == 0 and status.cancel_claimable == 0, "redeem not settled"
+        claimed: uint256 = extcall _vault.claim_redeem(self.redemption_addr, True, False)
+        return claimed, loan.redeem_residual_collateral
+    elif (vault_capabilities & REDEEM_MANUAL) != 0:
+        assert self._is_loan_redeem_concluded(loan, _vault, redeem_result, vault_capabilities), "redeem not concluded"
+        return self._get_manual_redeem_balances(loan, _vault, payment_token, redeem_result.result)
+    else:
+        # SYNC redeem is handled by redeem_and_settle
+        raise "cannot resolve redeem"
 
 
 @internal

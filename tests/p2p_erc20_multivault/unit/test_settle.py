@@ -4,16 +4,16 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
+    Loan,
     Offer,
     RedeemResult,
-    SecuritizeLoan,
     SignedRedeemResult,
     calc_ltv,
     compute_liquidity_key,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_offer,
     sign_redeem_result,
@@ -109,7 +109,7 @@ def ongoing_loan_usdc_weth(
     )
     event = get_last_event(p2p_usdc_weth, "LoanCreated")
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -119,6 +119,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -138,15 +139,16 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
     print(event)
     print(loan)
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
 def test_settle_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth):
-    for loan in get_securitize_loan_mutations(ongoing_loan_usdc_weth):
+    for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=ongoing_loan_usdc_weth.borrower)
@@ -325,6 +327,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     p2p_lending_multivault_erc20_contract_def,
     p2p_mv_refinance,
     p2p_mv_liquidation,
+    p2p_mv_loan,
     securitize_vault_impl,
     failing_transfer_payment_erc20,
     weth,
@@ -356,11 +359,13 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         0,
         p2p_mv_refinance.address,
         p2p_mv_liquidation.address,
+        p2p_mv_loan.address,
         securitize_vault_impl.address,
         transfer_agent,
         boa.eval("empty(address)"),  # mint_addr
         redemption_wallet,  # redemption_addr
         boa.eval("empty(address)"),  # vault_registrar_addr
+        0,  # max_pending_window
     )
     principal = 1000 * 10**6
     offer = Offer(
@@ -382,7 +387,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
     weth.approve(p2p_erc20_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
 
     loan_id = p2p_erc20_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(signed_offer),
         offer_tracing_id=offer.tracing_id,
@@ -392,6 +397,7 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -411,8 +417,9 @@ def test_settle_loan_creates_pending_transfer_on_erc20_transfer_fail(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_erc20_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_erc20_weth.loans(loan_id)
 
     p2p_erc20_weth.settle_loan(loan, EMPTY_REDEEM_RESULT, sender=loan.borrower)
 
@@ -477,6 +484,7 @@ def redeemed_loan_for_settle(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     # Get the vault address for this loan
@@ -511,6 +519,7 @@ def test_settle_loan_reverts_if_redeem_not_concluded(p2p_usdc_weth, ongoing_loan
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     # Verify loan is redeemed
@@ -562,6 +571,7 @@ def test_settle_loan_reverts_if_invalid_redeem_collateral_amnt(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)

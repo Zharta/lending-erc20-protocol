@@ -211,7 +211,7 @@ def test_replace_loan_lender(
     loan = ongoing_loan_usdc_acred
     offer = offer_usdc_acred2.offer
     # ACRED's on-chain compliance ("ACRED_FUNDAMENTAL") rejects transfers once the
-    # fund's NAV validity window (~14h from fork block 25300898) elapses, so the
+    # fund's NAV validity window (~14h from fork block 25400000) elapses, so the
     # forward time-travel is kept within that window while still accruing interest.
     replace_timestamp = now + 6 * 3600
     delta_borrower, delta_lender, delta_new_lender, protocol_delta = _calc_deltas(

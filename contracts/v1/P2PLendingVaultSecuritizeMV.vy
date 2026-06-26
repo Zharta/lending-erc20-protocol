@@ -1,25 +1,18 @@
 # @version 0.4.3
 
 """
-@title P2PLendingVault
+@title P2PLendingVaultSecuritizeMV
 @author [Zharta](https://zharta.io/)
-@notice This contract implements a vault to hold collateral for peer-to-peer loans
-@dev Actual vaults are minimal proxy contracts to this, deployed via CREATE2 by the lending contract
-
+@notice MultiVault-native vault holding Securitize DS Token collateral for peer-to-peer loans
+@dev Actual vaults are minimal proxy contracts to this, deployed via CREATE2 by the lending contract.
+     This is the MultiVault (P2PLendingMultiVaultErc20) variant, it `implements: base.Vault`.
 """
 
 # Interfaces
 
 from ethereum.ercs import IERC20
 from ethereum.ercs import IERC20Detailed
-
-interface Vault:
-    def initialise(_owner: address, _token: address): nonpayable
-    def deposit(amount: uint256, wallet: address): nonpayable
-    def withdraw(amount: uint256, wallet: address): nonpayable
-    def withdrawable_balance() -> uint256: view
-    def withdraw_funds(payment_token: address, amount: uint256): nonpayable
-    def transfer_funds(payment_token: address, amount: uint256, wallet: address): nonpayable
+from contracts.v1 import P2PLendingMultiVaultBase as base
 
 struct DsTokenAmountResult:
     ds_token_amount: uint256
@@ -34,13 +27,14 @@ interface SecuritizeSwap:
 interface SecuritizeDSToken:
     def getDSService(_serviceId: uint256) -> address: view
 
-interface P2PLendingContract:
-    def authorized_proxies(proxy: address) -> bool: view
 
-implements: Vault
+implements: base.Vault
 
 
-VERSION: public(constant(String[30])) = "P2PLendingVaultSecur.20260310"
+VERSION: public(constant(String[30])) = "P2PLendingVaultSecMV.20260701"
+
+# Securitize supports instant mint (swap) and manual async redeem.
+capabilities: public(constant(uint256)) = base.MINT_SYNC | base.REDEEM_MANUAL
 
 # Structs
 
@@ -180,7 +174,7 @@ def withdraw_funds(payment_token: address, amount: uint256):
     @param amount The amount of tokens to withdraw.
     """
 
-    assert self._check_user(self.caller), "unauthorized"
+    assert msg.sender == self.caller, "unauthorized"
     assert extcall IERC20(payment_token).transfer(self.caller, amount), "transfer failed"
 
 
@@ -194,39 +188,109 @@ def transfer_funds(payment_token: address, amount: uint256, wallet: address):
     @param wallet The address of the wallet to which tokens will be transferred.
     """
 
-    assert self._check_user(self.caller), "unauthorized"
+    assert msg.sender == self.caller, "unauthorized"
     if amount > 0:
         assert extcall IERC20(payment_token).transfer(wallet, amount), "transfer failed"
 
 
 @external
-def buy(payment_token: address, min_ds_token_amount: uint256, stable_coin_amount: uint256):
+def mint_sync(payment_token: address, deposit_vault: address, min_ds_token_amount: uint256, stable_coin_amount: uint256) -> (uint256, uint256):
     """
     @notice Buy DS tokens using stable coins via the SecuritizeSwap contract.
-    @dev Approves the SecuritizeSwap contract to spend stable coins and executes the buy operation.
+    @param payment_token The address of the stable coin to spend.
+    @param deposit_vault Ignored in this implementation (not used).
     @param min_ds_token_amount The minimum amount of DS tokens to receive.
     @param stable_coin_amount The amount of stable coins to spend.
+    @return A tuple (minted, refunded): the amount of DS tokens received and credited to the owner as
+            pending, and the payment token balance left in the vault after the mint (the unspent
+            pre-funded payment).
     """
 
-    assert self._check_user(self.owner), "unauthorized"
+    assert msg.sender == self.caller, "unauthorized"
 
     securitize_swap_contract: address = staticcall SecuritizeDSToken(self.token).getDSService(1<<14)
 
     ds_token_amount: DsTokenAmountResult = staticcall SecuritizeSwap(securitize_swap_contract).calculateDsTokenAmount(stable_coin_amount)
     assert ds_token_amount.ds_token_amount >= min_ds_token_amount, "ds token amount lt min"
 
-    initial_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
-    assert extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount), "transferFrom failed"
+    initial_payment_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
     extcall IERC20(payment_token).approve(securitize_swap_contract, stable_coin_amount)
     extcall SecuritizeSwap(securitize_swap_contract).swap(stable_coin_amount, min_ds_token_amount)
 
     self.pending_transfers[self.owner] += ds_token_amount.ds_token_amount
     self.pending_transfers_total += ds_token_amount.ds_token_amount
 
-    remaining_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
-    if remaining_balance > initial_balance:
-        extcall IERC20(payment_token).transfer(msg.sender, remaining_balance - initial_balance)
+    spent: uint256 = initial_payment_balance - staticcall IERC20(payment_token).balanceOf(self)
+    return ds_token_amount.ds_token_amount, stable_coin_amount - spent
 
-@internal
-def _check_user(user: address) -> bool:
-    return msg.sender == user or (staticcall P2PLendingContract(self.caller).authorized_proxies(msg.sender) and user == tx.origin)
+
+@external
+def redeem_manual(redemption_vault: address, token_out: address, amount_in: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256):
+    """
+    @notice Redeem DS tokens for a specified output token via transfer to a redemption vault.
+    @param redemption_vault The address of the vault to which redeemed tokens will be sent.
+    @param token_out Ignored in this implementation.
+    @param amount_in The amount of DS tokens to redeem.
+    @param oracle_rate_num Ignored in this implementation (redemption is async, attested off-chain).
+    @param oracle_rate_den Ignored in this implementation (redemption is async, attested off-chain).
+    """
+
+    assert msg.sender == self.caller, "unauthorized"
+    if amount_in == 0:
+        return
+
+    assert amount_in + self.pending_transfers_total <= staticcall IERC20(self.token).balanceOf(self), "insufficient balance"
+    assert (extcall IERC20(self.token).transfer(redemption_vault, amount_in, default_return_value=True)), "transfer failed"
+    log Withdraw(wallet=redemption_vault, amount=amount_in)
+
+
+@external
+def mint_async(payment_token: address, deposit_vault: address, min_collateral_out: uint256, stable_coin_amount: uint256):
+    raise "mint_async not supported"
+
+
+@external
+def mint_manual(payment_token: address, deposit_vault: address, min_collateral_out: uint256, stable_coin_amount: uint256):
+    raise "mint_manual not supported"
+
+
+@external
+@view
+def mint_status(mint_vault: address) -> base.AsyncStatus:
+    raise "mint_status not supported"
+
+
+@external
+def claim_mint(mint_vault: address, claim_deposit: bool, claim_cancel: bool) -> uint256:
+    raise "claim_mint not supported"
+
+
+@external
+def cancel_mint(mint_vault: address):
+    raise "cancel_mint not supported"
+
+
+@external
+def redeem_sync(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> (uint256, uint256):
+    raise "redeem_sync not supported"
+
+
+@external
+def redeem_async(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256):
+    raise "redeem_async not supported"
+
+
+@external
+@view
+def redeem_status(redemption_vault: address) -> base.AsyncStatus:
+    raise "redeem_status not supported"
+
+
+@external
+def claim_redeem(redemption_vault: address, claim_redeem: bool, claim_cancel: bool) -> uint256:
+    raise "claim_redeem not supported"
+
+
+@external
+def cancel_redeem(redemption_vault: address):
+    raise "cancel_redeem not supported"

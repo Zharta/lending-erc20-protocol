@@ -3,10 +3,10 @@ import pytest
 
 from ..conftest_base import (
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
     compute_liquidity_key,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
     sign_offer,
@@ -109,6 +109,7 @@ def ongoing_loan_usdc_acred(
     usdc,
     acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     now,
@@ -116,6 +117,7 @@ def ongoing_loan_usdc_acred(
     kyc_borrower,
     kyc_lender,
     oracle_acred_usd,
+    set_investor_sig,
 ):
     offer = offer_usdc_acred.offer
     principal = offer.principal
@@ -125,6 +127,9 @@ def ongoing_loan_usdc_acred(
     # Get vault_id before loan creation
     vault_id = p2p_usdc_acred.vault_count(borrower)
 
+    # The borrower authorizes the connector to register its per-loan vault (V2 registrar).
+    set_investor_sig(borrower_account, now + 3600)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, lender_approval, sender=lender)
 
@@ -132,7 +137,7 @@ def ongoing_loan_usdc_acred(
         offer_usdc_acred, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_acred),
         offer_tracing_id=offer.tracing_id,
@@ -142,6 +147,7 @@ def ongoing_loan_usdc_acred(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -162,8 +168,9 @@ def ongoing_loan_usdc_acred(
         vault_id=vault_id,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
     return loan
 
 
@@ -189,7 +196,11 @@ def test_replace_loan(
     loan = ongoing_loan_usdc_acred
     offer = offer_usdc_acred2.offer
     new_collateral_amount = loan.collateral_amount * 2
-    replace_timestamp = now + 1 * DAY
+    # Accrue real interest before the replace, but stay inside the real ACRED Chainlink oracle's
+    # ~24h heartbeat: at the fork block the feed's answer is already ~9h old, so time-travelling a
+    # full day would make latestRoundData() revert (stale) when replace_loan re-reads the oracle.
+    # 12h keeps the feed fresh while still accruing a non-zero interest amount.
+    replace_timestamp = now + 12 * 3600
     delta_borrower, delta_lender, delta_new_lender, protocol_delta = _calc_deltas(
         loan, offer, offer.principal, replace_timestamp, p2p_usdc_acred
     )
@@ -231,7 +242,7 @@ def test_replace_loan(
     new_protocol_upfront_fee_amount = p2p_usdc_acred.protocol_upfront_fee() * new_principal // BPS
 
     # 1. state: new loan hash verification
-    new_loan = SecuritizeLoan(
+    new_loan = Loan(
         id=new_loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_acred2),
         offer_tracing_id=offer.tracing_id,
@@ -241,6 +252,7 @@ def test_replace_loan(
         payment_token=offer.payment_token,
         collateral_token=loan.collateral_token,
         maturity=replace_timestamp + offer.duration,
+        create_time=replace_timestamp,
         start_time=replace_timestamp,
         accrual_start_time=replace_timestamp,
         borrower=loan.borrower,
@@ -261,8 +273,9 @@ def test_replace_loan(
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(new_loan) == p2p_usdc_acred.loans(new_loan_id)
+    assert compute_loan_hash(new_loan) == p2p_usdc_acred.loans(new_loan_id)
 
     # old loan cleared
     assert p2p_usdc_acred.loans(loan.id) == ZERO_BYTES32

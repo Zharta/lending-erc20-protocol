@@ -900,3 +900,266 @@ class VaultSecuritizeImpl(ContractConfig):
         )
         if address:
             self.load_contract(address)
+
+
+@dataclass
+class VaultSecuritizeMVImpl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingVaultSecuritizeMV,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class P2PLendingMultiVaultErc20(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str,
+        payment_token_key: str,
+        collateral_token_key: str,
+        oracle_key: str,
+        oracle_reverse: bool = False,
+        kyc_validator_key: str | None = None,
+        refinance_impl_key: str | None = None,
+        liquidation_impl_key: str | None = None,
+        loan_impl_key: str | None = None,
+        vault_impl_key: str | None = None,
+        protocol_upfront_fee: int,
+        protocol_settlement_fee: int,
+        protocol_wallet: str,
+        transfer_agent: str,
+        mint_wallet: str | None = None,
+        redemption_wallet: str | None = None,
+        vault_registrar_connector_key: str | None = None,
+        max_protocol_upfront_fee: int,
+        max_protocol_settlement_fee: int,
+        partial_liquidation_fee: int,
+        full_liquidation_fee: int,
+        max_pending_window: int = 0,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingMultiVaultErc20,
+            version=version,
+            abi_key=abi_key,
+            deployment_deps={
+                payment_token_key,
+                collateral_token_key,
+                oracle_key,
+                kyc_validator_key,
+                vault_impl_key,
+            }
+            | ({vault_registrar_connector_key} if vault_registrar_connector_key else set()),
+            deployment_args=[
+                payment_token_key,
+                collateral_token_key,
+                oracle_key,
+                oracle_reverse,
+                kyc_validator_key or ZERO_ADDRESS,
+                protocol_upfront_fee,
+                protocol_settlement_fee,
+                protocol_wallet,
+                max_protocol_upfront_fee,
+                max_protocol_settlement_fee,
+                partial_liquidation_fee,
+                full_liquidation_fee,
+                refinance_impl_key,
+                liquidation_impl_key,
+                loan_impl_key,
+                vault_impl_key,
+                transfer_agent,
+                mint_wallet or ZERO_ADDRESS,
+                redemption_wallet or ZERO_ADDRESS,
+                vault_registrar_connector_key or ZERO_ADDRESS,
+                max_pending_window,
+            ],
+            config_deps={
+                refinance_impl_key: self.set_refinance_impl,
+                liquidation_impl_key: self.set_liquidation_impl,
+                loan_impl_key: self.set_loan_impl,
+            },
+        )
+        self.vault_registrar_connector_key = vault_registrar_connector_key
+        self.refinance_impl_key = refinance_impl_key
+        self.liquidation_impl_key = liquidation_impl_key
+        self.loan_impl_key = loan_impl_key
+        if address:
+            self.load_contract(address)
+
+    def deploy(self, context: DeploymentContext):
+        super().deploy(context)
+        if self.vault_registrar_connector_key:
+            execute(
+                context,
+                self.vault_registrar_connector_key,
+                "change_authorized_contract",
+                self.key,
+                True,  # noqa: FBT003
+            )
+
+    def set_refinance_impl(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "set_refinance_addr", self.refinance_impl_key)
+        else:
+            current_addr = execute_read(context, self.key, "refinance_addr")
+            new_addr = context[self.refinance_impl_key].address()
+            if current_addr == new_addr:
+                print(f"Contract [blue]{escape(self.key)}[/] refinance impl already {new_addr}, skipping update")
+            else:
+                execute(context, self.key, "set_refinance_addr", self.refinance_impl_key)
+
+    def set_liquidation_impl(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
+        else:
+            current_addr = execute_read(context, self.key, "liquidation_addr")
+            new_addr = context[self.liquidation_impl_key].address()
+            if current_addr == new_addr:
+                print(f"Contract [blue]{escape(self.key)}[/] liquidation impl already {new_addr}, skipping update")
+            else:
+                execute(context, self.key, "set_liquidation_addr", self.liquidation_impl_key)
+
+    def set_loan_impl(self, context: DeploymentContext):
+        if context.dryrun:
+            execute(context, self.key, "set_loan_addr", self.loan_impl_key)
+        else:
+            current_addr = execute_read(context, self.key, "loan_addr")
+            new_addr = context[self.loan_impl_key].address()
+            if current_addr == new_addr:
+                print(f"Contract [blue]{escape(self.key)}[/] loan impl already {new_addr}, skipping update")
+            else:
+                execute(context, self.key, "set_loan_addr", self.loan_impl_key)
+
+
+@dataclass
+class LoanMultiVaultImpl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingMultiVaultLoan,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class RefinanceMultiVaultImpl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingMultiVaultRefinance,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class LiquidationMultiVaultImpl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingMultiVaultLiquidation,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+@dataclass
+class VaultMidasImpl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingVaultMidas,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)
+
+
+class VaultCentrifugeAsyncImpl(ContractConfig):
+    def __init__(
+        self,
+        *,
+        key: str,
+        version: str | None = None,
+        abi_key: str | None = None,
+        address: str | None = None,
+    ):
+        super().__init__(
+            key,
+            None,
+            project.P2PLendingVaultCentrifugeAsync,
+            version=version,
+            abi_key=abi_key,
+            token=False,
+            deployment_args=[],
+        )
+        if address:
+            self.load_contract(address)

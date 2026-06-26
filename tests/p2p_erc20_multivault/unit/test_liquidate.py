@@ -4,18 +4,18 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
+    Loan,
     Offer,
     RedeemResult,
-    SecuritizeLoan,
     SignedRedeemResult,
     calc_collateral_from_ltv,
     calc_full_liquidation,
     calc_full_liquidation_redeemed,
     calc_ltv,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_offer,
     sign_redeem_result,
@@ -113,7 +113,7 @@ def ongoing_loan_usdc_weth(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -123,6 +123,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -143,8 +144,9 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
@@ -176,7 +178,7 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
 
     loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(signed_offer),
         offer_tracing_id=offer.tracing_id,
@@ -186,6 +188,7 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -206,8 +209,9 @@ def ongoing_loan_usdc_weth_without_soft_liquidation(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
@@ -219,7 +223,7 @@ def p2p_erc20_proxy(p2p_usdc_weth, p2p_lending_erc20_proxy_contract_def):
 def test_liquidate_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth):
     loan = ongoing_loan_usdc_weth
     boa.env.time_travel(seconds=loan.maturity + 1)  # Make loan defaulted
-    for corrupted_loan in get_securitize_loan_mutations(loan):
+    for corrupted_loan in get_loan_mutations(loan):
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.liquidate_loan(corrupted_loan, EMPTY_REDEEM_RESULT, sender=loan.lender)
 
@@ -645,6 +649,7 @@ def test_liquidate_loan_reverts_if_redeem_not_concluded(p2p_usdc_weth, ongoing_l
         loan,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     # Make loan defaulted
@@ -686,6 +691,7 @@ def redeemed_loan_with_payment(
         loan,
         redeem_start=now,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     # Get the vault address for this loan
@@ -736,6 +742,7 @@ def redeemed_loan_with_collateral(
         loan,
         redeem_start=now,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     # Get the vault address for this loan
@@ -941,6 +948,7 @@ def test_liquidate_redeemed_loan_with_shortfall(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -976,7 +984,7 @@ def test_liquidate_redeemed_loan_with_shortfall(
     usdc.approve(p2p_usdc_weth.address, 0, sender=loan.lender)
 
     # Verify loan hash matches before liquidation
-    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
+    assert compute_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
 
     lender_balance_before = usdc.balanceOf(loan.lender)
     protocol_wallet = p2p_usdc_weth.protocol_wallet()
@@ -1028,6 +1036,7 @@ def test_liquidate_redeemed_loan_not_defaulted_uses_adjusted_ltv(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -1045,7 +1054,7 @@ def test_liquidate_redeemed_loan_not_defaulted_uses_adjusted_ltv(
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
     # Verify loan hash matches
-    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
+    assert compute_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
 
     # Loan is NOT defaulted (before maturity).
     # With the fix, the non-defaulted path uses remaining collateral and net debt for LTV:
@@ -1097,6 +1106,7 @@ def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_with_remaining_de
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -1115,7 +1125,7 @@ def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_with_remaining_de
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
     # Verify loan hash matches
-    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
+    assert compute_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
 
     # Loan is NOT defaulted (before maturity)
     # in_vault_collateral = 0 → current_ltv = 0
@@ -1157,6 +1167,7 @@ def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_no_remaining_debt
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -1176,7 +1187,7 @@ def test_liquidate_redeemed_loan_not_defaulted_zero_collateral_no_remaining_debt
     signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
 
     # Verify loan hash matches
-    assert compute_securitize_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
+    assert compute_loan_hash(redeemed_loan) == p2p_usdc_weth.loans(redeemed_loan.id)
 
     # Loan is NOT defaulted, no collateral, but payment covers debt → no liquidation needed
     with boa.reverts("not defaulted, no debt"):
@@ -1284,6 +1295,7 @@ def test_liquidate_redeemed_loan_lender_receives_redeemed_payment(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -1371,6 +1383,7 @@ def redeemed_loan_zhar3_2(
         loan,
         redeem_start=now,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     # Get the vault address for this loan
@@ -1658,6 +1671,7 @@ def test_liquidate_redeemed_combined_coverage_third_party_exact_balances(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -1753,6 +1767,7 @@ def test_liquidate_redeemed_shortfall_third_party_exact_balances(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -1844,6 +1859,7 @@ def test_liquidate_redeemed_surplus_protocol_fee_properly_applied(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -1925,6 +1941,7 @@ def test_liquidate_redeemed_combined_coverage_lender_as_liquidator(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -2083,6 +2100,7 @@ def test_liquidate_loan_reverts_if_invalid_redeem_payment_amount(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)
@@ -2135,6 +2153,7 @@ def test_liquidate_loan_reverts_if_invalid_redeem_collateral_amnt(
         loan,
         redeem_start=redeem_time,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_weth.vault_id_to_vault(borrower, loan.vault_id)

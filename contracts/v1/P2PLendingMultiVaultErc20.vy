@@ -30,6 +30,7 @@ event LoanCreated:
     apr: uint256
     payment_token: address
     maturity: uint256
+    create_time: uint256
     start_time: uint256
     borrower: address
     lender: address
@@ -81,6 +82,7 @@ event LoanReplaced:
     amount: uint256
     apr: uint256
     maturity: uint256
+    create_time: uint256
     start_time: uint256
     borrower: address
     lender: address
@@ -107,6 +109,7 @@ event LoanReplacedByLender:
     amount: uint256
     apr: uint256
     maturity: uint256
+    create_time: uint256
     start_time: uint256
     borrower: address
     lender: address
@@ -220,6 +223,10 @@ event LiquidationAddrChanged:
     old_addr: address
     new_addr: address
 
+event LoanAddrChanged:
+    old_addr: address
+    new_addr: address
+
 event ProtocolFeeSet:
     old_upfront_fee: uint256
     old_settlement_fee: uint256
@@ -233,6 +240,10 @@ event PartialLiquidationFeeSet:
 event FullLiquidationFeeSet:
     old_fee: uint256
     new_fee: uint256
+
+event MaxPendingWindowSet:
+    old_window: uint256
+    new_window: uint256
 
 event ProtocolWalletChanged:
     old_wallet: address
@@ -264,11 +275,54 @@ event LoanCollateralRedeemStarted:
     redeem_start: uint256
     redeem_residual_collateral: uint256
 
+event LoanStarted:
+    id: bytes32
+    borrower: address
+    lender: address
+    start_time: uint256
+    maturity: uint256
+    collateral_amount: uint256
+    caller: address
+
+event PendingLoanCancelled:
+    id: bytes32
+    borrower: address
+    lender: address
+    payment_refunded: uint256
+    caller: address
+
+event PendingLoanLiquidated:
+    id: bytes32
+    borrower: address
+    lender: address
+    collateral_claimed: uint256
+    lender_amount: uint256
+    liquidation_fee: uint256
+    protocol_fee: uint256
+    borrower_amount: uint256
+    caller: address
+
+event LeveragedLoanCreated:
+    id: bytes32
+    principal: uint256
+    collateral_amount: uint256
+    acquired_collateral: uint256
+    payment_spent: uint256
+    borrower_margin: uint256
+    pending: bool
+    mint_deadline: uint256
+
+event RedeemCancelled:
+    loan_id: bytes32
+    borrower: address
+    lender: address
+    vault_id: uint256
+
 
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
-VERSION: public(constant(String[31])) = "P2PLendingMVErc20.20260310"
+VERSION: public(constant(String[31])) = "P2PLendingMVErc20.20260612"
 
 payment_token: public(immutable(address))
 collateral_token: public(immutable(address))
@@ -286,6 +340,9 @@ offer_sig_domain_separator: immutable(bytes32)
 
 vault_impl_addr: public(immutable(address))
 
+# Capability bitmask of the vault implementation, read once at init (see base flag constants).
+vault_capabilities: public(immutable(uint256))
+
 @deploy
 def __init__(
     _payment_token: address,
@@ -302,11 +359,13 @@ def __init__(
     _full_liquidation_fee: uint256,
     _refinance_addr: address,
     _liquidation_addr: address,
+    _loan_addr: address,
     _vault_impl_addr: address,
     _transfer_agent: address,
     _mint_addr: address,
     _redemption_addr: address,
-    _vault_registrar_addr: address
+    _vault_registrar_addr: address,
+    _max_pending_window: uint256
 ):
 
     """
@@ -324,11 +383,15 @@ def __init__(
     @param _full_liquidation_fee The percentage (bps) of the principal that is charged as a liquidation fee when a loan is fully liquidated.
     @param _refinance_addr The address of the facet contract implementing the refinance functionality.
     @param _liquidation_addr The address of the facet contract implementing the liquidation functionality.
+    @param _loan_addr The address of the facet contract implementing the loan creation functionality.
     @param _vault_impl_addr The address of the vault implementation contract.
     @param _transfer_agent The wallet address for the transfer agent role.
     @param _mint_addr The minting address for collateral tokens.
     @param _redemption_addr The redemption address for collateral tokens.
     @param _vault_registrar_addr The address of the vault registrar connector contract.
+    @param _max_pending_window The async pending window (D18), snapshotted onto each loan at creation;
+           after it elapses, cancelling a pending loan becomes permissionless. 0 disables the
+           permissionless valve. Changeable later via `set_max_pending_window`.
     """
 
     base.__init__()
@@ -342,7 +405,9 @@ def __init__(
     max_protocol_settlement_fee = _max_protocol_settlement_fee
     base.refinance_addr = _refinance_addr
     base.liquidation_addr = _liquidation_addr
+    base.loan_addr = _loan_addr
     vault_impl_addr = _vault_impl_addr
+    vault_capabilities = staticcall base.Vault(_vault_impl_addr).capabilities()
     collateral_token_decimals = 10 ** convert(staticcall IERC20Detailed(_collateral_token).decimals(), uint256)
     payment_token_decimals = 10 ** convert(staticcall IERC20Detailed(_payment_token).decimals(), uint256)
     base.protocol_upfront_fee = _protocol_upfront_fee
@@ -354,6 +419,7 @@ def __init__(
     base.vault_registrar = _vault_registrar_addr
     base.partial_liquidation_fee = _partial_liquidation_fee
     base.full_liquidation_fee = _full_liquidation_fee
+    base.max_pending_window = _max_pending_window
 
     offer_sig_domain_separator = keccak256(
         abi_encode(
@@ -368,6 +434,22 @@ def __init__(
 
 
 # Config functions
+
+
+@external
+def set_max_pending_window(new_max_pending_window: uint256):
+
+    """
+    @notice Set the async pending-loan window (D18).
+    @dev After create_time + this window a still-pending async leveraged loan may be permissionlessly
+         cancelled-and-refunded (cancel_pending_loan, D20). Snapshotted onto each loan at creation. Admin function.
+    @param new_max_pending_window The new pending window, in seconds.
+    """
+
+    assert msg.sender == base.owner
+
+    log MaxPendingWindowSet(old_window=base.max_pending_window, new_window=new_max_pending_window)
+    base.max_pending_window = new_max_pending_window
 
 
 @external
@@ -574,6 +656,21 @@ def set_liquidation_addr(_address: address):
     base.liquidation_addr = _address
 
 
+@external
+def set_loan_addr(_address: address):
+
+    """
+    @notice Set the loan facet address
+    @dev Changes the loan facet contract address. Admin function.
+    @param _address The address of the new loan facet contract.
+    """
+
+    assert msg.sender == base.owner
+    assert _address != empty(address)
+    log LoanAddrChanged(old_addr=base.loan_addr, new_addr=_address)
+    base.loan_addr = _address
+
+
 # Core functions
 
 @external
@@ -595,109 +692,162 @@ def create_loan(
     @return The ID of the created loan.
     """
 
+    return convert(raw_call(
+        base.loan_addr,
+        abi_encode(
+            offer,
+            principal,
+            collateral_amount,
+            borrower_kyc,
+            lender_kyc,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("create_loan(((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        max_outsize=32,
+        is_delegate_call=True
+    ), bytes32)
 
-    assert base._is_offer_signed_by_lender(offer, offer_sig_domain_separator), "offer not signed by lender"
-    self._check_offer_validity(offer)
 
-    borrower: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
+@external
+def create_leveraged_loan(
+    offer: base.SignedOffer,
+    principal: uint256,
+    collateral_amount: uint256,
+    borrower_kyc: base.SignedWalletValidation,
+    lender_kyc: base.SignedWalletValidation,
+    mint_spend: uint256,
+    min_collateral_out: uint256,
+) -> bytes32:
 
-    assert staticcall base.KYCValidator(kyc_validator_addr).check_validations_pair(borrower_kyc, lender_kyc), "KYC validation fail"
-    assert lender_kyc.validation.wallet == offer.offer.lender, "KYC validation fail"
-    assert borrower_kyc.validation.wallet == borrower, "KYC validation fail"
-    assert offer.offer.borrower == empty(address) or offer.offer.borrower == borrower, "borrower not allowed"
-    assert offer.offer.principal == 0 or offer.offer.principal == principal, "offer principal mismatch"
-    assert offer.offer.min_collateral_amount <= collateral_amount, "low collateral amount"
-    assert offer.offer.origination_fee_bps <= BPS, "origination fee gt principal"
+    """
+    @notice Create a leveraged loan by minting collateral with the loan principal plus borrower margin.
+    @dev The mint mode is derived from the vault's capability bitmask (injected here from the
+         `vault_capabilities` immutable). The sync mint mode (`MINT_SYNC`) mints the collateral and
+         starts the loan in the same transaction; the async mode (`MINT_ASYNC`) creates a PENDING
+         loan finalized later by `start_loan`. The manual mode is deferred (no manual-mint vault
+         exists yet).
+    @param offer The signed offer.
+    @param principal The principal amount of the loan.
+    @param collateral_amount The expected total collateral amount backing the loan after minting.
+    @param borrower_kyc The signed KYC validation for the borrower.
+    @param lender_kyc The signed KYC validation for the lender.
+    @param mint_spend The total payment token amount routed to the collateral mint.
+    @param min_collateral_out The minimum collateral amount to receive from the mint.
+    @return The ID of the created loan.
+    """
 
-    convertion_rate: base.UInt256Rational = self._get_oracle_rate()
+    return convert(raw_call(
+        base.loan_addr,
+        abi_encode(
+            offer,
+            principal,
+            collateral_amount,
+            borrower_kyc,
+            lender_kyc,
+            mint_spend,
+            min_collateral_out,
+            vault_capabilities,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("create_leveraged_loan(((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),((address,uint256),(uint256,uint256,uint256)),uint256,uint256,uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        max_outsize=32,
+        is_delegate_call=True
+    ), bytes32)
 
-    max_initial_ltv: uint256 = offer.offer.max_iltv
-    if offer.offer.max_iltv == 0:
-        max_initial_ltv = self._compute_ltv(offer.offer.min_collateral_amount, principal, convertion_rate)
 
-    initial_ltv: uint256 = self._compute_ltv(collateral_amount, principal, convertion_rate)
-    assert initial_ltv <= max_initial_ltv, "initial ltv gt max iltv"
+@external
+def start_loan(
+    loan: base.Loan,
+    mint_result: base.SignedMintResult,
+) -> bytes32:
 
-    if offer.offer.liquidation_ltv > 0:
-        assert offer.offer.liquidation_ltv > max_initial_ltv, "liquidation ltv le initial ltv"
-        # required for soft liquidation: (1 + f) * iltv < 1
-        assert (BPS + base.partial_liquidation_fee) * max_initial_ltv < BPS * BPS, "initial ltv too high"
+    """
+    @notice Start a pending loan once the collateral mint is settled.
+    @dev Callable by anyone, so the loan can be activated (and later liquidated) even if the
+         borrower walks away (D20). No offer re-validation and no LTV gating — whatever was
+         minted becomes the collateral and an unhealthy started loan is handled by the normal
+         liquidation machinery — but the loan must not be past maturity and the minted collateral
+         must satisfy the offer's min collateral amount (else it must be cancelled instead). For an
+         async vault the mint status is read on-chain; the owner-signed mint result is retained for
+         the deferred manual mint mode.
+    @param loan The pending loan to start.
+    @param mint_result The owner-signed mint result attestation (manual mint mode).
+    @return The ID of the started loan.
+    """
 
-    offer_id: bytes32 = base._compute_signed_offer_id(offer)
-    loan: base.Loan = base.Loan(
-        id=empty(bytes32),
-        offer_id=offer_id,
-        offer_tracing_id=offer.offer.tracing_id,
-        initial_amount=principal,
-        amount=principal,
-        apr=offer.offer.apr,
-        payment_token=offer.offer.payment_token,
-        maturity=block.timestamp + offer.offer.duration,
-        start_time=block.timestamp,
-        accrual_start_time=block.timestamp,
-        borrower=borrower,
-        lender=offer.offer.lender,
-        collateral_token=collateral_token,
-        collateral_amount=collateral_amount,
-        min_collateral_amount=offer.offer.min_collateral_amount,
-        origination_fee_amount=offer.offer.origination_fee_bps * principal // BPS,
-        protocol_upfront_fee_amount=base.protocol_upfront_fee * principal // BPS,
-        protocol_settlement_fee=base.protocol_settlement_fee,
-        partial_liquidation_fee=base.partial_liquidation_fee,
-        full_liquidation_fee=base.full_liquidation_fee,
-        call_eligibility=offer.offer.call_eligibility,
-        call_window=offer.offer.call_window,
-        liquidation_ltv=offer.offer.liquidation_ltv,
-        oracle_addr=oracle_addr,
-        initial_ltv=max_initial_ltv,
-        call_time=0,
-        vault_id=base.vault_count[borrower],
-        redeem_start=0,
-        redeem_residual_collateral=0,
-    )
-    loan.id = base._compute_loan_id(loan)
+    return convert(raw_call(
+        base.loan_addr,
+        abi_encode(
+            loan,
+            mint_result,
+            vault_capabilities,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("start_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        max_outsize=32,
+        is_delegate_call=True
+    ), bytes32)
 
-    assert base.loans[loan.id] == empty(bytes32), "loan already exists"
-    base._check_and_update_offer_state(offer, principal)
-    base.loans[loan.id] = base._loan_state_hash(loan)
 
-    _vault: base.Vault = base._create_new_vault(loan.borrower, vault_impl_addr, collateral_token, base.vault_registrar)
-    base._receive_collateral(loan.borrower, loan.collateral_amount, _vault)
-    self._transfer_funds(loan.lender, loan.borrower, loan.amount - loan.origination_fee_amount)
+@external
+def cancel_pending_loan(loan: base.Loan, mint_result: base.SignedMintResult) -> bool:
 
-    if loan.protocol_upfront_fee_amount > 0:
-        self._transfer_funds(loan.lender, base.protocol_wallet, loan.protocol_upfront_fee_amount)
+    """
+    @notice Cancel a pending (async) leveraged loan, unwinding the in-flight collateral mint.
+    @dev Borrower-only two-phase async state machine (anyone after the pending window). Returns
+         whether the cancellation completed (True) or must be retried once the underlying ERC-7540
+         request resolves (False). A fulfilled-but-unstartable deposit (fill below min collateral,
+         or past maturity) is force-unwound by claiming and splitting the minted shares. The
+         owner-signed mint result is reserved for the deferred manual mint mode.
+    @param loan The pending loan to cancel.
+    @param mint_result The owner-signed mint result attestation (manual mint mode; unused for async).
+    @return True if the cancellation completed and the loan was settled, False otherwise.
+    """
 
-    log LoanCreated(
-        id=loan.id,
-        amount=loan.initial_amount,
-        apr=loan.apr,
-        payment_token=loan.payment_token,
-        maturity=loan.maturity,
-        start_time=loan.start_time,
-        borrower=loan.borrower,
-        lender=loan.lender,
-        collateral_token=loan.collateral_token,
-        collateral_amount=loan.collateral_amount,
-        min_collateral_amount=loan.min_collateral_amount,
-        call_eligibility=loan.call_eligibility,
-        call_window=loan.call_window,
-        liquidation_ltv=loan.liquidation_ltv,
-        oracle_addr=loan.oracle_addr,
-        initial_ltv=loan.initial_ltv,
-        origination_fee_amount=loan.origination_fee_amount,
-        protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
-        protocol_settlement_fee=loan.protocol_settlement_fee,
-        partial_liquidation_fee=loan.partial_liquidation_fee,
-        full_liquidation_fee=loan.full_liquidation_fee,
-        offer_id=offer_id,
-        offer_tracing_id=offer.offer.tracing_id,
-        oracle_rate_num=convertion_rate.numerator,
-        oracle_rate_den=convertion_rate.denominator,
-        vault_id=loan.vault_id,
-        vault_addr=_vault.address,
-    )
-    return loan.id
+    return convert(raw_call(
+        base.loan_addr,
+        abi_encode(
+            loan,
+            mint_result,
+            vault_capabilities,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("cancel_pending_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        max_outsize=32,
+        is_delegate_call=True
+    ), bool)
 
 
 @external
@@ -709,6 +859,7 @@ def settle_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
     """
 
     assert base._is_loan_valid(loan), "invalid loan"
+    assert base._is_loan_started(loan), "loan not started"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert base._check_user(loan.borrower), "not borrower"
 
@@ -716,8 +867,7 @@ def settle_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
     in_vault_collateral: uint256 = loan.collateral_amount
     in_vault_payment_token: uint256 = 0
     if base._is_loan_redeemed(loan):
-        assert base._is_loan_redeem_concluded(loan, _vault, redeem_result), "redeem not concluded"
-        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(loan, _vault, payment_token, redeem_result.result)
+        in_vault_payment_token, in_vault_collateral = base._resolve_redeem_balances(loan, _vault, payment_token, redeem_result, vault_capabilities)
 
     interest: uint256 = base._compute_settlement_interest(loan)
     protocol_settlement_fee: uint256 = loan.protocol_settlement_fee * interest // BPS
@@ -779,7 +929,7 @@ def partially_liquidate_loan(loan: base.Loan):
             payment_token_decimals,
             offer_sig_domain_separator,
             vault_impl_addr,
-            method_id=method_id("partially_liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+            method_id=method_id("partially_liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         is_delegate_call=True
     )
@@ -799,6 +949,7 @@ def liquidate_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
         abi_encode(
             loan,
             redeem_result,
+            vault_capabilities,
             payment_token,
             collateral_token,
             oracle_addr,
@@ -808,7 +959,7 @@ def liquidate_loan(loan: base.Loan, redeem_result: base.SignedRedeemResult):
             payment_token_decimals,
             offer_sig_domain_separator,
             vault_impl_addr,
-            method_id=method_id("liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+            method_id=method_id("liquidate_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         is_delegate_call=True
     )
@@ -827,6 +978,7 @@ def add_collateral_to_loan(loan: base.Loan, collateral_amount: uint256):
     assert base._check_user(loan.borrower), "not borrower"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan redeemed"
+    assert base._is_loan_started(loan), "loan not started"  # D9: add-collateral stays disallowed on pending loans
 
     convertion_rate: base.UInt256Rational = self._get_oracle_rate()
     outstanding_debt: uint256 = loan.amount + base._compute_settlement_interest(loan)
@@ -845,6 +997,7 @@ def add_collateral_to_loan(loan: base.Loan, collateral_amount: uint256):
         apr=loan.apr,
         payment_token=loan.payment_token,
         maturity=loan.maturity,
+        create_time=loan.create_time,
         start_time=loan.start_time,
         accrual_start_time=loan.accrual_start_time,
         borrower=loan.borrower,
@@ -866,6 +1019,7 @@ def add_collateral_to_loan(loan: base.Loan, collateral_amount: uint256):
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=loan.max_pending_window,
     )
     base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)
 
@@ -893,6 +1047,7 @@ def remove_collateral_from_loan(loan: base.Loan, collateral_amount: uint256):
     assert base._check_user(loan.borrower), "not borrower"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan redeemed"
+    assert base._is_loan_started(loan), "loan not started"
 
     assert loan.min_collateral_amount + collateral_amount <= loan.collateral_amount, "collateral bellow min"
 
@@ -912,6 +1067,7 @@ def remove_collateral_from_loan(loan: base.Loan, collateral_amount: uint256):
         apr=loan.apr,
         payment_token=loan.payment_token,
         maturity=loan.maturity,
+        create_time=loan.create_time,
         start_time=loan.start_time,
         accrual_start_time=loan.accrual_start_time,
         borrower=loan.borrower,
@@ -933,6 +1089,7 @@ def remove_collateral_from_loan(loan: base.Loan, collateral_amount: uint256):
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=loan.max_pending_window,
     )
     base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)
 
@@ -973,7 +1130,7 @@ def extend_loan(
             offer,
             new_maturity,
             offer_sig_domain_separator,
-            method_id=method_id("extend_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((bytes32,uint256,uint256),(uint256,uint256,uint256)),uint256,bytes32)"),
+            method_id=method_id("extend_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((bytes32,uint256,uint256),(uint256,uint256,uint256)),uint256,bytes32)"),
         ),
         is_delegate_call=True
     )
@@ -995,7 +1152,7 @@ def extend_loan_lender(loan: base.Loan, new_maturity: uint256):
         abi_encode(
             loan,
             new_maturity,
-            method_id=method_id("extend_loan_lender((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),uint256)"),
+            method_id=method_id("extend_loan_lender((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),uint256)"),
         ),
         is_delegate_call=True
     )
@@ -1095,7 +1252,7 @@ def _simulate_partial_liquidation(loan: base.Loan) -> base.PartialLiquidationRes
             oracle_reverse,
             payment_token_decimals,
             collateral_token_decimals,
-            method_id=method_id("simulate_partial_liquidation((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),address,bool,uint256,uint256)"),
+            method_id=method_id("simulate_partial_liquidation((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),address,bool,uint256,uint256)"),
         ),
         max_outsize=128,
         is_delegate_call=True,
@@ -1138,7 +1295,7 @@ def replace_loan(
             payment_token_decimals,
             offer_sig_domain_separator,
             vault_impl_addr,
-            method_id=method_id("replace_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+            method_id=method_id("replace_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         max_outsize=32,
         is_delegate_call=True
@@ -1178,7 +1335,7 @@ def replace_loan_lender(
             collateral_token_decimals,
             payment_token_decimals,
             offer_sig_domain_separator,
-            method_id=method_id("replace_loan_lender((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32)"),
+            method_id=method_id("replace_loan_lender((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((uint256,uint256,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,address,address,bytes32),(uint256,uint256,uint256)),uint256,((address,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32)"),
         ),
         max_outsize=32,
         is_delegate_call=True
@@ -1223,17 +1380,19 @@ def create_vault_if_needed(wallet: address):
 @external
 def redeem(loan: base.Loan, residual_collateral: uint256):
     """
-    @notice Redeem a loan by paying off the outstanding debt and reclaiming the collateral.
+    @notice Redeem a loan by paying off the outstanding debt and reclaiming the collateral. For sync redeem vaults, use redeem_and_settle instead.
     @param loan The loan to be redeemed.
     """
 
     assert base._is_loan_valid(loan), "invalid loan"
+    assert base._is_loan_started(loan), "loan not started"
     assert base._check_user(loan.borrower), "not borrower"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan already redeemed"
     assert base.redemption_addr != empty(address), "redemption addr not set"
 
     assert residual_collateral <= loan.collateral_amount, "residual collateral gt total"
+    assert (vault_capabilities & base.REDEEM_SYNC) == 0, "use redeem_and_settle"
 
     updated_loan: base.Loan = base.Loan(
         id=loan.id,
@@ -1244,6 +1403,7 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
         apr=loan.apr,
         payment_token=loan.payment_token,
         maturity=loan.maturity,
+        create_time=loan.create_time,
         start_time=loan.start_time,
         accrual_start_time=loan.accrual_start_time,
         borrower=loan.borrower,
@@ -1264,19 +1424,31 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
         call_time=loan.call_time,
         vault_id=loan.vault_id,
         redeem_start=block.timestamp,
-        redeem_residual_collateral=residual_collateral
+        redeem_residual_collateral=residual_collateral,
+        max_pending_window=loan.max_pending_window,
     )
     base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)
 
     _vault: base.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
     convertion_rate: base.UInt256Rational = self._get_oracle_rate()
-    extcall _vault.redeem(
-        base.redemption_addr,
-        payment_token,
-        loan.collateral_amount - residual_collateral,
-        convertion_rate.numerator,
-        convertion_rate.denominator,
-    )
+    if (vault_capabilities & base.REDEEM_MANUAL) != 0:
+        extcall _vault.redeem_manual(
+            base.redemption_addr,
+            payment_token,
+            loan.collateral_amount - residual_collateral,
+            convertion_rate.numerator,
+            convertion_rate.denominator,
+        )
+    elif (vault_capabilities & base.REDEEM_ASYNC) != 0:
+        extcall _vault.redeem_async(
+            base.redemption_addr,
+            payment_token,
+            loan.collateral_amount - residual_collateral,
+            convertion_rate.numerator,
+            convertion_rate.denominator,
+        )
+    else:
+        raise "redeem not supported"
 
     log LoanCollateralRedeemStarted(
         loan_id=loan.id,
@@ -1287,6 +1459,71 @@ def redeem(loan: base.Loan, residual_collateral: uint256):
         redeem_start=updated_loan.redeem_start,
         redeem_residual_collateral=updated_loan.redeem_residual_collateral,
     )
+
+
+@external
+def redeem_and_settle(loan: base.Loan, residual_collateral: uint256):
+
+    """
+    @notice Atomically redeem the loan's collateral to payment token and settle the loan in one tx.
+    @dev REDEEM_SYNC vaults only (the conversion is on-chain and instant, so no deferred redemption
+         state or owner-signed RedeemResult is needed). For REDEEM_MANUAL / REDEEM_ASYNC vaults use
+         the two-phase redeem() + settle_loan instead.
+    @param loan The loan to redeem-and-settle.
+    @param residual_collateral The amount of collateral to keep (not redeem); returned to the borrower.
+    """
+
+    raw_call(
+        base.loan_addr,
+        abi_encode(
+            loan,
+            residual_collateral,
+            vault_capabilities,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("redeem_and_settle((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),uint256,uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        is_delegate_call=True
+    )
+
+
+@external
+def cancel_redeem(loan: base.Loan) -> bool:
+
+    """
+    @notice Cancel an ongoing collateral redemption for an active loan, reversing the in-flight mint.
+    @dev Borrower-only two-phase async state machine. Returns whether the cancellation completed
+         (True) or must be retried once the underlying ERC-7540 redeem request resolves (False).
+    @param loan The loan whose redemption is to be cancelled.
+    @return True if the cancellation completed and the redemption was reversed, False otherwise.
+    """
+
+    return convert(raw_call(
+        base.loan_addr,
+        abi_encode(
+            loan,
+            vault_capabilities,
+            payment_token,
+            collateral_token,
+            oracle_addr,
+            oracle_reverse,
+            kyc_validator_addr,
+            collateral_token_decimals,
+            payment_token_decimals,
+            offer_sig_domain_separator,
+            vault_impl_addr,
+            method_id=method_id("cancel_redeem((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+        ),
+        max_outsize=32,
+        is_delegate_call=True
+    ), bool)
 
 
 @external
@@ -1308,6 +1545,7 @@ def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base
             new_borrower,
             new_borrower_kyc,
             redeem_result,
+            vault_capabilities,
             payment_token,
             collateral_token,
             oracle_addr,
@@ -1318,7 +1556,7 @@ def transfer_loan(loan: base.Loan, new_borrower: address, new_borrower_kyc: base
             offer_sig_domain_separator,
             vault_impl_addr,
             base.vault_registrar,
-            method_id=method_id("transfer_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256),address,((address,uint256),(uint256,uint256,uint256)),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),address,address,address,bool,address,uint256,uint256,bytes32,address,address)"),
+            method_id=method_id("transfer_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),address,((address,uint256),(uint256,uint256,uint256)),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),uint256,address,address,address,bool,address,uint256,uint256,bytes32,address,address)"),
         ),
         is_delegate_call=True
     )

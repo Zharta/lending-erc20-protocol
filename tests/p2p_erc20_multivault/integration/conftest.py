@@ -1,13 +1,12 @@
 import os
-from pathlib import Path
-from textwrap import dedent
 
 import boa
 import pytest
 from boa.environment import Env
 from eth_account import Account
 
-from ..conftest_base import sign_kyc
+from ...conftest_base import ETH_FORK_BLOCK, build_erc20_contract_def_with_log_stuff
+from ..conftest_base import sign_kyc, sign_register_vault
 
 
 @pytest.fixture
@@ -15,8 +14,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 24541820
-        boa.env.fork(fork_uri, block_identifier=blkid)
+        boa.env.fork(fork_uri, block_identifier=ETH_FORK_BLOCK)
         yield
 
 
@@ -56,21 +54,45 @@ def kyc_validator_key(kyc_validator_account):
     return kyc_validator_account.key
 
 
+# Borrower is a freshly generated account whose key we control, so it can both
+# produce the EIP-712 investor signature (V2 registrar `set_investor_signature`)
+# and be registered as a Securitize investor.
+@pytest.fixture(scope="session")
+def borrower_account():
+    return Account.create()
+
+
+@pytest.fixture(scope="session")
+def borrower_key(borrower_account):
+    return borrower_account.key
+
+
 @pytest.fixture
-def borrower(boa_env):
-    addr = "0x81aF1E160c290E8Fff6381CCF67981f012Cf1009"
+def borrower(borrower_account, boa_env):
+    boa.env.set_balance(borrower_account.address, 10**21)
+    return borrower_account.address
+
+
+@pytest.fixture
+def token_issuer(boa_env):
+    addr = "0x1ffD2C4373A0CBee33f974e4142611C8c4A4f366"
     boa.env.set_balance(addr, 10**21)
     return addr
 
 
-@pytest.fixture
-def token_issuer():
-    return "0x1ffD2C4373A0CBee33f974e4142611C8c4A4f366"
-
-
 @pytest.fixture(autouse=True)
-def borrower_acred_funds(borrower, acred_ds_token, token_issuer):
+def borrower_acred_funds(borrower, securitize_registry, acred_ds_token, token_issuer):
+    """Register the borrower as a Securitize investor and issue collateral DS tokens.
+
+    A freshly generated account is not pre-registered on-chain, so the investor must be
+    registered before the VaultRegistrar can create vaults for it.
+    """
+    investor_id = "zharta_test_investor"
+    securitize_registry.registerInvestor(investor_id, "", sender=token_issuer)
+    securitize_registry.setCountry(investor_id, "US", sender=token_issuer)
+    securitize_registry.addWallet(borrower, investor_id, sender=token_issuer)
     acred_ds_token.issueTokens(borrower, 200 * int(1e6), sender=token_issuer)
+    return investor_id
 
 
 @pytest.fixture(scope="session")
@@ -170,8 +192,11 @@ def redemption_wallet(accounts, usdc):
 
 
 @pytest.fixture
-def securitize_owner():
-    return "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
+def securitize_owner(boa_env):
+    # Admin allowed to add operators on the registrar and grant trust roles.
+    addr = "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
+    boa.env.set_balance(addr, 10**21)
+    return addr
 
 
 @pytest.fixture
@@ -184,110 +209,28 @@ def securitize_registry(boa_env):
 
 
 @pytest.fixture(scope="session")
-def p2p_lending_multivault_erc20_contract_def():
-    # workaround: boa doesnt catch 'unused' events and fails, so we inject a dummy function that logs them
-    contents = Path("contracts/v1/P2PLendingMultiVaultErc20.vy").read_text(encoding="utf-8")
-    contents += dedent("""
-        @external
-        def log_stuff():
-            log LoanLiquidated(
-                id=empty(bytes32),
-                borrower=empty(address),
-                lender=empty(address),
-                liquidator=empty(address),
-                outstanding_debt=0,
-                collateral_for_debt=0,
-                remaining_collateral=0,
-                remaining_collateral_value=0,
-                shortfall=0,
-                liquidation_fee=0,
-                protocol_settlement_fee_amount=0
-            )
-            log LoanPartiallyLiquidated(
-                id=empty(bytes32),
-                borrower=empty(address),
-                lender=empty(address),
-                written_off=0,
-                collateral_claimed=0,
-                liquidation_fee=0,
-                updated_amount=0,
-                updated_collateral_amount=0,
-                updated_accrual_start_time=0,
-                liquidator=empty(address),
-                old_ltv=0,
-                new_ltv=0
-            )
-            log LoanReplaced(
-                id=empty(bytes32),
-                amount=0,
-                apr=0,
-                maturity=0,
-                start_time=0,
-                borrower=empty(address),
-                lender=empty(address),
-                collateral_amount=0,
-                min_collateral_amount=0,
-                call_eligibility=0,
-                call_window=0,
-                liquidation_ltv=0,
-                initial_ltv=0,
-                origination_fee_amount=0,
-                protocol_upfront_fee_amount=0,
-                protocol_settlement_fee=0,
-                partial_liquidation_fee=0,
-                full_liquidation_fee=0,
-                offer_id=empty(bytes32),
-                offer_tracing_id=empty(bytes32),
-                original_loan_id=empty(bytes32),
-                paid_principal=0,
-                paid_interest=0,
-                paid_protocol_settlement_fee_amount=0
-            )
-            log LoanReplacedByLender(
-                id=empty(bytes32),
-                amount=0,
-                apr=0,
-                maturity=0,
-                start_time=0,
-                borrower=empty(address),
-                lender=empty(address),
-                collateral_amount=0,
-                min_collateral_amount=0,
-                call_eligibility=0,
-                call_window=0,
-                liquidation_ltv=0,
-                initial_ltv=0,
-                origination_fee_amount=0,
-                protocol_upfront_fee_amount=0,
-                protocol_settlement_fee=0,
-                partial_liquidation_fee=0,
-                full_liquidation_fee=0,
-                offer_id=empty(bytes32),
-                offer_tracing_id=empty(bytes32),
-                original_loan_id=empty(bytes32),
-                paid_principal=0,
-                paid_interest=0,
-                paid_protocol_settlement_fee_amount=0
-            )
-            log LoanMaturityExtended(
-                loan_id=empty(bytes32),
-                original_maturity=0,
-                new_maturity=0,
-                lender=empty(address),
-                borrower=empty(address),
-                caller=empty(address)
-            )
-            log LoanBorrowerTransferred(
-                loan_id=empty(bytes32),
-                new_loan_id=empty(bytes32),
-                old_borrower=empty(address),
-                new_borrower=empty(address),
-                lender=empty(address),
-                vault_id=0
-            )
+def p2p_lending_multivault_base_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingMultiVaultBase.vy")
 
-    """)
-    return boa.loads_partial(contents, name="P2PLendingMultiVaultErc20")
+
+@pytest.fixture(scope="session")
+def p2p_lending_multivault_erc20_contract_def(
+    p2p_lending_multivault_base_contract_def,
+    p2p_lending_multivault_loan_contract_def,
+    p2p_lending_multivault_liquidation_contract_def,
+    p2p_lending_multivault_refinance_contract_def,
+):
+    # workaround: boa doesnt catch 'unused' events and fails, so we inject a generated dummy that logs them
+    return build_erc20_contract_def_with_log_stuff(
+        "contracts/v1/P2PLendingMultiVaultErc20.vy",
+        "P2PLendingMultiVaultErc20",
+        p2p_lending_multivault_base_contract_def,
+        [
+            p2p_lending_multivault_loan_contract_def,
+            p2p_lending_multivault_liquidation_contract_def,
+            p2p_lending_multivault_refinance_contract_def,
+        ],
+    )
 
 
 @pytest.fixture(scope="session")
@@ -298,6 +241,11 @@ def p2p_lending_multivault_refinance_contract_def():
 @pytest.fixture(scope="session")
 def p2p_lending_multivault_liquidation_contract_def():
     return boa.load_partial("contracts/v1/P2PLendingMultiVaultLiquidation.vy")
+
+
+@pytest.fixture(scope="session")
+def p2p_lending_multivault_loan_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingMultiVaultLoan.vy")
 
 
 @pytest.fixture
@@ -329,8 +277,13 @@ def p2p_mv_liquidation(p2p_lending_multivault_liquidation_contract_def):
 
 
 @pytest.fixture
-def securitize_vault_impl(securitize_vault_contract_def):
-    return securitize_vault_contract_def.deploy()
+def p2p_mv_loan(p2p_lending_multivault_loan_contract_def):
+    return p2p_lending_multivault_loan_contract_def.deploy()
+
+
+@pytest.fixture
+def securitize_vault_impl(securitize_mv_vault_contract_def):
+    return securitize_mv_vault_contract_def.deploy()
 
 
 @pytest.fixture
@@ -341,22 +294,17 @@ def securitize_trust_service(boa_env):
 
 @pytest.fixture(scope="session")
 def vault_registrar_contract_def():
-    return boa.load_abi("contracts/auxiliary/VaultRegistrar_abi.json")
+    return boa.load_abi("contracts/auxiliary/VaultRegistrarV2_abi.json")
 
 
 @pytest.fixture
 def vault_registrar(vault_registrar_contract_def, boa_env):
-    return vault_registrar_contract_def.at("0x9fbF77D74337FefA7D8993f507A38EDB4df620E5")
-
-
-@pytest.fixture
-def vault_registrar_admin():
-    return "0xd69fefe5df62373dcbde3e1f9625cf334a2dae78"
+    return vault_registrar_contract_def.at("0xD280bcA62a7FC67011cAef77815e8606071BEf9F")
 
 
 @pytest.fixture(scope="session")
 def registrar_connector_def():
-    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
+    return boa.load_partial("contracts/SecuritizeRegistrarV2Connector.vy")
 
 
 TRUST_ROLE_TRANSFER_AGENT = 8
@@ -366,15 +314,33 @@ TRUST_ROLE_TRANSFER_AGENT = 8
 def registrar_connector(
     registrar_connector_def,
     vault_registrar,
-    vault_registrar_admin,
     securitize_trust_service,
     securitize_owner,
+    owner,
 ):
+    assert boa.env.eoa == owner
     contract = registrar_connector_def.deploy(vault_registrar.address)
-    vault_registrar.grantRole(vault_registrar.OPERATOR_ROLE(), contract.address, sender=vault_registrar_admin)
-    securitize_trust_service.addOperator("zharta_connector", contract.address, sender=securitize_owner)
+    vault_registrar.addOperator(contract.address, sender=securitize_owner)
+    # The registrar needs the TRANSFER_AGENT trust role to register vaults in the registry.
     securitize_trust_service.setRole(vault_registrar.address, TRUST_ROLE_TRANSFER_AGENT, sender=securitize_owner)
     return contract
+
+
+@pytest.fixture
+def set_investor_sig(registrar_connector, vault_registrar):
+    """Store an EIP-712 RegisterVault authorization for `investor` on the V2 connector.
+
+    The V2 `registerVault` (invoked by the lending contract when it creates a per-loan vault)
+    requires the investor to have authorized the connector via an EIP-712 signature; an empty
+    signature reverts (0x5335c859). The signature is bound to the investor's current operator
+    nonce, so one stored signature authorizes exactly one vault registration.
+    """
+
+    def _set(investor_account, deadline):
+        v, r, s = sign_register_vault(investor_account, registrar_connector.address, vault_registrar, deadline)
+        registrar_connector.set_investor_signature(deadline, (v, r, s), sender=investor_account.address)
+
+    return _set
 
 
 @pytest.fixture
@@ -382,6 +348,7 @@ def p2p_usdc_acred(
     p2p_lending_multivault_erc20_contract_def,
     p2p_mv_refinance,
     p2p_mv_liquidation,
+    p2p_mv_loan,
     securitize_vault_impl,
     usdc,
     acred,
@@ -409,11 +376,214 @@ def p2p_usdc_acred(
         0,
         p2p_mv_refinance.address,
         p2p_mv_liquidation.address,
+        p2p_mv_loan.address,
         securitize_vault_impl.address,
         transfer_agent,
         boa.eval("empty(address)"),  # mint_addr (not used for ACRED here)
         redemption_wallet,
         registrar_connector.address,
+        0,  # max_pending_window
     )
     registrar_connector.change_authorized_contract(contract.address, True, sender=owner)
     return contract
+
+
+# ---------------------------------------------------------------------------
+# Centrifuge async / ERC-7540 fork support (shared by deJAAA and deSPXA suites)
+# ---------------------------------------------------------------------------
+#
+# The `P2PLendingVaultCentrifugeAsync` vault impl is tested against TWO real Centrifuge V3 ERC-7540 AsyncVaults:
+#   - deJAAA on Ethereum mainnet (fixtures below, `dejaaa_*` + `p2p_usdc_dejaaa`), and
+#   - deSPXA on Base mainnet (fixtures further down, `despxa_*` + `p2p_usdc_despxa`).
+#
+# BOTH pools use the identical Centrifuge V3 deployment (the manager / spoke / hook / root / balanceSheet
+# addresses are the SAME across chains — Centrifuge deploys deterministically), so the fulfilment /
+# whitelisting behaviour is a single shared recipe. The `centrifuge_*` module functions below implement it
+# and take the spoke / root address as EXPLICIT ARGS so each suite passes its own chain's constants.
+# See the agent-memory note `despxa-centrifuge-fork` for the full recipe and how every address was
+# discovered on-chain.
+#
+# Fulfilment impersonates the Centrifuge SPOKE and calls the AsyncRequestManager's
+# `callback(poolId, scId, assetId, payload)` directly with RequestCallbackMessageLib-encoded payloads
+# (the same path the spoke uses when relaying a Hub message). Whitelisting impersonates the ROOT (a ward
+# of the restriction hook).
+
+# RequestCallbackMessageLib type tags (protocol-v3 src/vaults/libraries/RequestCallbackMessageLib.sol).
+# Chain-neutral: shared by both the deJAAA and deSPXA suites.
+_RC_APPROVED_DEPOSITS = 1
+_RC_ISSUED_SHARES = 2
+_RC_REVOKED_SHARES = 3
+_RC_FULFILLED_DEPOSIT = 4
+_RC_FULFILLED_REDEEM = 5
+_D18_ONE = 10**18  # neutral D18 price for the pool-per-asset / pool-per-share fields
+
+
+def _left_investor(addr: str) -> bytes:
+    """The manager decodes `investor` bytes32 LEFT-aligned (address(bytes20(x)), bottom uint96 == 0)."""
+    return bytes.fromhex(addr[2:]) + bytes(12)
+
+
+# --- behaviour helpers (plain functions; the fixtures below only set up real objects) ----------------
+#
+# Every hardcoded chain constant is a parameter so the deSPXA (Base) suite reuses these verbatim with
+# its own token / spoke / root / pool-id / scid.
+
+
+def centrifuge_whitelist(hook, token, addr, root):
+    """Whitelist an address (the loan vault / controller) as a member of `token` (a Centrifuge share
+    token) so it can request deposits and hold shares. Impersonates `root` (a ward of the hook)."""
+    boa.env.set_balance(root, 10**20)
+    hook.updateMember(token, addr, 2**64 - 1, sender=root)
+
+
+def centrifuge_fulfill_deposit(manager, pool_id, scid, asset_id, controller, assets, shares, spoke):
+    """Issuer-side deposit fulfilment for a controller (the loan vault), impersonating `spoke`.
+
+    Runs the exact three-message sequence the Hub relays: ApprovedDeposits, IssuedShares, then
+    FulfilledDepositRequest. `assets` is the USDC amount fulfilled; `shares` is the collateral minted
+    (balanceSheet.issue mints them — no pre-funding). After this the controller's
+    claimableDepositRequest == assets and it can claim ~`shares` collateral shares."""
+    boa.env.set_balance(spoke, 10**20)
+
+    def _cb(payload):
+        manager.callback(pool_id, scid, asset_id, payload, sender=spoke)
+
+    _cb(bytes([_RC_APPROVED_DEPOSITS]) + assets.to_bytes(16, "big") + _D18_ONE.to_bytes(16, "big"))
+    _cb(bytes([_RC_ISSUED_SHARES]) + shares.to_bytes(16, "big") + _D18_ONE.to_bytes(16, "big"))
+    _cb(
+        bytes([_RC_FULFILLED_DEPOSIT])
+        + _left_investor(controller)
+        + assets.to_bytes(16, "big")
+        + shares.to_bytes(16, "big")
+        + (0).to_bytes(16, "big")
+    )
+
+
+def centrifuge_fulfill_redeem(manager, pool_id, scid, asset_id, controller, shares, assets, spoke):
+    """Issuer-side redeem fulfilment for a controller, impersonating `spoke`.
+
+    RevokedShares (burn `shares` collateral, note `assets` USDC withdraw) then FulfilledRedeemRequest.
+    After this the controller's claimableRedeemRequest == shares and claiming yields ~`assets` USDC
+    (paid from the pool escrow — no pre-funding)."""
+    boa.env.set_balance(spoke, 10**20)
+
+    def _cb(payload):
+        manager.callback(pool_id, scid, asset_id, payload, sender=spoke)
+
+    _cb(bytes([_RC_REVOKED_SHARES]) + assets.to_bytes(16, "big") + shares.to_bytes(16, "big") + _D18_ONE.to_bytes(16, "big"))
+    _cb(
+        bytes([_RC_FULFILLED_REDEEM])
+        + _left_investor(controller)
+        + assets.to_bytes(16, "big")
+        + shares.to_bytes(16, "big")
+        + (0).to_bytes(16, "big")
+    )
+
+
+def centrifuge_fulfill_cancel_deposit(manager, pool_id, scid, asset_id, controller, assets, spoke):
+    """Issuer-side fulfilment of a DEPOSIT cancellation, impersonating `spoke`.
+
+    On some Centrifuge V3 deployments (notably Base) `cancelDepositRequest` is ASYNCHRONOUS: it only
+    submits the cancel (pendingCancelDeposit == True) and the reclaimed payment does not become claimable
+    until the issuer relays a FulfilledDepositRequest with `cancelledAssets = assets` (and zero fulfilled
+    amounts). After this the controller's claimableCancelDepositRequest == assets. (On Ethereum the same
+    cancel resolves synchronously in the submit tx, so this step is not needed there — only the Base
+    suite uses it.)"""
+    boa.env.set_balance(spoke, 10**20)
+    manager.callback(
+        pool_id,
+        scid,
+        asset_id,
+        bytes([_RC_FULFILLED_DEPOSIT])
+        + _left_investor(controller)
+        + (0).to_bytes(16, "big")  # fulfilledAssets
+        + (0).to_bytes(16, "big")  # fulfilledShares
+        + assets.to_bytes(16, "big"),  # cancelledAssets
+        sender=spoke,
+    )
+
+
+def centrifuge_fulfill_cancel_redeem(manager, pool_id, scid, asset_id, controller, shares, spoke):
+    """Issuer-side fulfilment of a REDEEM cancellation, impersonating `spoke`.
+
+    The redeem analog of `centrifuge_fulfill_cancel_deposit`: on Base `cancelRedeemRequest` is async and
+    the reclaimed collateral shares only become claimable after a FulfilledRedeemRequest with
+    `cancelledShares = shares` (and zero fulfilled amounts). After this the controller's
+    claimableCancelRedeemRequest == shares. (Not needed on Ethereum, where the cancel resolves
+    synchronously.)"""
+    boa.env.set_balance(spoke, 10**20)
+    manager.callback(
+        pool_id,
+        scid,
+        asset_id,
+        bytes([_RC_FULFILLED_REDEEM])
+        + _left_investor(controller)
+        + (0).to_bytes(16, "big")  # fulfilledAssets
+        + (0).to_bytes(16, "big")  # fulfilledShares
+        + shares.to_bytes(16, "big"),  # cancelledShares
+        sender=spoke,
+    )
+
+
+# --- shared Centrifuge contract defs (ABI-only, env-agnostic) -----------------------------------------
+#
+# One session-scoped def per Centrifuge contract kind; the per-token fixtures below just bind them to a
+# chain-specific address with .at() under the right boa env (deJAAA -> Ethereum, deSPXA -> Base).
+
+
+@pytest.fixture(scope="session")
+def centrifuge_share_token_contract_def():
+    return boa.loads_abi(
+        """[
+      {"name":"balanceOf","inputs":[{"type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"decimals","inputs":[],"outputs":[{"type":"uint8"}],"stateMutability":"view","type":"function"},
+      {"name":"hook","inputs":[],"outputs":[{"type":"address"}],"stateMutability":"view","type":"function"}
+    ]"""
+    )
+
+
+@pytest.fixture(scope="session")
+def centrifuge_async_vault_contract_def():
+    """The ERC-7540 AsyncVault surface the tests read: conversions + request-status views."""
+    return boa.loads_abi(
+        """[
+      {"name":"convertToShares","inputs":[{"type":"uint256"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"convertToAssets","inputs":[{"type":"uint256"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"pendingDepositRequest","inputs":[{"type":"uint256"},{"type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"claimableDepositRequest","inputs":[{"type":"uint256"},{"type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"pendingRedeemRequest","inputs":[{"type":"uint256"},{"type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"claimableRedeemRequest","inputs":[{"type":"uint256"},{"type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"claimableCancelDepositRequest","inputs":[{"type":"uint256"},{"type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"name":"claimableCancelRedeemRequest","inputs":[{"type":"uint256"},{"type":"address"}],"outputs":[{"type":"uint256"}],"stateMutability":"view","type":"function"}
+    ]"""
+    )
+
+
+@pytest.fixture(scope="session")
+def centrifuge_manager_contract_def():
+    return boa.loads_abi(
+        """[
+      {"name":"callback","inputs":[{"type":"uint64"},{"type":"bytes16"},{"type":"uint128"},{"type":"bytes"}],"outputs":[],"stateMutability":"nonpayable","type":"function"}
+    ]"""
+    )
+
+
+@pytest.fixture(scope="session")
+def centrifuge_spoke_contract_def():
+    return boa.loads_abi(
+        """[
+      {"name":"assetToId","inputs":[{"type":"address"},{"type":"uint256"}],"outputs":[{"type":"uint128"}],"stateMutability":"view","type":"function"}
+    ]"""
+    )
+
+
+@pytest.fixture(scope="session")
+def centrifuge_hook_contract_def():
+    return boa.load_abi("contracts/auxiliary/CentrifugeFullRestrictions_abi.json")
+
+
+@pytest.fixture(scope="session")
+def centrifuge_async_vault_impl_contract_def():
+    """The P2PLendingVaultCentrifugeAsync impl bytecode — chain-agnostic; each async loop suite deploys it
+    under its own fork env (test_loop_dejaaa.py -> Ethereum, test_loop_despxa.py -> Base)."""
+    return boa.load_partial("contracts/v1/P2PLendingVaultCentrifugeAsync.vy")

@@ -6,10 +6,11 @@ This protocol implements a peer-to-peer lending system for ERC20 tokens, availab
 
 ## Overview
 
-The protocol is implemented in Vyper 0.4.3. It exists in two primary versions:
+The protocol is implemented in Vyper 0.4.3. It exists in three primary versions:
 
 *   **Vaulted**: The main version featuring a dedicated vault system for managing collateral. This provides isolation of borrower collateral, which is crucial for compliance requirements and enhanced security. The main entry point is `P2PLendingVaultedErc20`, which leverages `P2PLendingVaultedBase` for core logic, `P2PLendingVaultedRefinance` and `P2PLendingVaultedLiquidation` as facets, and integrates with `KYCValidator` and `P2PLendingVault` for collateral handling.
 *   **Securitize**: A specialized version designed for Securitize DS Token collateral. This version supports the unique requirements of security tokens, including a redemption workflow where collateral can be converted back to payment tokens via Securitize. The main entry point is `P2PLendingSecuritizeErc20`, using `P2PLendingSecuritizeBase` for core logic, `P2PLendingSecuritizeRefinance` and `P2PLendingSecuritizeLiquidation` as facets, and `P2PLendingVaultSecuritize` for vault management with SecuritizeSwap integration.
+*   **MultiVault**: A generalization of the Securitize version that supports pluggable vault implementations through a capability-flag mechanism, and adds first-class **leveraged loans**: the lender principal plus a borrower margin are deployed into collateral minted by the loan vault itself (synchronously for Midas/Securitize-style vaults, asynchronously via ERC-7540 for Centrifuge-style vaults). The main entry point is `P2PLendingMultiVaultErc20`, using `P2PLendingMultiVaultBase` for core logic and three facets: `P2PLendingMultiVaultLoan` (creation + pending-loan lifecycle), `P2PLendingMultiVaultRefinance`, and `P2PLendingMultiVaultLiquidation`. Vault implementations: `P2PLendingVaultMidas`, `P2PLendingVaultSecuritizeMV`, and `P2PLendingVaultCentrifugeAsync`.
 
 The lending of an NFT in the context of this protocol means that:
 1.  A lender provides a loan offer with specific terms
@@ -42,6 +43,16 @@ The protocol consists of the following core contracts:
 - `P2PLendingSecuritizeLiquidation.vy`: A facet contract (called via `delegatecall`) handling loan liquidation with redemption-aware settlement.
 - `P2PLendingVaultSecuritize.vy`: A vault implementation with SecuritizeSwap integration, enabling the purchase of DS tokens from stablecoins.
 - `KYCValidator.vy`: A contract responsible for validating signed KYC attestations.
+
+### MultiVault Core Contracts
+- `P2PLendingMultiVaultErc20.vy`: The main entry point for the MultiVault version — one vault per loan, pluggable vault implementations selected by capability flags, and leveraged loans (sync and async collateral minting).
+- `P2PLendingMultiVaultBase.vy`: An abstract base contract holding core state, the canonical `Vault` interface with its capability-flag constants, and shared logic (loan hashing, redemption resolution, pending-loan helpers).
+- `P2PLendingMultiVaultLoan.vy`: A facet contract (called via `delegatecall`) handling loan creation and the pending-loan lifecycle: `create_loan`, `create_leveraged_loan`, `start_loan`, `cancel_pending_loan`, `cancel_redeem`, and `redeem_and_settle`.
+- `P2PLendingMultiVaultRefinance.vy`: A facet contract handling loan refinancing and maturity extension logic.
+- `P2PLendingMultiVaultLiquidation.vy`: A facet contract handling partial/full liquidation and loan transfer.
+- `P2PLendingVaultMidas.vy`: A vault implementation for Midas mTokens — `MINT_SYNC | REDEEM_SYNC` (instant `depositInstant` / `redeemInstant`).
+- `P2PLendingVaultSecuritizeMV.vy`: A vault implementation for Securitize DS tokens under the MultiVault funding model — `MINT_SYNC | REDEEM_MANUAL` (SecuritizeSwap mint; owner-attested redemption).
+- `P2PLendingVaultCentrifugeAsync.vy`: A vault implementation for Centrifuge ERC-7540 AsyncVault shares — `MINT_ASYNC | MINT_STATUS | MINT_CANCEL | REDEEM_ASYNC | REDEEM_STATUS | REDEEM_CANCEL` (request-based mint/redeem with on-chain status and ERC-7887 cancellation).
 
 ### Auxiliary Contracts
 - `SecuritizeRegistrarV2Connector.vy`: A bridge contract that connects P2P lending vaults to the Securitize Vault Registrar V2. The P2P lending contracts (both vaulted and securitize) call the connector's `register_vault(vault, investor_wallet)` function automatically during vault creation. Registration requires the investor to have previously stored a signed authorization via `set_investor_signature(deadline, signature)`, which the connector forwards to the registrar's `registerVault`. The contract maintains an allowlist of authorized P2P lending contracts and can only be managed by the owner.
@@ -111,6 +122,24 @@ Users interact with `P2PLendingSecuritizeErc20.vy` for:
 *   Adding or removing collateral (only before redemption starts).
 *   Loan refinancing for both borrowers and lenders.
 *   Managing protocol configuration.
+
+### MultiVault Architecture
+
+The `P2PLendingMultiVaultErc20.vy` contract builds on the Securitize architecture (one vault per loan, no callable loans, redemption workflow) and generalizes it in two directions: pluggable vault implementations and leveraged loans.
+
+*   **Vault capability flags**: Each vault implementation declares a constant capability bitmask (`MINT_SYNC`, `MINT_ASYNC`, `MINT_MANUAL`, `MINT_STATUS`, `MINT_CANCEL`, `REDEEM_SYNC`, `REDEEM_ASYNC`, `REDEEM_MANUAL`, `REDEEM_STATUS`, `REDEEM_CANCEL`). The lending contract reads it once at deployment into the `vault_capabilities` immutable and dispatches by capability — each flag maps 1:1 to a same-named vault function. Every vault implements the full canonical `Vault` interface from `P2PLendingMultiVaultBase`; functions a vault does not support are stubs that revert.
+*   **Leveraged loans** (`create_leveraged_loan`): instead of handing the principal to the borrower, the lender principal (net of origination fee) plus the borrower margin (`mint_spend − (principal − origination_fee)`) are transferred into the loan vault, which mints collateral from its own balance:
+    *   **Sync** (`MINT_SYNC` — Midas, SecuritizeMV): the collateral is minted and the loan starts in the same transaction. The actual minted amount becomes the loan collateral; any unspent payment is reconciled by the offer type — a fixed-principal offer refunds it to the borrower (principal unchanged), a flexible-principal offer (`offer.principal == 0`) reduces the principal by the refund and returns it to the lender.
+    *   **Async** (`MINT_ASYNC` — Centrifuge): the loan is created **pending** (`start_time == 0`) and an ERC-7540 deposit is requested. Once the deposit is fully fulfilled, **anyone** can call `start_loan` to claim the minted shares and activate the loan (permissionless, so a keeper/lender can activate — and then liquidate — a loan the borrower walked away from). There is no LTV gate at start (an unhealthy started loan is handled by the normal liquidation machinery), but the loan must not be past maturity and the fill must satisfy the offer's `min_collateral_amount` — a fulfilled deposit failing either gate is not startable and is instead force-unwound via `cancel_pending_loan`, which claims the shares and splits them oracle-valued (caller fee, protocol fee, lender recovery, borrower surplus). Interest accrues from creation (through the pending window) and maturity is fixed at creation.
+    *   **Manual** (`MINT_MANUAL`): reserved for vaults whose mint settles off-chain against an owner-signed `MintResult` attestation; no vault implements it yet.
+*   **Pending-loan escape hatches**: the borrower can `cancel_pending_loan` at any time (a two-phase ERC-7887 cancel state machine over the vault's on-chain mint status). After the loan's `max_pending_window` elapses, cancellation becomes permissionless so a stuck deposit cannot lock lender funds. The unwind is liquidation-style: the caller earns a liquidation fee, the lender recovers its deployed capital plus (maturity-capped) interest from the reclaimed payment — absorbing any shortfall — and the borrower receives only the surplus.
+*   **Redemption by capability**: `REDEEM_SYNC` vaults settle atomically via `redeem_and_settle` (redeem + settle in one transaction, no attestation). `REDEEM_ASYNC` vaults use the two-phase `redeem()` → `settle_loan`, where settlement claims the fulfilled ERC-7540 redemption on-chain; the borrower can `cancel_redeem` while the request is in flight. `REDEEM_MANUAL` vaults use `redeem()` → `settle_loan` with an owner-signed `RedeemResult` attestation.
+
+Users interact with `P2PLendingMultiVaultErc20.vy` for:
+*   Creating normal loans (`create_loan`) and leveraged loans (`create_leveraged_loan`).
+*   Starting pending leveraged loans (`start_loan`, permissionless) and cancelling them (`cancel_pending_loan`).
+*   Redeeming collateral (`redeem`, `redeem_and_settle`, `cancel_redeem`) and settling loans.
+*   Liquidations, collateral management, refinancing, maturity extensions, and loan transfers, as in the Securitize version.
 
 ### Offers
 
@@ -319,6 +348,59 @@ The `P2PLendingSecuritizeErc20` contract extends the vaulted architecture for Se
 | `change_vault_registrar` | Owner | Nonpayable | Changes the vault registrar connector address |
 | `wallet_to_vault` | Any | View | Gets the latest vault address for a wallet |
 | `vault_id_to_vault` | Any | View | Gets a specific vault address by ID |
+| `is_loan_redeemed` | Any | View | Checks if a loan has started redemption |
+
+#### P2PLendingMultiVaultErc20 Contract (MultiVault) (`P2PLendingMultiVaultErc20.vy`)
+
+The `P2PLendingMultiVaultErc20` contract extends the Securitize architecture with capability-driven vault implementations and leveraged loans (see the MultiVault Architecture section). Loan creation and the pending-loan lifecycle live in the `P2PLendingMultiVaultLoan` facet, reached via `delegatecall` stubs.
+
+##### State variables (specific to `P2PLendingMultiVaultErc20`)
+
+| **Variable** | **Type** | **Mutable** | **Description** |
+| --- | --- | :-: | --- |
+| `payment_token` | `immutable(address)` | No | Address of the payment ERC20 token contract |
+| `collateral_token` | `immutable(address)` | No | Address of the collateral token contract (mToken, DS token, or ERC-7540 share) |
+| `oracle_addr` | `immutable(address)` | No | Address of the Chainlink AggregatorV3 oracle contract |
+| `oracle_reverse` | `immutable(bool)` | No | Flag indicating if the oracle returns 1/price |
+| `kyc_validator_addr` | `immutable(address)` | No | Address of the `KYCValidator` contract |
+| `vault_impl_addr` | `public(immutable(address))` | No | Address of the vault implementation (Midas, SecuritizeMV, or Despxa) |
+| `vault_capabilities` | `public(immutable(uint256))` | No | Capability bitmask read from the vault implementation at deployment |
+
+##### State variables (inherited from `P2PLendingMultiVaultBase`, in addition to the common ones)
+
+| **Variable** | **Type** | **Mutable** | **Description** |
+| --- | --- | :-: | --- |
+| `vault_count` | `public(HashMap[address, uint256])` | Yes | Number of vaults created per borrower (one per loan) |
+| `max_pending_window` | `public(uint256)` | Yes | Contract-level async pending window, snapshotted onto each loan at creation; after it elapses, cancelling a pending loan becomes permissionless (0 disables permissionless cancel) |
+| `mint_addr` | `public(address)` | Yes | Market-level mint target (e.g. the Centrifuge ERC-7540 AsyncVault) used by async mint/status/claim/cancel calls |
+| `redemption_addr` | `public(address)` | Yes | Market-level redemption target used by redeem/status/claim/cancel calls |
+| `loan_addr` | `public(address)` | Yes | Address of the `P2PLendingMultiVaultLoan` facet |
+| `refinance_addr` | `public(address)` | Yes | Address of the `P2PLendingMultiVaultRefinance` facet |
+| `liquidation_addr` | `public(address)` | Yes | Address of the `P2PLendingMultiVaultLiquidation` facet |
+| `vault_registrar` | `public(address)` | Yes | Address of the vault registrar connector |
+
+##### Relevant External Functions (`P2PLendingMultiVaultErc20.vy`)
+
+| **Function** | **Roles Allowed** | **Modifier** | **Description** |
+| --- | :-: | --- | --- |
+| `create_loan` | Any (caller is borrower) | Nonpayable | Creates a new loan with a new vault for the collateral |
+| `create_leveraged_loan` | Any (caller is borrower) | Nonpayable | Creates a leveraged loan: funds the vault with lender principal + borrower margin and mints collateral (sync: starts in the same tx; async: creates a pending loan) |
+| `start_loan` | Any | Nonpayable | Starts a pending loan once the async mint is fully fulfilled; claims the minted collateral (permissionless). Reverts if the loan is past maturity or the fill is below the offer's min collateral |
+| `cancel_pending_loan` | Borrower (any after `max_pending_window`) | Nonpayable | Cancels a pending loan via the two-phase ERC-7887 cancel; on completion unwinds it liquidation-style. A fulfilled-but-unstartable deposit is force-unwound by claiming and splitting the shares. Returns whether the cancel completed |
+| `settle_loan` | Borrower | Nonpayable | Settles a loan (for a redeemed async loan, claims the redemption proceeds on-chain; for manual, verifies the owner-signed `RedeemResult`) |
+| `redeem` | Borrower | Nonpayable | Initiates a deferred redemption (`REDEEM_ASYNC` / `REDEEM_MANUAL` vaults only) |
+| `redeem_and_settle` | Borrower | Nonpayable | Atomically redeems and settles in one tx (`REDEEM_SYNC` vaults only) |
+| `cancel_redeem` | Borrower | Nonpayable | Cancels an in-flight async redemption via the two-phase ERC-7887 cancel; returns the loan to a normal active state |
+| `partially_liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a partial liquidation (not allowed on pending or redeemed loans) |
+| `liquidate_loan` | Any (Liquidator) | Nonpayable | Performs a full liquidation (handles redeemed collateral; pending loans must be started first) |
+| `add_collateral_to_loan` / `remove_collateral_from_loan` | Borrower | Nonpayable | Manages collateral (not allowed on pending or redeemed loans) |
+| `extend_loan` / `extend_loan_lender` | Borrower / Lender | Nonpayable | Extends loan maturity |
+| `replace_loan` / `replace_loan_lender` | Borrower / Lender | Nonpayable | Refinances a loan (not allowed on pending or redeemed loans) |
+| `transfer_loan` | Transfer agent | Nonpayable | Transfers a loan to a new borrower (not allowed on pending loans) |
+| `set_max_pending_window` | Owner | Nonpayable | Sets the contract-level pending window for new loans |
+| `set_mint_addr` / `set_redemption_addr` | Owner | Nonpayable | Sets the market-level mint / redemption targets |
+| `set_loan_addr` | Owner | Nonpayable | Sets the loan facet address |
+| `wallet_to_vault` / `vault_id_to_vault` | Any | View | Gets vault addresses for a wallet |
 | `is_loan_redeemed` | Any | View | Checks if a loan has started redemption |
 
 #### P2PLendingVaultedBase Contract (`P2PLendingVaultedBase.vy`)
@@ -530,6 +612,13 @@ All participants must pass KYC validation:
 -   **Redemption Workflow**: Borrowers can redeem DS Token collateral back to payment tokens via Securitize.
 -   **Maturity Extensions**: Loans can be extended without full refinancing, either by borrower (with lender's signed offer) or by lender directly.
 -   **SecuritizeSwap Integration**: Vaults can purchase DS tokens from stablecoins directly.
+
+### Leveraged Loans (multivault only)
+
+-   **In-Protocol Leverage**: `create_leveraged_loan` deploys the lender principal plus the borrower margin into collateral minted by the loan vault itself — no flash loan or external looping proxy needed.
+-   **Sync and Async Minting**: Instant-mint vaults (Midas, SecuritizeMV) mint and start the loan in one transaction; ERC-7540 vaults (Centrifuge) create a pending loan that anyone can activate via `start_loan` once the deposit is fulfilled.
+-   **Capability-Driven Vaults**: Vault implementations declare a capability bitmask; the lending contract dispatches mint/redeem/status/cancel calls by capability, so new vault integrations don't change the lending contract.
+-   **Pending-Loan Safety**: Borrowers can cancel a pending loan at any time; after `max_pending_window`, cancellation becomes permissionless (keeper-incentivized, liquidation-style) so a stuck deposit cannot lock lender funds.
 
 ## Security Considerations
 

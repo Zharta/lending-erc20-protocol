@@ -85,9 +85,9 @@ def test_oracle_data(oracle_mfone_usd, p2p_usdc_mfone):
     assert oracle_mfone_usd.address == p2p_usdc_mfone.oracle_addr()
     assert oracle_mfone_usd.decimals() == 8
 
-    # mF-ONE trades at ~$1.077 per token at the fork block. Must change if fork block changes.
-    min_price = 107 * 10**6
-    max_price = 108 * 10**6
+    # mF-ONE trades at ~$1.1004 per token at fork block 25400000. Must change if fork block changes.
+    min_price = 110 * 10**6
+    max_price = 111 * 10**6
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

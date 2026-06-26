@@ -1,13 +1,14 @@
 import boa
 import pytest
+from eth_account import Account
 
 from ..conftest_base import (
     ZERO_BYTES32,
+    Loan,
     Offer,
     RedeemResult,
-    SecuritizeLoan,
     SignedRedeemResult,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
     replace_namedtuple_field,
@@ -82,6 +83,7 @@ def ongoing_loan_usdc_acred(
     usdc,
     acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     now,
@@ -89,6 +91,7 @@ def ongoing_loan_usdc_acred(
     kyc_borrower,
     kyc_lender,
     oracle_acred_usd,
+    set_investor_sig,
 ):
     offer = offer_usdc_acred.offer
     principal = offer.principal
@@ -97,6 +100,9 @@ def ongoing_loan_usdc_acred(
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
 
+    # The borrower authorizes the connector to register its per-loan vault (V2 registrar).
+    set_investor_sig(borrower_account, now + 3600)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, lender_approval, sender=lender)
 
@@ -104,7 +110,7 @@ def ongoing_loan_usdc_acred(
         offer_usdc_acred, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_acred),
         offer_tracing_id=offer.tracing_id,
@@ -114,6 +120,7 @@ def ongoing_loan_usdc_acred(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -134,8 +141,9 @@ def ongoing_loan_usdc_acred(
         vault_id=vault_id,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
     return loan
 
 
@@ -168,6 +176,7 @@ def test_transfer_loan_non_redeemed(
     now,
     acred_ds_token,
     token_issuer,
+    set_investor_sig,
 ):
     """Transfer a non-redeemed loan: collateral moves to new vault, old loan cleared, new loan valid."""
     loan = ongoing_loan_usdc_acred
@@ -175,11 +184,16 @@ def test_transfer_loan_non_redeemed(
     old_vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, loan.vault_id)
     old_vault_collateral = acred.balanceOf(old_vault_addr)
 
-    new_borrower = boa.env.generate_address("new_borrower")
+    # new_borrower is a key-controlled account so it can both be registered as a Securitize
+    # investor and authorize the connector to register the vault created on transfer (V2 registrar).
+    new_borrower_account = Account.create()
+    new_borrower = new_borrower_account.address
+    boa.env.set_balance(new_borrower, 10**21)
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
 
     # Register new_borrower as a Securitize investor so the VaultRegistrar can create vaults for them
     _register_investor(new_borrower, securitize_registry, securitize_owner, acred_ds_token, token_issuer, now)
+    set_investor_sig(new_borrower_account, now + 3600)
 
     p2p_usdc_acred.transfer_loan(loan, new_borrower, new_borrower_kyc, SignedRedeemResult(), sender=transfer_agent)
 
@@ -195,7 +209,7 @@ def test_transfer_loan_non_redeemed(
         id=event.new_loan_id,
         vault_id=0,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_acred.loans(updated_loan.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_acred.loans(updated_loan.id)
 
     # 2. balance: collateral moved to new vault
     new_vault_addr = p2p_usdc_acred.vault_id_to_vault(new_borrower, 0)
@@ -225,6 +239,7 @@ def test_transfer_loan_redeemed(
     securitize_owner,
     acred_ds_token,
     token_issuer,
+    set_investor_sig,
 ):
     """Transfer a redeemed loan after redemption concludes: collateral and payment tokens move to new vault."""
     loan = ongoing_loan_usdc_acred
@@ -238,6 +253,7 @@ def test_transfer_loan_redeemed(
         loan,
         redeem_start=now,
         redeem_residual_collateral=residual_collateral,
+        max_pending_window=0,
     )
 
     vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, loan.vault_id)
@@ -259,11 +275,16 @@ def test_transfer_loan_redeemed(
     old_vault_payment = usdc.balanceOf(vault_addr)
     assert old_vault_collateral == residual_collateral + collateral_redeemed
 
-    new_borrower = boa.env.generate_address("new_borrower")
+    # new_borrower is a key-controlled account so it can both be registered as a Securitize
+    # investor and authorize the connector to register the vault created on transfer (V2 registrar).
+    new_borrower_account = Account.create()
+    new_borrower = new_borrower_account.address
+    boa.env.set_balance(new_borrower, 10**21)
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
 
     # Register new_borrower as a Securitize investor so the VaultRegistrar can create vaults for them
     _register_investor(new_borrower, securitize_registry, securitize_owner, acred_ds_token, token_issuer, now)
+    set_investor_sig(new_borrower_account, now + 3600)
 
     p2p_usdc_acred.transfer_loan(redeemed_loan, new_borrower, new_borrower_kyc, signed_redeem_result, sender=transfer_agent)
 
@@ -279,7 +300,7 @@ def test_transfer_loan_redeemed(
         id=event.new_loan_id,
         vault_id=0,
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_acred.loans(updated_loan.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_acred.loans(updated_loan.id)
 
     # 2. balance: all collateral moved to new vault
     new_vault_addr = p2p_usdc_acred.vault_id_to_vault(new_borrower, 0)
