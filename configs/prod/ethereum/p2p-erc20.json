@@ -1,14 +1,13 @@
 {
     "common": {
         "acred_vault_registrar": {
-            "abi_key": "64b7143c5314f29b152297bf2d4bc10ab54fc5c7",
-            "address": "0x9fbF77D74337FefA7D8993f507A38EDB4df620E5",
-            "contract": "VaultRegistrarMock",
+            "abi_key": "e8bfb4c2b2e433c9e02e438e0ef58a0625758fa6",
+            "address": "",
+            "contract": "VaultRegistrarV2Mock",
             "properties": {
                 "token_key": "common.acred"
             },
             "properties_addresses": {
-                "token": "0x17418038ecF73BA4026c4f428547BF099706F27B"
             }
         },
         "balancer": {
@@ -212,14 +211,12 @@
             "properties_addresses": {}
         },
         "securitize_registrar_connector": {
-            "abi_key": "44eaa4f47d4ad3ac40b2029cfd75c18fb86ffa01",
-            "address": "0xf06eab34f0E80F2DAFAaBA9170Ac6e7890691A7b",
-            "contract": "SecuritizeRegistrarV1Connector",
+            "address": "",
+            "contract": "SecuritizeRegistrarV2Connector",
             "properties": {
                 "vault_registrar_key": "common.acred_vault_registrar"
             },
             "properties_addresses": {
-                "vault_registrar": "0x9fbF77D74337FefA7D8993f507A38EDB4df620E5"
             }
         },
         "vault_impl": {
