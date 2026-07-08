@@ -2,12 +2,13 @@
     "common": {
         "acred_vault_registrar": {
             "abi_key": "e8bfb4c2b2e433c9e02e438e0ef58a0625758fa6",
-            "address": "",
+            "address": "0xD280bcA62a7FC67011cAef77815e8606071BEf9F",
             "contract": "VaultRegistrarV2Mock",
             "properties": {
                 "token_key": "common.acred"
             },
             "properties_addresses": {
+                "token": "0x17418038ecF73BA4026c4f428547BF099706F27B"
             }
         },
         "balancer": {
@@ -211,12 +212,14 @@
             "properties_addresses": {}
         },
         "securitize_registrar_connector": {
-            "address": "",
+            "abi_key": "d06a9b6529159666463ffbc588a24ed1742dcbce",
+            "address": "0xB26640Cb820994BCFa49177B7503DAAC81E149C7",
             "contract": "SecuritizeRegistrarV2Connector",
             "properties": {
                 "vault_registrar_key": "common.acred_vault_registrar"
             },
             "properties_addresses": {
+                "vault_registrar": "0xD280bcA62a7FC67011cAef77815e8606071BEf9F"
             }
         },
         "vault_impl": {
@@ -271,7 +274,7 @@
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0xCa1e2f2427700fc510Ec920b0e4287182e242AC2",
                 "vault_impl": "0x9B8Ea66D737Ec1aD7f2486C35e65CD516FF6d05B",
-                "vault_registrar_connector": "0xf06eab34f0E80F2DAFAaBA9170Ac6e7890691A7b"
+                "vault_registrar_connector": "0xB26640Cb820994BCFa49177B7503DAAC81E149C7"
             },
             "token_symbol": "USDC",
             "version": "1"
@@ -309,7 +312,7 @@
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0x70db613d2BE5678E47f127f331471D6f99256DA8",
                 "vault_impl": "0x9B8Ea66D737Ec1aD7f2486C35e65CD516FF6d05B",
-                "vault_registrar_connector": "0xf06eab34f0E80F2DAFAaBA9170Ac6e7890691A7b"
+                "vault_registrar_connector": "0xB26640Cb820994BCFa49177B7503DAAC81E149C7"
             },
             "token_symbol": "USDC",
             "version": "1"
@@ -346,7 +349,7 @@
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0x8850dEA069963fAFDD7723e7D4A5854d639C7519",
                 "vault_impl": "0x08AE358060C6AF60710EAfDA7B9f06C375dF5D22",
-                "vault_registrar_connector": "0xf06eab34f0E80F2DAFAaBA9170Ac6e7890691A7b"
+                "vault_registrar_connector": "0xB26640Cb820994BCFa49177B7503DAAC81E149C7"
             },
             "token_symbol": "USDC",
             "version": "1"
