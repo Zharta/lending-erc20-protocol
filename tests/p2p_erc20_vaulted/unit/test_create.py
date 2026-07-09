@@ -19,6 +19,7 @@ from ..conftest_base import (
     replace_namedtuple_field,
     sign_kyc,
     sign_offer,
+    sign_register_vault,
 )
 
 BPS = 10000
@@ -1011,10 +1012,15 @@ def test_create_loan_creates_vault_if_needed(
 
 
 def test_create_vault_if_needed_registers_vault_with_registrar(
-    p2p_usdc_weth, borrower, vault_registrar_mock, registrar_connector
+    p2p_usdc_weth, borrower, borrower_account, now, vault_registrar_mock, registrar_connector
 ):
     borrower_vault = p2p_usdc_weth.wallet_to_vault(borrower)
     assert not boa.eval(f"{borrower_vault}.is_contract")
+
+    # V2 connector requires the borrower to have stored a signed RegisterVault authorization
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar_mock, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
 
     p2p_usdc_weth.create_vault_if_needed(borrower)
 

@@ -828,31 +828,6 @@ class RefinanceSecuritizeImpl(ContractConfig):
 
 
 @dataclass
-class VaultRegistrarMock(ContractConfig):
-    def __init__(
-        self,
-        *,
-        key: str,
-        version: str | None = None,
-        abi_key: str | None = None,
-        token_key: str,
-        address: str | None = None,
-    ):
-        super().__init__(
-            key,
-            None,
-            project.VaultRegistrarMock,
-            version=version,
-            abi_key=abi_key,
-            token=False,
-            deployment_deps={token_key},
-            deployment_args=[token_key],
-        )
-        if address:
-            self.load_contract(address)
-
-
-@dataclass
 class VaultRegistrarV2Mock(ContractConfig):
     def __init__(
         self,
@@ -873,33 +848,6 @@ class VaultRegistrarV2Mock(ContractConfig):
             deployment_deps={token_key},
             deployment_args=[token_key],
         )
-        if address:
-            self.load_contract(address)
-
-
-@dataclass
-class SecuritizeRegistrarV1Connector(ContractConfig):
-    def __init__(
-        self,
-        *,
-        key: str,
-        version: str | None = None,
-        abi_key: str | None = None,
-        vault_registrar_key: str,
-        address: str | None = None,
-    ):
-        self._vault_registrar_key = vault_registrar_key
-        super().__init__(
-            key,
-            None,
-            project.SecuritizeRegistrarV1Connector,
-            version=version,
-            abi_key=abi_key,
-            token=False,
-            deployment_deps={vault_registrar_key},
-            deployment_args=[vault_registrar_key],
-        )
-        self.vault_registrar_key = vault_registrar_key
         if address:
             self.load_contract(address)
 

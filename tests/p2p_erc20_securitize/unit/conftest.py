@@ -528,7 +528,7 @@ def vault_registrar_weth(vault_registrar_mock_contract_def, weth):
 
 @pytest.fixture(scope="session")
 def registrar_connector_def(boa_env):
-    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
+    return boa.load_partial("contracts/SecuritizeRegistrarV2Connector.vy")
 
 
 @pytest.fixture

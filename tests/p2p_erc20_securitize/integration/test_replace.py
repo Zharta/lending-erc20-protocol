@@ -11,6 +11,7 @@ from ..conftest_base import (
     get_last_event,
     sign_offer,
 )
+from .conftest import sign_register_vault
 
 BPS = 10000
 DAY = 86400
@@ -109,6 +110,7 @@ def ongoing_loan_usdc_acred(
     usdc,
     acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     now,
@@ -116,6 +118,8 @@ def ongoing_loan_usdc_acred(
     kyc_borrower,
     kyc_lender,
     oracle_acred_usd,
+    vault_registrar,
+    registrar_connector,
 ):
     offer = offer_usdc_acred.offer
     principal = offer.principal
@@ -124,6 +128,11 @@ def ongoing_loan_usdc_acred(
 
     # Get vault_id before loan creation
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, sig_s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, sig_s), sender=borrower)
 
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, lender_approval, sender=lender)
@@ -189,7 +198,10 @@ def test_replace_loan(
     loan = ongoing_loan_usdc_acred
     offer = offer_usdc_acred2.offer
     new_collateral_amount = loan.collateral_amount * 2
-    replace_timestamp = now + 1 * DAY
+    # ACRED's on-chain compliance ("ACRED_FUNDAMENTAL") rejects transfers once the
+    # fund's NAV validity window (~14h from fork block 25300898) elapses, so the
+    # forward time-travel is kept within that window while still accruing interest.
+    replace_timestamp = now + 6 * 3600
     delta_borrower, delta_lender, delta_new_lender, protocol_delta = _calc_deltas(
         loan, offer, offer.principal, replace_timestamp, p2p_usdc_acred
     )

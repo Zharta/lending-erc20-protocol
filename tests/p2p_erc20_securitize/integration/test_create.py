@@ -12,6 +12,7 @@ from ..conftest_base import (
     get_last_event,
     sign_offer,
 )
+from .conftest import sign_register_vault
 
 BPS = 10000
 
@@ -32,7 +33,19 @@ def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
 
 
 def test_create_loan(
-    p2p_usdc_acred, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, acred, usdc, oracle_acred_usd
+    p2p_usdc_acred,
+    borrower,
+    borrower_account,
+    now,
+    lender,
+    lender_key,
+    kyc_borrower,
+    kyc_lender,
+    acred,
+    usdc,
+    oracle_acred_usd,
+    vault_registrar,
+    registrar_connector,
 ):
     principal = 1000 * int(1e9)
     collateral_amount = 95 * int(1e6)
@@ -51,8 +64,18 @@ def test_create_loan(
     # Get the vault_id before loan creation (this will be the vault_id used)
     vault_id = p2p_usdc_acred.vault_count(borrower)
 
+    # The borrower (Securitize investor) authorizes the connector to register the
+    # per-loan vault on its behalf by storing an EIP-712 RegisterVault signature.
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
+
+    # Precondition: the vault is not yet registered
+    vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
+    assert vault_registrar.isRegistered(vault_addr, borrower) is False
 
     borrower_collateral_balance_before = acred.balanceOf(borrower)
     borrower_balance_before = usdc.balanceOf(borrower)
@@ -121,7 +144,9 @@ def test_create_loan(
     assert event.offer_tracing_id == offer.tracing_id
 
     # Securitize: use vault_id_to_vault to get the correct vault address
-    assert acred.balanceOf(p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)) == collateral_amount
+    vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
+    assert vault_registrar.isRegistered(vault_addr, borrower) is True
+    assert acred.balanceOf(vault_addr) == collateral_amount
     assert acred.balanceOf(borrower) == borrower_collateral_balance_before - collateral_amount
 
     assert usdc.balanceOf(borrower) == borrower_balance_before + principal - origination_fee
@@ -137,6 +162,7 @@ def test_create_loan(
 def test_create_loan_registers_vault_with_registrar(
     p2p_usdc_acred,
     borrower,
+    borrower_account,
     now,
     lender,
     lender_key,
@@ -146,6 +172,7 @@ def test_create_loan_registers_vault_with_registrar(
     usdc,
     oracle_acred_usd,
     vault_registrar,
+    registrar_connector,
 ):
     vault_id = p2p_usdc_acred.vault_count(borrower)
 
@@ -163,10 +190,20 @@ def test_create_loan_registers_vault_with_registrar(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
 
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
+
+    # Precondition: the vault is not yet registered
+    vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
+    assert vault_registrar.isRegistered(vault_addr, borrower) is False
 
     p2p_usdc_acred.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
     vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
     assert vault_registrar.isRegistered(vault_addr, borrower) is True
+    assert acred.balanceOf(vault_addr) == collateral_amount

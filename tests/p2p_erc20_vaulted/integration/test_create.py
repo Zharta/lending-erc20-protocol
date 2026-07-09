@@ -18,6 +18,7 @@ from ..conftest_base import (
     replace_namedtuple_field,
     sign_offer,
 )
+from .conftest import sign_register_vault
 
 BPS = 10000
 
@@ -135,6 +136,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
 def test_create_loan_registers_vault_with_registrar(
     p2p_usdc_weth,
     borrower,
+    borrower_account,
     now,
     lender,
     lender_key,
@@ -160,11 +162,22 @@ def test_create_loan_registers_vault_with_registrar(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
 
+    # The borrower authorizes the connector to register its vault on its behalf
+    # by storing an EIP-712 RegisterVault signature (validated by the mock).
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar_mock, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
+
     weth.deposit(value=collateral_amount, sender=borrower)
     weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    # Precondition: the vault is not yet registered
+    vault_addr = p2p_usdc_weth.wallet_to_vault(borrower)
+    assert vault_registrar_mock.isRegistered(vault_addr, borrower) is False
 
     p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
     vault_addr = p2p_usdc_weth.wallet_to_vault(borrower)
     assert vault_registrar_mock.isRegistered(vault_addr, borrower) is True
+    assert weth.balanceOf(vault_addr) == collateral_amount

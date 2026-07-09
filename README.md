@@ -44,7 +44,7 @@ The protocol consists of the following core contracts:
 - `KYCValidator.vy`: A contract responsible for validating signed KYC attestations.
 
 ### Auxiliary Contracts
-- `SecuritizeRegistrarV1Connector.vy`: A bridge contract that connects P2P lending vaults to the Securitize Vault Registrar. The P2P lending contracts (both vaulted and securitize) call the connector's `register_vault(vault, investor_wallet)` function automatically during vault creation. The contract maintains an allowlist of authorized P2P lending contracts and can only be managed by the owner.
+- `SecuritizeRegistrarV2Connector.vy`: A bridge contract that connects P2P lending vaults to the Securitize Vault Registrar V2. The P2P lending contracts (both vaulted and securitize) call the connector's `register_vault(vault, investor_wallet)` function automatically during vault creation. Registration requires the investor to have previously stored a signed authorization via `set_investor_signature(deadline, signature)`, which the connector forwards to the registrar's `registerVault`. The contract maintains an allowlist of authorized P2P lending contracts and can only be managed by the owner.
 
 ## General considerations
 
