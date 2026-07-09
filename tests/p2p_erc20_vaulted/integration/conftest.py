@@ -9,54 +9,9 @@ import pytest
 from boa.environment import Env
 from boa.vm.py_evm import register_raw_precompile
 from eth_account import Account
-from eth_account.messages import encode_typed_data
 from web3 import Web3
 
 from ..conftest_base import ZERO_ADDRESS, get_last_event, sign_kyc
-
-
-# ---------------------------------------------------------------------------
-# EIP-712 RegisterVault signing helper (matches SecuritizeRegistrarV2Connector
-# and VaultRegistrarV2Mock). The registrar's domain separator is baked in at
-# deploy time, so signatures must use the forked chain id, which titanoboa
-# exposes through the `chain.id` opcode (boa.env.evm.chain.chain_id wrongly
-# reports the local default of 1).
-# ---------------------------------------------------------------------------
-def sign_register_vault(account, connector_address, vault_registrar, deadline, investor_address=None):
-    investor = investor_address or account.address
-    structured_data = {
-        "types": {
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-            "RegisterVault": [
-                {"name": "investor", "type": "address"},
-                {"name": "operator", "type": "address"},
-                {"name": "token", "type": "address"},
-                {"name": "nonce", "type": "uint256"},
-                {"name": "deadline", "type": "uint256"},
-            ],
-        },
-        "primaryType": "RegisterVault",
-        "domain": {
-            "name": "VaultRegistrar",
-            "version": "1",
-            "chainId": boa.eval("chain.id"),
-            "verifyingContract": vault_registrar.address,
-        },
-        "message": {
-            "investor": investor,
-            "operator": connector_address,
-            "token": vault_registrar.token(),
-            "nonce": vault_registrar.operatorNonce(investor, connector_address),
-            "deadline": deadline,
-        },
-    }
-    signed = account.sign_message(encode_typed_data(full_message=structured_data))
-    return signed.v, signed.r, signed.s
 
 
 @pytest.fixture
@@ -64,8 +19,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 24541820
-        blkid = 24920000
+        blkid = 25300898
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 

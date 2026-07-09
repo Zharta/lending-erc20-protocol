@@ -14,8 +14,8 @@ from ..conftest_base import (
     replace_namedtuple_field,
     sign_offer,
     sign_redeem_result,
+    sign_register_vault,
 )
-from .conftest import sign_register_vault
 
 BPS = 10000
 

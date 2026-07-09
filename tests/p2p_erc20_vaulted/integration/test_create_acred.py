@@ -3,11 +3,8 @@ Integration tests for P2PLendingVaultedErc20 with ACRED token and the real V2 Va
 These tests use the actual ACRED token and VaultRegistrar on mainnet fork (block 25300898).
 """
 
-import os
-
 import boa
 import pytest
-from boa.environment import Env
 
 from ..conftest_base import (
     ZERO_BYTES32,
@@ -19,23 +16,10 @@ from ..conftest_base import (
     compute_signed_offer_id,
     get_last_event,
     sign_offer,
+    sign_register_vault,
 )
-from .conftest import sign_register_vault
 
 BPS = 10000
-
-
-# The real V2 VaultRegistrar has no bytecode before block ~25300898, so this
-# module overrides the shared fork block. Other vaulted oracle feeds drift
-# between blocks, so only this ACRED module (which needs the real registrar)
-# forks at 25300898 instead of bumping the whole suite.
-@pytest.fixture
-def boa_env():
-    new_env = Env()
-    with boa.swap_env(new_env):
-        fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        boa.env.fork(fork_uri, block_identifier=25300898)
-        yield
 
 
 # Securitize mainnet addresses (ACRED fund)

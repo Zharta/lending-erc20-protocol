@@ -11,8 +11,8 @@ from ..conftest_base import (
     compute_signed_offer_id,
     get_last_event,
     sign_offer,
+    sign_register_vault,
 )
-from .conftest import sign_register_vault
 
 BPS = 10000
 
