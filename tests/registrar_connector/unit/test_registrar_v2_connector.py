@@ -1,7 +1,8 @@
 import boa
 import pytest
 from eth_account import Account
-from eth_account.messages import encode_typed_data
+
+from tests.p2p_erc20_securitize.conftest_base import sign_register_vault
 
 ZERO_ADDRESS = boa.eval("empty(address)")
 
@@ -15,64 +16,6 @@ REGISTER_TYPEHASH = bytes.fromhex(
 )  # keccak256("RegisterVault(address investor,address operator,address token,uint256 nonce,uint256 deadline)")
 
 MALLEABILITY_THRESHOLD = 57896044618658097711785492504343953926418782139537452191302581570759080747168
-
-
-def sign_register_vault(account, connector_address, vault_registrar, deadline, investor_address=None):
-    """
-    Sign an EIP-712 RegisterVault message matching the connector's _validate_signature logic.
-
-    Args:
-        account: eth_account.Account with private key
-        connector_address: address of the V2 connector (the operator)
-        vault_registrar: deployed V2 vault registrar mock contract
-        deadline: uint256 deadline timestamp
-        investor_address: address to use as investor in the message (defaults to account.address).
-                          Use this for EIP-1271 wallets where the investor is the contract address
-                          but the signing key belongs to the contract's owner.
-
-    Returns:
-        tuple (v, r, s) as ints
-    """
-    investor = investor_address or account.address
-    token_addr = vault_registrar.token()
-    nonce = vault_registrar.operatorNonce(investor, connector_address)
-
-    # Build the EIP-712 structured data matching the contract's domain and type
-    structured_data = {
-        "types": {
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-            "RegisterVault": [
-                {"name": "investor", "type": "address"},
-                {"name": "operator", "type": "address"},
-                {"name": "token", "type": "address"},
-                {"name": "nonce", "type": "uint256"},
-                {"name": "deadline", "type": "uint256"},
-            ],
-        },
-        "primaryType": "RegisterVault",
-        "domain": {
-            "name": "VaultRegistrar",
-            "version": "1",
-            "chainId": boa.env.evm.chain.chain_id,
-            "verifyingContract": vault_registrar.address,
-        },
-        "message": {
-            "investor": investor,
-            "operator": connector_address,
-            "token": token_addr,
-            "nonce": nonce,
-            "deadline": deadline,
-        },
-    }
-
-    signable_message = encode_typed_data(full_message=structured_data)
-    signed = account.sign_message(signable_message)
-    return signed.v, signed.r, signed.s
 
 
 # ============================================================

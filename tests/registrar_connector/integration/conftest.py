@@ -6,9 +6,8 @@ import boa
 import pytest
 from boa.environment import Env
 from eth_account import Account
-from eth_account.messages import encode_typed_data
 
-from tests.p2p_erc20_securitize.conftest_base import sign_kyc
+from tests.p2p_erc20_securitize.conftest_base import sign_kyc, sign_register_vault  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Securitize mainnet addresses (ACRED fund)
@@ -20,50 +19,6 @@ TOKEN_ISSUER = "0x1ffD2C4373A0CBee33f974e4142611C8c4A4f366"
 SECURITIZE_OWNER = "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
 
 TRUST_ROLE_TRANSFER_AGENT = 8
-
-# The registrar's EIP-712 domain separator is baked in at its real deployment, so
-# signatures must use the real chain id. titanoboa exposes the forked chain id through
-# the `chain.id` opcode (even though boa.env.evm.chain.chain_id reports the local default of 1).
-
-
-# ---------------------------------------------------------------------------
-# EIP-712 RegisterVault signing helper (matches SecuritizeRegistrarV2Connector)
-# ---------------------------------------------------------------------------
-def sign_register_vault(account, connector_address, vault_registrar, deadline, investor_address=None):
-    investor = investor_address or account.address
-    structured_data = {
-        "types": {
-            "EIP712Domain": [
-                {"name": "name", "type": "string"},
-                {"name": "version", "type": "string"},
-                {"name": "chainId", "type": "uint256"},
-                {"name": "verifyingContract", "type": "address"},
-            ],
-            "RegisterVault": [
-                {"name": "investor", "type": "address"},
-                {"name": "operator", "type": "address"},
-                {"name": "token", "type": "address"},
-                {"name": "nonce", "type": "uint256"},
-                {"name": "deadline", "type": "uint256"},
-            ],
-        },
-        "primaryType": "RegisterVault",
-        "domain": {
-            "name": "VaultRegistrar",
-            "version": "1",
-            "chainId": boa.eval("chain.id"),
-            "verifyingContract": vault_registrar.address,
-        },
-        "message": {
-            "investor": investor,
-            "operator": connector_address,
-            "token": vault_registrar.token(),
-            "nonce": vault_registrar.operatorNonce(investor, connector_address),
-            "deadline": deadline,
-        },
-    }
-    signed = account.sign_message(encode_typed_data(full_message=structured_data))
-    return signed.v, signed.r, signed.s
 
 
 # ---------------------------------------------------------------------------
