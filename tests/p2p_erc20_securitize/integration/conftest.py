@@ -6,8 +6,62 @@ import boa
 import pytest
 from boa.environment import Env
 from eth_account import Account
+from eth_account.messages import encode_typed_data
 
 from ..conftest_base import sign_kyc
+
+# Securitize mainnet addresses (ACRED fund)
+DS_TOKEN = "0x17418038ecF73BA4026c4f428547BF099706F27B"  # ACRED DS Token (collateral)
+# Holder of the issuer role - can register investors and issue tokens.
+TOKEN_ISSUER = "0x1ffD2C4373A0CBee33f974e4142611C8c4A4f366"
+# Securitize owner: admin allowed to add operators on the registrar and grant trust roles.
+SECURITIZE_OWNER = "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
+
+TRUST_ROLE_TRANSFER_AGENT = 8
+
+
+# ---------------------------------------------------------------------------
+# EIP-712 RegisterVault signing helper (matches SecuritizeRegistrarV2Connector).
+# The registrar's EIP-712 domain separator is baked in at its real deployment,
+# so signatures must use the real chain id. titanoboa exposes the forked chain
+# id through the `chain.id` opcode (boa.env.evm.chain.chain_id reports the local
+# default of 1).
+# ---------------------------------------------------------------------------
+def sign_register_vault(account, connector_address, vault_registrar, deadline, investor_address=None):
+    investor = investor_address or account.address
+    structured_data = {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+            "RegisterVault": [
+                {"name": "investor", "type": "address"},
+                {"name": "operator", "type": "address"},
+                {"name": "token", "type": "address"},
+                {"name": "nonce", "type": "uint256"},
+                {"name": "deadline", "type": "uint256"},
+            ],
+        },
+        "primaryType": "RegisterVault",
+        "domain": {
+            "name": "VaultRegistrar",
+            "version": "1",
+            "chainId": boa.eval("chain.id"),
+            "verifyingContract": vault_registrar.address,
+        },
+        "message": {
+            "investor": investor,
+            "operator": connector_address,
+            "token": vault_registrar.token(),
+            "nonce": vault_registrar.operatorNonce(investor, connector_address),
+            "deadline": deadline,
+        },
+    }
+    signed = account.sign_message(encode_typed_data(full_message=structured_data))
+    return signed.v, signed.r, signed.s
 
 
 @pytest.fixture
@@ -15,7 +69,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        blkid = 24541820
+        blkid = 25300898
         boa.env.fork(fork_uri, block_identifier=blkid)
         yield
 
@@ -56,21 +110,43 @@ def kyc_validator_key(kyc_validator_account):
     return kyc_validator_account.key
 
 
-@pytest.fixture
-def borrower(boa_env):
-    addr = "0x81aF1E160c290E8Fff6381CCF67981f012Cf1009"
-    boa.env.set_balance(addr, 10**21)
-    return addr
+# Borrower is a freshly generated account whose key we control, so it can both
+# produce the EIP-712 investor signature and be registered as a Securitize investor.
+@pytest.fixture(scope="session")
+def borrower_account():
+    return Account.create()
+
+
+@pytest.fixture(scope="session")
+def borrower_key(borrower_account):
+    return borrower_account.key
 
 
 @pytest.fixture
-def token_issuer():
-    return "0x1ffD2C4373A0CBee33f974e4142611C8c4A4f366"
+def borrower(borrower_account, boa_env):
+    boa.env.set_balance(borrower_account.address, 10**21)
+    return borrower_account.address
+
+
+@pytest.fixture
+def token_issuer(boa_env):
+    boa.env.set_balance(TOKEN_ISSUER, 10**21)
+    return TOKEN_ISSUER
 
 
 @pytest.fixture(autouse=True)
-def borrower_acred_funds(borrower, acred_ds_token, token_issuer):
+def borrower_acred_funds(borrower, securitize_registry, acred_ds_token, token_issuer):
+    """Register the borrower as a Securitize investor and issue collateral DS tokens.
+
+    A freshly generated account is not pre-registered on-chain, so the investor
+    must be registered before the VaultRegistrar can create vaults for it.
+    """
+    investor_id = "zharta_test_investor"
+    securitize_registry.registerInvestor(investor_id, "", sender=token_issuer)
+    securitize_registry.setCountry(investor_id, "US", sender=token_issuer)
+    securitize_registry.addWallet(borrower, investor_id, sender=token_issuer)
     acred_ds_token.issueTokens(borrower, 200 * int(1e6), sender=token_issuer)
+    return investor_id
 
 
 @pytest.fixture(scope="session")
@@ -175,8 +251,10 @@ def redemption_wallet(accounts, usdc):
 
 
 @pytest.fixture
-def securitize_owner():
-    return "0x59c1eAcEc450c57Dcb9b8725d0F96635C2b676Ee"
+def securitize_owner(boa_env):
+    # Admin allowed to add operators on the registrar and grant trust roles.
+    boa.env.set_balance(SECURITIZE_OWNER, 10**21)
+    return SECURITIZE_OWNER
 
 
 @pytest.fixture
@@ -369,38 +447,31 @@ def securitize_trust_service(boa_env):
 
 @pytest.fixture(scope="session")
 def vault_registrar_contract_def():
-    return boa.load_abi("contracts/auxiliary/VaultRegistrar_abi.json")
+    return boa.load_abi("contracts/auxiliary/VaultRegistrarV2_abi.json")
 
 
 @pytest.fixture
 def vault_registrar(vault_registrar_contract_def, boa_env):
-    return vault_registrar_contract_def.at("0x9fbF77D74337FefA7D8993f507A38EDB4df620E5")
-
-
-@pytest.fixture
-def vault_registrar_admin():
-    return "0xd69fefe5df62373dcbde3e1f9625cf334a2dae78"
+    return vault_registrar_contract_def.at("0xD280bcA62a7FC67011cAef77815e8606071BEf9F")
 
 
 @pytest.fixture(scope="session")
 def registrar_connector_def():
-    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
-
-
-TRUST_ROLE_TRANSFER_AGENT = 8
+    return boa.load_partial("contracts/SecuritizeRegistrarV2Connector.vy")
 
 
 @pytest.fixture
 def registrar_connector(
     registrar_connector_def,
     vault_registrar,
-    vault_registrar_admin,
     securitize_trust_service,
     securitize_owner,
+    owner,
 ):
+    assert boa.env.eoa == owner
     contract = registrar_connector_def.deploy(vault_registrar.address)
-    vault_registrar.grantRole(vault_registrar.OPERATOR_ROLE(), contract.address, sender=vault_registrar_admin)
-    securitize_trust_service.addOperator("zharta_connector", contract.address, sender=securitize_owner)
+    vault_registrar.addOperator(contract.address, sender=securitize_owner)
+    # The registrar needs the TRANSFER_AGENT trust role to register vaults in the registry.
     securitize_trust_service.setRole(vault_registrar.address, TRUST_ROLE_TRANSFER_AGENT, sender=securitize_owner)
     return contract
 
@@ -419,8 +490,6 @@ def p2p_usdc_acred(
     transfer_agent,
     redemption_wallet,
     registrar_connector,
-    securitize_trust_service,
-    securitize_owner,
 ):
     contract = p2p_lending_securitize_erc20_contract_def.deploy(
         usdc,

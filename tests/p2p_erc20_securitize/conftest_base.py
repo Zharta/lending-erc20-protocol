@@ -374,6 +374,61 @@ def sign_redeem_result(result: RedeemResult, owner_key: str) -> SignedRedeemResu
     return SignedRedeemResult(result, signature)
 
 
+def sign_register_vault(account, connector_address, vault_registrar, deadline, investor_address=None):
+    """
+    Sign an EIP-712 RegisterVault message matching the V2 connector's _validate_signature logic.
+
+    Args:
+        account: eth_account.Account with private key
+        connector_address: address of the V2 connector (the operator)
+        vault_registrar: deployed V2 vault registrar (mock) contract
+        deadline: uint256 deadline timestamp
+        investor_address: address to use as investor in the message (defaults to account.address).
+
+    Returns:
+        tuple (v, r, s) as ints
+    """
+    investor = investor_address or account.address
+    token_addr = vault_registrar.token()
+    nonce = vault_registrar.operatorNonce(investor, connector_address)
+
+    structured_data = {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+            "RegisterVault": [
+                {"name": "investor", "type": "address"},
+                {"name": "operator", "type": "address"},
+                {"name": "token", "type": "address"},
+                {"name": "nonce", "type": "uint256"},
+                {"name": "deadline", "type": "uint256"},
+            ],
+        },
+        "primaryType": "RegisterVault",
+        "domain": {
+            "name": "VaultRegistrar",
+            "version": "1",
+            "chainId": boa.eval("chain.id"),
+            "verifyingContract": vault_registrar.address,
+        },
+        "message": {
+            "investor": investor,
+            "operator": connector_address,
+            "token": token_addr,
+            "nonce": nonce,
+            "deadline": deadline,
+        },
+    }
+
+    signable_message = encode_typed_data(full_message=structured_data)
+    signed = account.sign_message(signable_message)
+    return signed.v, signed.r, signed.s
+
+
 # Utility functions
 def replace_namedtuple_field(namedtuple, **kwargs):
     return namedtuple.__class__(**namedtuple._asdict() | kwargs)

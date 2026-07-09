@@ -431,32 +431,6 @@ def p2p_securitize(
     )
 
 
-# Vault Registrar and Connector fixtures
-
-
-@pytest.fixture(scope="session")
-def vault_registrar_contract_def(boa_env):
-    return boa.load_partial("contracts/auxiliary/VaultRegistrarMock.vy")
-
-
-@pytest.fixture(scope="session")
-def vault_registrar(vault_registrar_contract_def, usdc, owner):
-    return vault_registrar_contract_def.deploy(usdc.address)
-
-
-@pytest.fixture(scope="session")
-def connector_def(boa_env):
-    return boa.load_partial("contracts/SecuritizeRegistrarV1Connector.vy")
-
-
-@pytest.fixture(scope="session")
-def connector(connector_def, vault_registrar, p2p_vaulted, p2p_securitize, owner):
-    c = connector_def.deploy(vault_registrar.address)
-    c.change_authorized_contract(p2p_vaulted.address, True, sender=owner)
-    c.change_authorized_contract(p2p_securitize.address, True, sender=owner)
-    return c
-
-
 # V2 Vault Registrar and Connector fixtures
 
 

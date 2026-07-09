@@ -12,6 +12,7 @@ from ..conftest_base import (
     replace_namedtuple_field,
     sign_offer,
 )
+from .conftest import sign_register_vault
 
 BPS = 10000
 
@@ -77,6 +78,7 @@ def ongoing_loan_usdc_acred(
     usdc,
     acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     now,
@@ -84,6 +86,8 @@ def ongoing_loan_usdc_acred(
     kyc_borrower,
     kyc_lender,
     oracle_acred_usd,
+    vault_registrar,
+    registrar_connector,
 ):
     offer = offer_usdc_acred.offer
     principal = offer.principal
@@ -92,6 +96,11 @@ def ongoing_loan_usdc_acred(
 
     # Get the vault_id before loan creation
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, sig_s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, sig_s), sender=borrower)
 
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, lender_approval, sender=lender)

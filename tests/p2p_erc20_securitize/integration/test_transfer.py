@@ -1,5 +1,6 @@
 import boa
 import pytest
+from eth_account import Account
 
 from ..conftest_base import (
     ZERO_BYTES32,
@@ -14,6 +15,7 @@ from ..conftest_base import (
     sign_offer,
     sign_redeem_result,
 )
+from .conftest import sign_register_vault
 
 BPS = 10000
 
@@ -82,6 +84,7 @@ def ongoing_loan_usdc_acred(
     usdc,
     acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     now,
@@ -89,6 +92,8 @@ def ongoing_loan_usdc_acred(
     kyc_borrower,
     kyc_lender,
     oracle_acred_usd,
+    vault_registrar,
+    registrar_connector,
 ):
     offer = offer_usdc_acred.offer
     principal = offer.principal
@@ -96,6 +101,11 @@ def ongoing_loan_usdc_acred(
     lender_approval = principal + (p2p_usdc_acred.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, sig_s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, sig_s), sender=borrower)
 
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, lender_approval, sender=lender)
@@ -139,17 +149,18 @@ def ongoing_loan_usdc_acred(
     return loan
 
 
-def _register_investor(wallet, securitize_registry, securitize_owner, acred_ds_token, token_issuer, now):
-    """Register a wallet as a Securitize investor and issue ACRED so the VaultRegistrar can create vaults for it."""
-    securitize_registry.updateInvestor(
-        f"investor_{wallet[:10]}",
-        "",
-        "PT",
-        [wallet],
-        [SEC_REG_ACCREDITED],
-        [SEC_REG_APPROVED],
-        [now + 86400 * 365],
-        sender=securitize_owner,
+def _register_investor(wallet, securitize_registry, acred_ds_token, token_issuer, now, investor_id="new_investor"):
+    """Register a wallet as a fully-approved Securitize investor so the VaultRegistrar can create vaults for it."""
+    securitize_registry.registerInvestor(investor_id, "", sender=token_issuer)
+    securitize_registry.setCountry(investor_id, "US", sender=token_issuer)
+    securitize_registry.addWallet(wallet, investor_id, sender=token_issuer)
+    # Grant the compliance attributes required to receive ACRED via a vault-to-vault move.
+    expiry = now + 86400 * 365
+    securitize_registry.setAttribute(
+        investor_id, securitize_registry.KYC_APPROVED(), SEC_REG_APPROVED, expiry, "", sender=token_issuer
+    )
+    securitize_registry.setAttribute(
+        investor_id, securitize_registry.ACCREDITED(), SEC_REG_APPROVED, expiry, "", sender=token_issuer
     )
     acred_ds_token.issueTokens(wallet, 1, sender=token_issuer)
 
@@ -168,6 +179,8 @@ def test_transfer_loan_non_redeemed(
     now,
     acred_ds_token,
     token_issuer,
+    vault_registrar,
+    registrar_connector,
 ):
     """Transfer a non-redeemed loan: collateral moves to new vault, old loan cleared, new loan valid."""
     loan = ongoing_loan_usdc_acred
@@ -175,11 +188,24 @@ def test_transfer_loan_non_redeemed(
     old_vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, loan.vault_id)
     old_vault_collateral = acred.balanceOf(old_vault_addr)
 
-    new_borrower = boa.env.generate_address("new_borrower")
+    # new_borrower is a generated account whose key we control so it can both be
+    # registered as a Securitize investor and sign the RegisterVault message.
+    new_borrower_account = Account.create()
+    new_borrower = new_borrower_account.address
+    boa.env.set_balance(new_borrower, 10**21)
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
 
     # Register new_borrower as a Securitize investor so the VaultRegistrar can create vaults for them
-    _register_investor(new_borrower, securitize_registry, securitize_owner, acred_ds_token, token_issuer, now)
+    _register_investor(new_borrower, securitize_registry, acred_ds_token, token_issuer, now)
+
+    # new_borrower authorizes the connector to register its new vault on transfer.
+    deadline = now + 3600
+    v, r, s = sign_register_vault(new_borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=new_borrower)
+
+    # Precondition: the new vault is not yet registered
+    new_vault_addr = p2p_usdc_acred.vault_id_to_vault(new_borrower, 0)
+    assert vault_registrar.isRegistered(new_vault_addr, new_borrower) is False
 
     p2p_usdc_acred.transfer_loan(loan, new_borrower, new_borrower_kyc, SignedRedeemResult(), sender=transfer_agent)
 
@@ -197,8 +223,11 @@ def test_transfer_loan_non_redeemed(
     )
     assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_acred.loans(updated_loan.id)
 
+    # New vault registered with the registrar
+    assert p2p_usdc_acred.vault_id_to_vault(new_borrower, 0) == new_vault_addr
+    assert vault_registrar.isRegistered(new_vault_addr, new_borrower) is True
+
     # Collateral moved to new vault
-    new_vault_addr = p2p_usdc_acred.vault_id_to_vault(new_borrower, 0)
     assert acred.balanceOf(old_vault_addr) == 0
     assert acred.balanceOf(new_vault_addr) == old_vault_collateral
 
@@ -225,6 +254,8 @@ def test_transfer_loan_redeemed(
     securitize_owner,
     acred_ds_token,
     token_issuer,
+    vault_registrar,
+    registrar_connector,
 ):
     """Transfer a redeemed loan after redemption concludes: collateral and payment tokens move to new vault."""
     loan = ongoing_loan_usdc_acred
@@ -259,11 +290,24 @@ def test_transfer_loan_redeemed(
     old_vault_payment = usdc.balanceOf(vault_addr)
     assert old_vault_collateral == residual_collateral + collateral_redeemed
 
-    new_borrower = boa.env.generate_address("new_borrower")
+    # new_borrower is a generated account whose key we control so it can be both
+    # registered as a Securitize investor and sign the RegisterVault message.
+    new_borrower_account = Account.create()
+    new_borrower = new_borrower_account.address
+    boa.env.set_balance(new_borrower, 10**21)
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
 
     # Register new_borrower as a Securitize investor so the VaultRegistrar can create vaults for them
-    _register_investor(new_borrower, securitize_registry, securitize_owner, acred_ds_token, token_issuer, now)
+    _register_investor(new_borrower, securitize_registry, acred_ds_token, token_issuer, now)
+
+    # new_borrower authorizes the connector to register its new vault on transfer.
+    register_deadline = now + 3600
+    v, r, s = sign_register_vault(new_borrower_account, registrar_connector.address, vault_registrar, register_deadline)
+    registrar_connector.set_investor_signature(register_deadline, (v, r, s), sender=new_borrower)
+
+    # Precondition: the new vault is not yet registered
+    new_vault_addr = p2p_usdc_acred.vault_id_to_vault(new_borrower, 0)
+    assert vault_registrar.isRegistered(new_vault_addr, new_borrower) is False
 
     p2p_usdc_acred.transfer_loan(redeemed_loan, new_borrower, new_borrower_kyc, signed_redeem_result, sender=transfer_agent)
 
@@ -281,8 +325,11 @@ def test_transfer_loan_redeemed(
     )
     assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_acred.loans(updated_loan.id)
 
+    # New vault registered with the registrar
+    assert p2p_usdc_acred.vault_id_to_vault(new_borrower, 0) == new_vault_addr
+    assert vault_registrar.isRegistered(new_vault_addr, new_borrower) is True
+
     # All collateral moved to new vault
-    new_vault_addr = p2p_usdc_acred.vault_id_to_vault(new_borrower, 0)
     assert acred.balanceOf(vault_addr) == 0
     assert acred.balanceOf(new_vault_addr) == old_vault_collateral
 

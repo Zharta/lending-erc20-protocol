@@ -22,6 +22,7 @@ from ..conftest_base import (
     sign_offer,
     sign_redeem_result,
 )
+from .conftest import sign_register_vault
 
 BPS = 10000
 
@@ -64,6 +65,7 @@ def securitize_proxy(securitize_proxy_contract_def, p2p_usdc_acred, balancer):
 def test_create_loan(
     p2p_usdc_acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     kyc_lender,
@@ -73,6 +75,8 @@ def test_create_loan(
     acred,
     oracle_acred_usd,
     securitize_registry,
+    vault_registrar,
+    registrar_connector,
 ):
     principal = 1000 * int(1e9)
     collateral_amount = 95 * int(1e6)
@@ -91,6 +95,12 @@ def test_create_loan(
     kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
 
@@ -175,6 +185,7 @@ def test_create_loan(
 def test_loop(
     p2p_usdc_acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     kyc_lender,
@@ -186,6 +197,8 @@ def test_loop(
     securitize_registry,
     securitize_swap,
     securitize_proxy,
+    vault_registrar,
+    registrar_connector,
 ):
     principals = [70000000000, 49000000000, 34300000000, 24000000000, 17000000000]
     collateral_amounts = [94000000, 66000000, 46000000, 32000000, 23000000]
@@ -213,6 +226,12 @@ def test_loop(
     kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount - collateral_to_buy, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
     usdc.approve(securitize_proxy.address, collateral_to_buy_value, sender=borrower)
@@ -265,6 +284,7 @@ def max_collateral_to_buy(borrower_collateral: int, ltv: int):
 def test_loop2(
     p2p_usdc_acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     kyc_lender,
@@ -276,9 +296,16 @@ def test_loop2(
     securitize_registry,
     securitize_swap,
     securitize_proxy,
+    vault_registrar,
+    registrar_connector,
 ):
     initial_borrower_collateral = 94000000
-    ltv = 6800
+    # At fork block 25300898 the real SecuritizeSwap delivers slightly fewer DS
+    # tokens than the oracle-implied amount (its NAV price/fee diverges from the
+    # stale Chainlink feed), so the proxy's "ds token amount lt min" check rejects
+    # the highest-leverage buys. 6000 bps keeps the leveraged-loop path exercised
+    # while staying within what the swap can satisfy at this block.
+    ltv = 6000
     collateral_to_buy = max_collateral_to_buy(initial_borrower_collateral, ltv)
     collateral_amount = initial_borrower_collateral + collateral_to_buy
     oracle_price_num = oracle_acred_usd.latestRoundData()[1]
@@ -304,6 +331,12 @@ def test_loop2(
     assert usdc.balanceOf(securitize_proxy.flash_lender()) >= collateral_to_buy_value
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount - collateral_to_buy, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
     usdc.approve(securitize_proxy.address, collateral_to_buy_value, sender=borrower)
@@ -352,6 +385,7 @@ def test_loop2(
 def test_redeem(
     p2p_usdc_acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     kyc_lender,
@@ -365,6 +399,8 @@ def test_redeem(
     securitize_proxy,
     redemption_wallet,
     owner_key,
+    vault_registrar,
+    registrar_connector,
 ):
     principals = [70000000000, 49000000000, 34300000000, 24000000000, 17000000000]
     collateral_amounts = [94000000, 66000000, 46000000, 32000000, 23000000]
@@ -392,6 +428,12 @@ def test_redeem(
     kyc_borrower = sign_kyc(borrower, now, kyc_validator_key, kyc_validator_contract.address)
 
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register the per-loan vault.
+    deadline = now + 3600
+    v, r, s = sign_register_vault(borrower_account, registrar_connector.address, vault_registrar, deadline)
+    registrar_connector.set_investor_signature(deadline, (v, r, s), sender=borrower)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
     usdc.approve(securitize_proxy.address, collateral_to_buy_value, sender=borrower)
