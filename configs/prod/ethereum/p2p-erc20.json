@@ -163,16 +163,6 @@
             },
             "properties_addresses": {}
         },
-        "oracle_xprism_usd": {
-            "address": "",
-            "contract": "XPrismOracleAdapter",
-            "properties": {
-                "usdc_usd_feed_key": "common.oracle_usdc_usd",
-                "xprism_key": "common.xprism"
-            },
-            "properties_addresses": {
-            }
-        },
         "refinance_securitize_impl": {
             "abi_key": "d304086b4f47113230f7b5669df097a24ebfa43a",
             "address": "0x70db613d2BE5678E47f127f331471D6f99256DA8",
@@ -648,33 +638,6 @@
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0x8850dEA069963fAFDD7723e7D4A5854d639C7519",
                 "vault_impl": "0x08AE358060C6AF60710EAfDA7B9f06C375dF5D22"
-            },
-            "token_symbol": "USDC",
-            "version": "1"
-        },
-        "usdc_xprism_vaulted": {
-            "address": "",
-            "contract": "P2PLendingVaultedErc20",
-            "oracle_name": "Oracle: xPRISM / USDC",
-            "properties": {
-                "collateral_token_key": "common.xprism",
-                "full_liquidation_fee": 500,
-                "kyc_validator_key": "common.kyc",
-                "liquidation_impl_key": "common.liquidation_vaulted_impl",
-                "max_protocol_settlement_fee": 5000,
-                "max_protocol_upfront_fee": 5000,
-                "oracle_key": "common.oracle_xprism_usd",
-                "oracle_reverse": false,
-                "partial_liquidation_fee": 400,
-                "payment_token_key": "common.usdc",
-                "protocol_settlement_fee": 0,
-                "protocol_upfront_fee": 0,
-                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
-                "refinance_impl_key": "common.refinance_vaulted_impl",
-                "transfer_agent": "0x314BA3811129AE06Fc35894a3Bb62157028A9Fd9",
-                "vault_impl_key": "common.vault_impl"
-            },
-            "properties_addresses": {
             },
             "token_symbol": "USDC",
             "version": "1"
