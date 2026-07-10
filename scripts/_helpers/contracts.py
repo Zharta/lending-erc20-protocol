@@ -518,8 +518,6 @@ class XPrismOracleAdapter(ContractConfig):
         version: str | None = None,
         abi_key: str | None = None,
         xprism_key: str,
-        cusdo_key: str,
-        cusdo_usd_feed_key: str,
         usdc_usd_feed_key: str,
         address: str | None = None,
     ):
@@ -530,8 +528,8 @@ class XPrismOracleAdapter(ContractConfig):
             version=version,
             abi_key=abi_key,
             token=False,
-            deployment_deps={xprism_key, cusdo_key, cusdo_usd_feed_key, usdc_usd_feed_key},
-            deployment_args=[xprism_key, cusdo_key, cusdo_usd_feed_key, usdc_usd_feed_key],
+            deployment_deps={xprism_key, usdc_usd_feed_key},
+            deployment_args=[xprism_key, usdc_usd_feed_key],
         )
         if address:
             self.load_contract(address)

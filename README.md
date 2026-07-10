@@ -44,6 +44,7 @@ The protocol consists of the following core contracts:
 - `KYCValidator.vy`: A contract responsible for validating signed KYC attestations.
 
 ### Auxiliary Contracts
+- `xPrismOracleAdapter.vy`: Adapts xPRISM pricing to the Chainlink AggregatorV3 interface, pricing xPRISM at redemption value (NAV) under a PRISM = 1 USD soft-peg assumption (see [xPRISM pricing and depeg risk](#xprism-pricing-and-depeg-risk)).
 - `SecuritizeRegistrarV2Connector.vy`: A bridge contract that connects P2P lending vaults to the Securitize Vault Registrar V2. The P2P lending contracts (both vaulted and securitize) call the connector's `register_vault(vault, investor_wallet)` function automatically during vault creation. Registration requires the investor to have previously stored a signed authorization via `set_investor_signature(deadline, signature)`, which the connector forwards to the registrar's `registerVault`. The contract maintains an allowlist of authorized P2P lending contracts and can only be managed by the owner.
 
 ## General considerations
@@ -538,6 +539,20 @@ All participants must pass KYC validation:
 -   Uses Chainlink AggregatorV3 for reliable price feeds.
 -   Supports reverse oracle pricing for different token pairs.
 -   Regular price updates ensure accurate LTV calculations.
+
+#### xPRISM pricing and depeg risk
+
+`xPrismOracleAdapter.vy` prices xPRISM at its redemption value (NAV): the on-chain
+xPRISM→PRISM ERC-4626 rate, with PRISM assumed to be worth exactly 1 USD via the USDO
+soft peg, converted to USDC terms through the Chainlink USDC/USD feed. There is no
+on-chain market feed anchoring the PRISM/USD assumption (Chainlink delisted the
+cUSDO/USD feed on Ethereum, and PRISM's secondary market is too thin to price from),
+so a PRISM or USDO depeg is **not** reflected in the reported price.
+
+In addition, the xPRISM→PRISM leg is the vault's live ERC-4626 exchange rate
+(`convertToAssets`), which is proportional to the vault's PRISM balance. When the
+vault's TVL is small, that rate can be moved materially by reward drips or direct
+PRISM donations to the vault (rate inflation raises the reported collateral value).
 
 ### Access Control
 
