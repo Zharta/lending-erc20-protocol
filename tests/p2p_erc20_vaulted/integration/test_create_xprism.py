@@ -36,8 +36,6 @@ def xprism_oracle_adapter_contract_def():
 def oracle_xprism_usd(xprism_oracle_adapter_contract_def, owner):
     return xprism_oracle_adapter_contract_def.deploy(
         "0x12E04c932D682a2999b4582F7c9B86171B73220D",  # xPRISM
-        "0xad55aebc9b8c03fc43cd9f62260391c13c23e7c0",  # cUSDO
-        "0x5b79480BbF13930B777B2Cb9Ca8d664B7AA3aa6a",  # cUSDO/USD Chainlink
         "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",  # USDC/USD Chainlink
     )
 
@@ -89,24 +87,23 @@ def sec_borrower(xprism, p2p_usdc_xprism, now):
     return borrower
 
 
-# The xPRISM oracle adapter derives its price from the cUSDO/USD chainlink feed 0x5b79480BbF13930B777B2Cb9Ca8d664B7AA3aa6a.
-# That proxy's underlying aggregator was unset on-chain: https://etherscan.io/tx/0x2dd19353d20ee8b4db11bbca2192b8b7a81f46d10f4a92b891cc53dd931bd589/advanced
-@pytest.mark.skip("xPRISM oracle adapter cannot produce a price at fork block 25300898")
 def test_oracle_data(oracle_xprism_usd, p2p_usdc_xprism):
     answer = oracle_xprism_usd.latestRoundData()[1]
 
     assert oracle_xprism_usd.address == p2p_usdc_xprism.oracle_addr()
     assert oracle_xprism_usd.decimals() == 8
 
+    # xPRISM/USDC (8 dec) derived from the adapter formula at fork block 25300898:
+    #   xprism.convertToAssets(1e18) = 1005645196029938886  (~1.005645 PRISM per xPRISM)
+    #   USDC/USD feed (8 dec) answer = 99969000              (~$0.99969)
+    #   answer = 1005645196029938886 * 1e8 * 1e8 // (1e18 * 99969000) = 100595704
+    # PRISM is assumed worth $1 (USDO soft peg), so 1 xPRISM ~= 1.00596 USDC.
     # Must change if fork block changes.
-    min_price = 100 * 10**6
-    max_price = 101 * 10**6
+    min_price = 100_500_000
+    max_price = 100_700_000
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 
-# The xPRISM oracle adapter derives its price from the cUSDO/USD chainlink feed 0x5b79480BbF13930B777B2Cb9Ca8d664B7AA3aa6a.
-# That proxy's underlying aggregator was unset on-chain: https://etherscan.io/tx/0x2dd19353d20ee8b4db11bbca2192b8b7a81f46d10f4a92b891cc53dd931bd589/advanced
-@pytest.mark.skip("xPRISM oracle adapter cannot produce a price at fork block 25300898")
 def test_create_loan(
     p2p_usdc_xprism,
     sec_borrower,

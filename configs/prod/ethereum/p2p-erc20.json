@@ -87,16 +87,6 @@
             },
             "properties_addresses": {}
         },
-        "oracle_cusdo_usd": {
-            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
-            "address": "0x5b79480BbF13930B777B2Cb9Ca8d664B7AA3aa6a",
-            "contract": "Oracle",
-            "properties": {
-                "decimals": 8,
-                "rate": "0"
-            },
-            "properties_addresses": {}
-        },
         "oracle_decrdx_usd": {
             "abi_key": "da97ffb35dca84eae3a6471ca238ba92c125dd96",
             "address": "0x4819Cec6CddD16F13fc2351193672B4F1e07bC61",
@@ -174,20 +164,13 @@
             "properties_addresses": {}
         },
         "oracle_xprism_usd": {
-            "abi_key": "9d5303c7b58553307c85980f1f52e3c3f1188f3e",
-            "address": "0x210f81E80B0243Cb23A1bbcBb02c980C2d6e5B4e",
+            "address": "",
             "contract": "XPrismOracleAdapter",
             "properties": {
-                "cusdo_key": "common.cusdo",
-                "cusdo_usd_feed_key": "common.oracle_cusdo_usd",
                 "usdc_usd_feed_key": "common.oracle_usdc_usd",
                 "xprism_key": "common.xprism"
             },
             "properties_addresses": {
-                "cusdo": "0xaD55aebc9b8c03FC43cd9f62260391c13c23e7c0",
-                "cusdo_usd_feed": "0x5b79480BbF13930B777B2Cb9Ca8d664B7AA3aa6a",
-                "usdc_usd_feed": "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6",
-                "xprism": "0x12E04c932D682a2999b4582F7c9B86171B73220D"
             }
         },
         "refinance_securitize_impl": {
@@ -670,8 +653,7 @@
             "version": "1"
         },
         "usdc_xprism_vaulted": {
-            "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
-            "address": "0x25D504c227591295c4CB6bD40EdbD29443adA35c",
+            "address": "",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Oracle: xPRISM / USDC",
             "properties": {
@@ -693,13 +675,6 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
-                "collateral_token": "0x12E04c932D682a2999b4582F7c9B86171B73220D",
-                "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
-                "liquidation_impl": "0x10D62EDE894F8c4ddb9fDBc462ac6FF260Cc36B3",
-                "oracle": "0x210f81E80B0243Cb23A1bbcBb02c980C2d6e5B4e",
-                "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-                "refinance_impl": "0x8850dEA069963fAFDD7723e7D4A5854d639C7519",
-                "vault_impl": "0x08AE358060C6AF60710EAfDA7B9f06C375dF5D22"
             },
             "token_symbol": "USDC",
             "version": "1"

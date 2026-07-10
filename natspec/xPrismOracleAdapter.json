@@ -1,2 +1,2 @@
-{"notice": "Adapts xPRISM pricing to the Chainlink AggregatorV3 interface. Derives xPRISM/USDC price from the chain: xPRISM -> PRISM (ERC-4626) -> USDO (1:1 peg) -> USD (cUSDO/USD feed) -> USDC (USDC/USD feed) Formula: xPRISM_USDC = xprism_prism * cusdo_usd * D8 / (cusdo_usdo * usdc_usd)"}
-{"title": "xPrismOracleAdapter", "author": "[Zharta](https://zharta.io/)"}
+{"notice": "Adapts xPRISM pricing to the Chainlink AggregatorV3 interface. Derives xPRISM/USDC price from the chain: xPRISM -> PRISM (ERC-4626) -> USD (1:1 soft peg assumption) -> USDC (USDC/USD feed) Formula: xPRISM_USDC = xprism_prism * D8 / usdc_usd"}
+{"title": "xPrismOracleAdapter", "author": "[Zharta](https://zharta.io/)", "details": "PRISM is priced at its 1 USD soft-peg target (PRISM -> USDO -> USD), not at market price. No on-chain feed anchors this assumption, so a PRISM or USDO depeg is NOT reflected in the reported price. See the README section on xPRISM depeg risk."}
