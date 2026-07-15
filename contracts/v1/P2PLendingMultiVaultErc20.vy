@@ -775,19 +775,19 @@ def create_leveraged_loan(
 def start_loan(
     loan: base.Loan,
     mint_result: base.SignedMintResult,
+    additional_collateral: uint256,
 ) -> bytes32:
 
     """
     @notice Start a pending loan once the collateral mint is settled.
-    @dev Callable by anyone, so the loan can be activated (and later liquidated) even if the
-         borrower walks away (D20). No offer re-validation and no LTV gating — whatever was
-         minted becomes the collateral and an unhealthy started loan is handled by the normal
-         liquidation machinery — but the loan must not be past maturity and the minted collateral
-         must satisfy the offer's min collateral amount (else it must be cancelled instead). For an
-         async vault the mint status is read on-chain; the owner-signed mint result is retained for
-         the deferred manual mint mode.
+    @dev Callable by anyone, so the loan can be activated (and later liquidated) even if the borrower walks away.
+         No offer re-validation and no LTV gating, an unhealthy started loan is handled by the normal liquidation machinery.
+         If called by the borrower, allows extra collateral to be added to start the loan healthier.
+         For the loan to be startable, the collateral mint must have been fulfilled, the total collateral must not be lower than
+         the offer's min collateral amount, and the loan must not be past maturity.
     @param loan The pending loan to start.
     @param mint_result The owner-signed mint result attestation (manual mint mode).
+    @param additional_collateral Possible extra collateral to add to the loan. Only valid if called by the borrower.
     @return The ID of the started loan.
     """
 
@@ -796,6 +796,7 @@ def start_loan(
         abi_encode(
             loan,
             mint_result,
+            additional_collateral,
             vault_capabilities,
             payment_token,
             collateral_token,
@@ -806,7 +807,7 @@ def start_loan(
             payment_token_decimals,
             offer_sig_domain_separator,
             vault_impl_addr,
-            method_id=method_id("start_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
+            method_id=method_id("start_loan((bytes32,bytes32,bytes32,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint256,uint256,uint256,uint256,uint256,uint256),((address,uint256,uint256,uint256),(uint256,uint256,uint256)),uint256,uint256,address,address,address,bool,address,uint256,uint256,bytes32,address)"),
         ),
         max_outsize=32,
         is_delegate_call=True

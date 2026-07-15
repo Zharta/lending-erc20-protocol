@@ -360,7 +360,7 @@ def test_create_start_and_settle_async_loan(
 
     # ---- start_loan by a NON-borrower keeper (permissionless, D20) ----
     assert keeper != borrower
-    p2p.start_loan(pending, EMPTY_MINT_RESULT, sender=keeper)
+    p2p.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=keeper)
     started_event = get_last_event(p2p, "LoanStarted")
     start_time = boa.eval("block.timestamp")
 
@@ -661,7 +661,7 @@ def test_force_unwind_fulfilled_below_min_collateral(
 
     # Precondition: start_loan is blocked because the claimable fill is below min_collateral_amount.
     with boa.reverts("low collateral amount"):
-        p2p.start_loan(loan, EMPTY_MINT_RESULT, sender=keeper)
+        p2p.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=keeper)
 
     # cancel_pending_loan force-unwinds: claim the shares and split them oracle-valued, in SHARES.
     # The exact minted SHARE amount that claim_mint yields (deposit(claimableDeposit) -> shares) is a
@@ -804,7 +804,7 @@ def test_async_redeem_blocks_settle_until_fulfilled(
         dejaaa_async_vault.convertToShares(mint_spend),
         DEJAAA_SPOKE,
     )
-    p2p.start_loan(pending, EMPTY_MINT_RESULT, sender=keeper)
+    p2p.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=keeper)
     minted = dejaaa.balanceOf(vault_addr)
     started = pending._replace(start_time=boa.eval("block.timestamp"), initial_amount=principal, collateral_amount=minted)
     assert compute_loan_hash(started) == p2p.loans(loan_id)
@@ -937,7 +937,7 @@ def test_cancel_redeem_restores_active_loan(
         dejaaa_async_vault.convertToShares(mint_spend),
         DEJAAA_SPOKE,
     )
-    p2p.start_loan(pending, EMPTY_MINT_RESULT, sender=keeper)
+    p2p.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=keeper)
     minted = dejaaa.balanceOf(vault_addr)
     started = pending._replace(start_time=boa.eval("block.timestamp"), initial_amount=principal, collateral_amount=minted)
 

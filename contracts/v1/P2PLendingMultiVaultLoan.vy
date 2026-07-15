@@ -216,6 +216,7 @@ def create_leveraged_loan(
 def start_loan(
     loan: base.Loan,
     mint_result: base.SignedMintResult,
+    additional_collateral: uint256,
     vault_capabilities: uint256,
 
     payment_token: address,
@@ -232,12 +233,13 @@ def start_loan(
     """
     @notice Start a pending loan once the collateral mint is settled.
     @dev Permissionless: anyone can activate a pending loan, so a keeper/lender can start (and later liquidate) it even if the borrower walks away.
-         No offer re-validation and no LTV gating, an unhealthy loan is handled by the normal liquidation. The borrower can rescue it via `add_collateral_to_loan`.
-         A loan is startable if is not past maturity and the minted collateral satisfies the offer's min_collateral_amount.
+         No offer re-validation and no LTV gating, an unhealthy loan is handled by the normal liquidation. The borrower can add collateral to restore loan health.
+         A loan is startable if is not past maturity and the total collateral satisfies the offer's min_collateral_amount.
          If a loan is not startable, must be force-unwound via cancel_pending_loan.
          For an async (ERC-7540) vault the mint must be FULLY fulfilled  with no in-flight/claimable cancellation.
     @param loan The pending loan to start.
     @param mint_result The owner-signed mint result attestation (used by the deferred MINT_MANUAL path).
+    @param additional_collateral Possible extra collateral to add to the loan. Only valid if called by the borrower.
     @param vault_capabilities The capability bitmask of the vault implementation (injected by the main stub).
     @return The ID of the started loan.
     """
@@ -245,6 +247,7 @@ def start_loan(
     assert base._is_loan_valid(loan), "invalid loan"
     assert not base._is_loan_started(loan), "loan started"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
+    assert additional_collateral == 0 or base._check_user(loan.borrower), "not borrower"
 
     _vault: base.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
 
@@ -254,10 +257,12 @@ def start_loan(
         status: base.AsyncStatus = staticcall _vault.mint_status(base.mint_addr)
         assert status.request_claimable > 0 and status.request_pending == 0 and status.cancel_pending == 0 and status.cancel_claimable == 0, "mint not settled"
         minted = extcall _vault.claim_mint(base.mint_addr, True, False)
-        assert minted >= loan.min_collateral_amount, "low collateral amount"
+        assert minted + additional_collateral >= loan.min_collateral_amount, "low collateral amount"
     else:
         # MINT_MANUAL is deferred until a manual-mint vault exists
         raise "mint mode not supported"
+
+    total_collateral: uint256 = minted + additional_collateral
 
     updated_loan: base.Loan = base.Loan(
         id=loan.id,
@@ -274,7 +279,7 @@ def start_loan(
         borrower=loan.borrower,
         lender=loan.lender,
         collateral_token=loan.collateral_token,
-        collateral_amount=minted,
+        collateral_amount=total_collateral,
         min_collateral_amount=loan.min_collateral_amount,
         origination_fee_amount=loan.origination_fee_amount,
         protocol_upfront_fee_amount=loan.protocol_upfront_fee_amount,
@@ -294,7 +299,22 @@ def start_loan(
     )
     base.loans[loan.id] = base._loan_state_hash(updated_loan)
 
-    base._receive_collateral(loan.borrower, minted, _vault)
+    base._receive_collateral(loan.borrower, total_collateral, _vault)
+
+    if additional_collateral > 0:
+        # Mirror add_collateral_to_loan's event so indexers see the borrower topup applied at activation.
+        convertion_rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
+        outstanding_debt: uint256 = loan.amount + base._compute_settlement_interest(loan)
+        log main.LoanCollateralAdded(
+            id=loan.id,
+            borrower=loan.borrower,
+            lender=loan.lender,
+            collateral_token=loan.collateral_token,
+            old_collateral_amount=minted,
+            new_collateral_amount=total_collateral,
+            old_ltv=base._compute_ltv(minted, outstanding_debt, convertion_rate, payment_token_decimals, collateral_token_decimals),
+            new_ltv=base._compute_ltv(total_collateral, outstanding_debt, convertion_rate, payment_token_decimals, collateral_token_decimals),
+        )
 
     log main.LoanStarted(
         id=loan.id,
@@ -302,7 +322,7 @@ def start_loan(
         lender=loan.lender,
         start_time=block.timestamp,
         maturity=loan.maturity,
-        collateral_amount=minted,
+        collateral_amount=total_collateral,
         caller=msg.sender,
     )
     return loan.id

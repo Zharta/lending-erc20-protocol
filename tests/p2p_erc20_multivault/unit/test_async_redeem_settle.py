@@ -70,7 +70,7 @@ def started_loan(
     )
     centrifuge_async_vault_mock.fulfill_deposit(vault_addr, mint_spend, shares)
     weth.mint(centrifuge_async_vault_mock.address, shares, sender=owner)  # the mock pays shares from its own balance
-    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
+    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
     started = pending._replace(start_time=boa.eval("block.timestamp"), initial_amount=pending.amount, collateral_amount=shares)
     return started, vault_addr
 
@@ -105,7 +105,7 @@ def redeeming_loan(
     )
     centrifuge_async_vault_mock.fulfill_deposit(vault_addr, mint_spend, shares)
     weth.mint(centrifuge_async_vault_mock.address, shares, sender=owner)
-    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
+    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
     started = pending._replace(start_time=boa.eval("block.timestamp"), initial_amount=pending.amount, collateral_amount=shares)
 
     p2p_usdc_weth_centrifuge.redeem(started, 0, sender=borrower)
@@ -151,7 +151,7 @@ def test_settle_async_surplus_pays_all_parties_and_clears_loan(
     )
     centrifuge_async_vault_mock.fulfill_deposit(vault_addr, mint_spend, shares)
     weth.mint(centrifuge_async_vault_mock.address, shares, sender=owner)
-    p2p.start_loan(pending, EMPTY_MINT_RESULT, sender=p2p.protocol_wallet())
+    p2p.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=p2p.protocol_wallet())
     started = pending._replace(start_time=boa.eval("block.timestamp"), initial_amount=pending.amount, collateral_amount=shares)
 
     p2p.redeem(started, 0, sender=borrower)  # residual 0

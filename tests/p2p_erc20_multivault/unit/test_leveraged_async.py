@@ -21,6 +21,7 @@ from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
     RedeemResult,
+    calc_ltv,
     compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
@@ -89,7 +90,7 @@ def started_loan(
     )
     centrifuge_async_vault_mock.fulfill_deposit(vault_addr, mint_spend, shares)
     weth.mint(centrifuge_async_vault_mock.address, shares, sender=owner)  # the mock pays shares from its own balance
-    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
+    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
     started = pending._replace(start_time=boa.eval("block.timestamp"), initial_amount=pending.amount, collateral_amount=shares)
     return started, vault_addr
 
@@ -124,7 +125,7 @@ def redeeming_loan(
     )
     centrifuge_async_vault_mock.fulfill_deposit(vault_addr, mint_spend, shares)
     weth.mint(centrifuge_async_vault_mock.address, shares, sender=owner)
-    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
+    p2p_usdc_weth_centrifuge.start_loan(pending, EMPTY_MINT_RESULT, 0, sender=p2p_usdc_weth_centrifuge.protocol_wallet())
     started = pending._replace(start_time=boa.eval("block.timestamp"), initial_amount=pending.amount, collateral_amount=shares)
 
     p2p_usdc_weth_centrifuge.redeem(started, 0, sender=borrower)
@@ -485,7 +486,7 @@ def test_create_async_window_zero_logs_zero_mint_deadline(
 def test_start_loan_reverts_if_mint_unfulfilled(p2p_usdc_weth_centrifuge, pending_loan, borrower):
     loan, _ = pending_loan
     with boa.reverts("mint not settled"):
-        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, sender=borrower)
+        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=borrower)
 
 
 def test_start_loan_reverts_if_mint_underfilled(p2p_usdc_weth_centrifuge, pending_loan, centrifuge_async_vault_mock, borrower):
@@ -494,7 +495,7 @@ def test_start_loan_reverts_if_mint_underfilled(p2p_usdc_weth_centrifuge, pendin
     centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6 - 1, 10**18)  # under-fill by 1
     assert centrifuge_async_vault_mock.deposit_pending(vault_addr) == 1
     with boa.reverts("mint not settled"):
-        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, sender=borrower)
+        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=borrower)
 
 
 def test_start_loan_activates_against_minted_shares(p2p_usdc_weth_centrifuge, started_loan):
@@ -534,7 +535,7 @@ def test_start_loan_logs_event(p2p_usdc_weth_centrifuge, started_loan, borrower,
 def test_start_loan_reverts_if_already_started(p2p_usdc_weth_centrifuge, started_loan, borrower):
     loan, _ = started_loan
     with boa.reverts("loan started"):
-        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, sender=borrower)
+        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=borrower)
 
 
 def test_start_loan_reverts_if_loan_invalid(
@@ -544,7 +545,7 @@ def test_start_loan_reverts_if_loan_invalid(
     centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6, 10**18)
     weth.mint(centrifuge_async_vault_mock.address, 10**18, sender=owner)
     with boa.reverts("invalid loan"):
-        p2p_usdc_weth_centrifuge.start_loan(loan._replace(amount=loan.amount + 1), EMPTY_MINT_RESULT, sender=borrower)
+        p2p_usdc_weth_centrifuge.start_loan(loan._replace(amount=loan.amount + 1), EMPTY_MINT_RESULT, 0, sender=borrower)
 
 
 def test_start_loan_reverts_if_pending_loan_defaulted(
@@ -561,7 +562,7 @@ def test_start_loan_reverts_if_pending_loan_defaulted(
     boa.env.time_travel(seconds=loan.maturity - loan.create_time + 1)  # 1s past maturity
     assert boa.eval("block.timestamp") > loan.maturity  # precondition: defaulted
     with boa.reverts("loan defaulted"):
-        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, sender=borrower)
+        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=borrower)
 
 
 def test_start_loan_reverts_if_minted_below_min_collateral(
@@ -599,7 +600,7 @@ def test_start_loan_reverts_if_minted_below_min_collateral(
     weth.mint(centrifuge_async_vault_mock.address, fulfilled_shares, sender=owner)
     assert fulfilled_shares < loan.min_collateral_amount  # precondition: below min
     with boa.reverts("low collateral amount"):
-        p2p.start_loan(loan, EMPTY_MINT_RESULT, sender=borrower)
+        p2p.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=borrower)
 
 
 def test_started_async_loan_settles_like_any_loan(p2p_usdc_weth_centrifuge, started_loan, usdc, weth, borrower, lender):
@@ -617,6 +618,253 @@ def test_started_async_loan_settles_like_any_loan(p2p_usdc_weth_centrifuge, star
     assert p2p_usdc_weth_centrifuge.loans(loan.id) == ZERO_BYTES32
     assert weth.balanceOf(borrower) == 10**18  # collateral returned
     assert usdc.balanceOf(lender) - lender_0 == loan.amount + interest  # settlement fee is 0
+
+
+# --- start_loan additional_collateral (borrower topup) ---
+
+
+def test_start_loan_with_topup_backs_loan_with_summed_collateral(
+    p2p_usdc_weth_centrifuge, pending_loan, centrifuge_async_vault_mock, weth, owner, borrower
+):
+    """HAPPY TOPUP: the borrower supplies 0.3 weth alongside the 1.0 weth minted fill.
+
+    The started loan is backed by minted + additional_collateral, both the stored Loan.collateral_amount
+    and the LoanStarted event report 1.3 weth, the claimed shares AND the topup land in the loan vault,
+    and the topup is drained from the borrower's wallet.
+    """
+    loan, vault_addr = pending_loan
+    A = 3 * 10**17  # 0.3 weth borrower topup
+
+    # Fulfil the deposit fully (1.0 weth of shares) and fund the mock to pay them on claim.
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6, 10**18)
+    weth.mint(centrifuge_async_vault_mock.address, 10**18, sender=owner)
+
+    # The borrower holds exactly the topup and approves the loan vault to pull it (like add_collateral).
+    weth.mint(borrower, A, sender=owner)
+    weth.approve(vault_addr, A, sender=borrower)
+
+    vault_bal_before = weth.balanceOf(vault_addr)
+    borrower_bal_before = weth.balanceOf(borrower)
+    assert borrower_bal_before == A  # precondition: borrower funds only the topup (test is meaningful)
+    assert vault_bal_before == 0  # precondition: no collateral in the vault before start
+
+    p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, A, sender=borrower)
+
+    # Read the event first: a later p2p view call (loans()) resets boa's last-computation log buffer.
+    event = get_last_event(p2p_usdc_weth_centrifuge, "LoanStarted")
+    assert event.collateral_amount == 10**18 + A  # 1.3 weth
+
+    started = loan._replace(start_time=boa.eval("block.timestamp"), initial_amount=loan.amount, collateral_amount=10**18 + A)
+    assert p2p_usdc_weth_centrifuge.loans(loan.id) == compute_loan_hash(started)  # backed by minted + topup
+
+    # Claimed shares (1.0 weth, paid to the vault on claim_mint) + the 0.3 weth topup both land in the vault.
+    assert weth.balanceOf(vault_addr) == vault_bal_before + 10**18 + A
+    assert weth.balanceOf(borrower) == borrower_bal_before - A == 0  # topup drained from the borrower
+
+
+def test_start_loan_with_topup_logs_collateral_added_event(
+    p2p_usdc_weth_centrifuge, pending_loan, centrifuge_async_vault_mock, usdc, weth, oracle, owner, borrower, lender
+):
+    """A borrower topup at start emits LoanCollateralAdded mirroring add_collateral_to_loan.
+
+    old_collateral_amount == minted (1.0 weth), new_collateral_amount == minted + topup (1.3 weth),
+    collateral_token correct, and old/new LTVs match an independent computation. The LTVs use the
+    outstanding debt at the start block: amount + settlement_interest, where settlement_interest accrues
+    from accrual_start_time to block.timestamp exactly like the contract (uncapped, == loan.get_interest).
+    """
+    loan, vault_addr = pending_loan
+    minted = 10**18  # 1.0 weth fulfilled fill
+    A = 3 * 10**17  # 0.3 weth borrower topup -> new collateral 1.3 weth
+
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6, minted)
+    weth.mint(centrifuge_async_vault_mock.address, minted, sender=owner)  # mock pays the claimed shares
+    weth.mint(borrower, A, sender=owner)
+    weth.approve(vault_addr, A, sender=borrower)
+
+    p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, A, sender=borrower)
+
+    # Read the event BEFORE any p2p view call (a p2p getter read resets boa's last-computation log buffer).
+    event = get_last_event(p2p_usdc_weth_centrifuge, "LoanCollateralAdded")
+
+    # Independent LTVs: debt = amount + settlement interest accrued to the start block (accrual_start_time
+    # == create_time; ts == create_time here so interest is 0, but compute it the contract's way regardless).
+    ts = boa.eval("block.timestamp")  # anonymous boa context — safe after the tx, does not touch p2p logs
+    settlement_interest = loan.get_interest(
+        ts
+    )  # apr*amount*(ts-accrual_start_time)//(YEAR*BPS) == _compute_settlement_interest
+    outstanding_debt = loan.amount + settlement_interest
+    expected_old_ltv = calc_ltv(outstanding_debt, minted, usdc, weth, oracle)  # calc_ltv reads the oracle (safe)
+    expected_new_ltv = calc_ltv(outstanding_debt, minted + A, usdc, weth, oracle)
+    assert expected_new_ltv < expected_old_ltv  # sanity: more collateral, same debt -> healthier
+
+    assert event.id == loan.id
+    assert event.borrower == borrower
+    assert event.lender == lender
+    assert event.collateral_token == loan.collateral_token
+    assert event.old_collateral_amount == minted  # collateral before the topup == the minted fill
+    assert event.new_collateral_amount == minted + A  # 1.3 weth after the topup
+    assert event.old_ltv == expected_old_ltv
+    assert event.new_ltv == expected_new_ltv
+
+
+def test_start_loan_topup_reverts_if_not_borrower(
+    p2p_usdc_weth_centrifuge, pending_loan, centrifuge_async_vault_mock, weth, owner, borrower
+):
+    """KEEPER CANNOT TOPUP: a non-borrower supplying additional_collateral > 0 reverts "not borrower".
+
+    additional_collateral is pulled from the borrower's wallet, so a permissionless keeper start must pass
+    0 — a keeper cannot spend the borrower's tokens.
+    """
+    loan, vault_addr = pending_loan
+    A = 3 * 10**17
+
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6, 10**18)
+    weth.mint(centrifuge_async_vault_mock.address, 10**18, sender=owner)
+
+    keeper = p2p_usdc_weth_centrifuge.protocol_wallet()  # a non-borrower (used elsewhere for permissionless start)
+    assert keeper != borrower  # precondition: caller is not the borrower
+    with boa.reverts("not borrower"):
+        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, A, sender=keeper)
+
+
+def test_start_loan_keeper_can_start_with_zero_topup(
+    p2p_usdc_weth_centrifuge, pending_loan, centrifuge_async_vault_mock, weth, owner, borrower
+):
+    """PERMISSIONLESS PATH INTACT: a keeper starting with additional_collateral == 0 still succeeds.
+
+    (The `started_loan` fixture also starts via the protocol wallet, but this pins the explicit 0-topup
+    arg on the keeper path.) The loan is backed by the minted 1.0 weth only, no topup.
+    """
+    loan, vault_addr = pending_loan
+
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6, 10**18)
+    weth.mint(centrifuge_async_vault_mock.address, 10**18, sender=owner)
+
+    keeper = p2p_usdc_weth_centrifuge.protocol_wallet()
+    assert keeper != borrower  # precondition: permissionless (non-borrower) start
+    p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=keeper)
+
+    started = loan._replace(start_time=boa.eval("block.timestamp"), initial_amount=loan.amount, collateral_amount=10**18)
+    assert p2p_usdc_weth_centrifuge.loans(loan.id) == compute_loan_hash(started)  # minted only, no topup
+
+
+def test_start_loan_topup_can_satisfy_min_gate(
+    p2p_usdc_weth_centrifuge,
+    sign_centrifuge_offer,
+    fund_centrifuge_leveraged,
+    centrifuge_async_vault_mock,
+    weth,
+    owner,
+    kyc_borrower,
+    kyc_lender,
+    borrower,
+    lender,
+    now,
+):
+    """TOPUP RESCUES A BELOW-MIN FILL: the gate now counts minted + additional_collateral.
+
+    The offer demands min_collateral_amount == 1.0 weth but the issuer fulfils only 0.9 weth of shares.
+    The borrower supplies a 0.2 weth topup so minted + topup (1.1 weth) clears the min — so the BORROWER
+    can start the below-min fill by topping up (the keeper path with 0 topup still can't; see
+    test_start_loan_reverts_if_minted_below_min_collateral). The started loan is backed by 1.1 weth.
+    """
+    p2p = p2p_usdc_weth_centrifuge
+    principal, mint_spend, collateral, min_collateral = 1000 * 10**6, 1500 * 10**6, 10**18, 10**18
+    fulfilled_shares = 9 * 10**17  # 0.9 weth: below the 1.0 weth min
+    A = 2 * 10**17  # 0.2 weth topup: minted + A = 1.1 weth >= min -> clears the gate
+    signed_offer = sign_centrifuge_offer(principal, min_collateral_amount=min_collateral)
+    fund_centrifuge_leveraged(principal, mint_spend)
+    vault_addr = p2p.wallet_to_vault(borrower)
+    loan_id = p2p.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, collateral, sender=borrower
+    )
+    loan = expected_pending_centrifuge_loan(
+        p2p, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=collateral
+    )
+    assert loan.min_collateral_amount == min_collateral
+
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, mint_spend, fulfilled_shares)  # fully fulfilled, low shares
+    weth.mint(centrifuge_async_vault_mock.address, fulfilled_shares, sender=owner)  # mock pays the claimed shares
+    weth.mint(borrower, A, sender=owner)  # borrower funds the topup
+    weth.approve(vault_addr, A, sender=borrower)
+    # precondition: the fill alone is below min, but fill + topup clears it -> the gate now counts the topup
+    assert fulfilled_shares < min_collateral <= fulfilled_shares + A
+
+    p2p.start_loan(loan, EMPTY_MINT_RESULT, A, sender=borrower)
+
+    started = loan._replace(
+        start_time=boa.eval("block.timestamp"), initial_amount=loan.amount, collateral_amount=fulfilled_shares + A
+    )
+    assert started.collateral_amount == fulfilled_shares + A  # 1.1 weth: minted + topup
+    assert p2p.loans(loan.id) == compute_loan_hash(started)  # loan is live, backed by minted + topup
+    assert weth.balanceOf(vault_addr) == fulfilled_shares + A  # both the claimed shares and the topup landed in the vault
+
+
+def test_start_loan_reverts_if_minted_plus_topup_below_min(
+    p2p_usdc_weth_centrifuge,
+    sign_centrifuge_offer,
+    fund_centrifuge_leveraged,
+    centrifuge_async_vault_mock,
+    weth,
+    owner,
+    kyc_borrower,
+    kyc_lender,
+    borrower,
+    lender,
+    now,
+):
+    """INSUFFICIENT TOPUP STILL REVERTS: minted + additional_collateral must reach the floor.
+
+    The offer demands min_collateral_amount == 1.0 weth, the issuer fulfils only 0.9 weth of shares, and
+    the borrower tops up just 0.05 weth — minted + topup (0.95 weth) is STILL below the min, so the start
+    reverts "low collateral amount". Proves the gate is on the SUM, not satisfied by any positive topup.
+    """
+    p2p = p2p_usdc_weth_centrifuge
+    principal, mint_spend, collateral, min_collateral = 1000 * 10**6, 1500 * 10**6, 10**18, 10**18
+    fulfilled_shares = 9 * 10**17  # 0.9 weth: below the 1.0 weth min
+    A = 5 * 10**16  # 0.05 weth topup: minted + A = 0.95 weth < min -> still short
+    signed_offer = sign_centrifuge_offer(principal, min_collateral_amount=min_collateral)
+    fund_centrifuge_leveraged(principal, mint_spend)
+    vault_addr = p2p.wallet_to_vault(borrower)
+    loan_id = p2p.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, collateral, sender=borrower
+    )
+    loan = expected_pending_centrifuge_loan(
+        p2p, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=collateral
+    )
+    assert loan.min_collateral_amount == min_collateral
+
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, mint_spend, fulfilled_shares)  # fully fulfilled, low shares
+    weth.mint(centrifuge_async_vault_mock.address, fulfilled_shares, sender=owner)
+    weth.mint(borrower, A, sender=owner)  # borrower can fund the (insufficient) topup
+    weth.approve(vault_addr, A, sender=borrower)
+    assert fulfilled_shares + A < min_collateral  # precondition: even WITH the topup the sum is below min
+
+    with boa.reverts("low collateral amount"):
+        p2p.start_loan(loan, EMPTY_MINT_RESULT, A, sender=borrower)
+
+
+def test_start_loan_topup_reverts_if_borrower_lacks_shares(
+    p2p_usdc_weth_centrifuge, pending_loan, centrifuge_async_vault_mock, weth, owner, borrower
+):
+    """ERC20 FAILURE: the borrower requests a topup but holds/approves no shares, so the vault's
+    transferFrom of the remainder fails and the whole start reverts.
+
+    The WETH9Mock's transferFrom has no explicit success flag — it underflow-reverts (safe math) on the
+    balance/allowance debit before the vault's "transferFrom failed" assert can observe a False return,
+    so this is a bare ERC20 revert (allowed for ERC20 failures only).
+    """
+    loan, vault_addr = pending_loan
+    A = 3 * 10**17
+
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6, 10**18)
+    weth.mint(centrifuge_async_vault_mock.address, 10**18, sender=owner)
+
+    # Borrower requests a topup but never received or approved any weth for it.
+    assert weth.balanceOf(borrower) == 0  # precondition: cannot cover the topup
+    assert weth.allowance(borrower, vault_addr) == 0
+    with boa.reverts():  # WETH9Mock underflow-reverts (no custom message) before the vault's assert
+        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, A, sender=borrower)
 
 
 # ---------------------------------------------------------------------------
@@ -1434,7 +1682,7 @@ def test_cancel_redeem_reverts_if_redeem_claimable(
     centrifuge_async_vault_mock.fulfill_redeem(vault_addr, shares, assets)
     assert centrifuge_async_vault_mock.redeem_claimable(vault_addr) == shares  # precondition: claimable (in shares)
 
-    with boa.reverts("claimable redeem, settle first"):
+    with boa.reverts("claimable redeem"):
         p2p_usdc_weth_centrifuge.cancel_redeem(redeeming, sender=borrower)
 
 
@@ -1582,7 +1830,7 @@ def test_start_loan_reverts_if_mint_addr_rotated_to_empty(
     p2p_usdc_weth_centrifuge.set_mint_addr(fresh_mint.address, sender=owner)
 
     with boa.reverts("mint not settled"):
-        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, sender=borrower)
+        p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, 0, sender=borrower)
 
 
 def test_cancel_pending_borrower_only_when_window_zero(
