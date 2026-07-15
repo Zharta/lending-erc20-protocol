@@ -354,7 +354,7 @@ def test_set_investor_signature_reverts_if_eip1271_invalid(v2_connector, v2_vaul
     deadline = boa.eval("block.timestamp") + 3600
 
     # Sign with a different key than the SC wallet's owner — ecrecover will
-    # recover other_account.address which != wrong_owner, so is_valid_signature returns 0x00000000
+    # recover other_account.address which != wrong_owner, so isValidSignature returns 0x00000000
     other_account = Account.create()
     v, r, s = sign_register_vault(
         other_account, v2_connector.address, v2_vault_registrar, deadline, investor_address=sc_wallet.address
@@ -362,3 +362,37 @@ def test_set_investor_signature_reverts_if_eip1271_invalid(v2_connector, v2_vaul
 
     with boa.reverts("invalid signature"):
         v2_connector.set_investor_signature(deadline, (v, r, s), sender=sc_wallet.address)
+
+
+# ============================================================
+# set_investor_signature EIP-7702 (delegated EOA) tests
+# ============================================================
+
+# Any nonzero bytecode simulates an EIP-7702 delegation designator. It is NOT a real
+# ERC-1271 wallet, so if _validate_signature routed a 7702-delegated EOA down the 1271
+# path it would call isValidSignature on the code and revert. Success proves the
+# ecrecover-first branch is taken for an EOA whose own ECDSA sig matches its address.
+EIP7702_CODE = bytes.fromhex("ef01000000000000000000000000000000000000000000")
+
+
+def test_set_investor_signature_stores_signature_7702_delegated_eoa(
+    v2_connector, v2_vault_registrar, investor_account, investor
+):
+    deadline = boa.eval("block.timestamp") + 3600
+
+    # plain ECDSA signature by the investor over its own address
+    v, r, s = sign_register_vault(investor_account, v2_connector.address, v2_vault_registrar, deadline)
+
+    # simulate EIP-7702 delegation: the investor EOA now has nonzero code
+    boa.env.set_code(investor, EIP7702_CODE)
+    assert boa.eval(f"{investor}.is_contract")  # precondition: investor has code (7702)
+
+    v2_connector.set_investor_signature(deadline, (v, r, s), sender=investor)
+
+    # signature stored == _validate_signature took the ecrecover-first branch and accepted
+    # the plain ECDSA sig even though the investor now has code (is_contract True). Had it
+    # fallen through to the 1271 path, the staticcall to the non-wallet 7702 code would have
+    # reverted / returned a non-magic value and set_investor_signature would revert.
+    stored = v2_connector.investor_signatures(investor)
+    assert stored[0] == deadline
+    assert stored[1] == (v, r, s)

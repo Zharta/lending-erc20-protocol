@@ -22,7 +22,7 @@ MALLEABILITY_THRESHOLD: constant(uint256) = 578960446186580977117854925043439539
 EIP1271_MAGIC_VALUE: constant(bytes4) = 0x1626ba7e
 
 interface EIP1271Signer:
-    def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
+    def isValidSignature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
 
 domain_separator: immutable(bytes32)
 
@@ -112,7 +112,7 @@ def registerVault(vaultAddress: address, investorWalletAddress: address, deadlin
     )
 
     if investorWalletAddress.is_contract:
-        assert staticcall EIP1271Signer(investorWalletAddress).is_valid_signature(message_hash, signature) == EIP1271_MAGIC_VALUE, "invalid investor signature"
+        assert staticcall EIP1271Signer(investorWalletAddress).isValidSignature(message_hash, signature) == EIP1271_MAGIC_VALUE, "invalid investor signature"
     else:
         signer: address = ecrecover(message_hash, v, r, s)
         assert signer == investorWalletAddress, "invalid investor signature"

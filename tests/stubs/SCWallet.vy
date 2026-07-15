@@ -6,7 +6,7 @@ from ethereum.ercs import IERC20
 
 
 interface EIP1271Signer:
-    def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
+    def isValidSignature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
 
 implements: EIP1271Signer
 
@@ -46,7 +46,7 @@ def transfer_erc20(
 
 @external
 @view
-def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4:
+def isValidSignature(hash: bytes32, signature: Bytes[65]) -> bytes4:
     r: uint256 = convert(slice(signature, 0, 32), uint256)
     s: uint256 = convert(slice(signature, 32, 32), uint256)
     v: uint8 = convert(slice(signature, 64, 1), uint8)

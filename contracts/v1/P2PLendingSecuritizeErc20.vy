@@ -265,7 +265,7 @@ event LoanCollateralRedeemStarted:
 BPS: constant(uint256) = 10000
 YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
-VERSION: public(constant(String[31])) = "P2PLendingSErc20.20260512"
+VERSION: public(constant(String[31])) = "P2PLendingSErc20.20260716"
 
 payment_token: public(immutable(address))
 collateral_token: public(immutable(address))
