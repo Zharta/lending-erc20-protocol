@@ -24,7 +24,7 @@ interface VaultRegistrar:
     def invalidateOperatorPermission(operator: address): nonpayable
 
 interface EIP1271Signer:
-    def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
+    def isValidSignature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
 
 struct ContractAuthorization:
     contract_address: address
@@ -44,7 +44,7 @@ event ContractAuthorizationChanged:
     authorized: bool
 
 
-VERSION: public(constant(String[26])) = "SecRegV2Connector.20260525"
+VERSION: public(constant(String[26])) = "SecRegV2Connector.20260716"
 
 DOMAIN_TYPE_HASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
 REGISTER_TYPEHASH: constant(bytes32) = keccak256("RegisterVault(address investor,address operator,address token,uint256 nonce,uint256 deadline)")
@@ -135,6 +135,7 @@ def set_investor_signature(deadline: uint256, signature: Signature):
 def _validate_signature(investor_wallet: address, deadline: uint256, signature: Signature) -> bool:
 
     assert signature.s <= MALLEABILITY_THRESHOLD, "invalid signature"
+    assert investor_wallet != empty(address), "invalid signature"
 
     nonce: uint256 = staticcall VaultRegistrar(vault_registrar).operatorNonce(investor_wallet, self)
     token: address = staticcall VaultRegistrar(vault_registrar).token()
@@ -156,15 +157,21 @@ def _validate_signature(investor_wallet: address, deadline: uint256, signature: 
         )
     )
 
+    signer: address = ecrecover(
+        message_hash,
+        signature.v,
+        signature.r,
+        signature.s
+    )
+
+    # EOAs with an EIP-7702 delegation have code, so check signature before falling back to ERC-1271
+    if signer == investor_wallet:
+        return True
+
     if investor_wallet.is_contract:
-        return staticcall EIP1271Signer(investor_wallet).is_valid_signature(message_hash, self._sig_to_bytes65(signature)) == EIP1271_MAGIC_VALUE
-    else:
-        return ecrecover(
-            message_hash,
-            signature.v,
-            signature.r,
-            signature.s
-        ) == investor_wallet
+        return staticcall EIP1271Signer(investor_wallet).isValidSignature(message_hash, self._sig_to_bytes65(signature)) == EIP1271_MAGIC_VALUE
+
+    return False
 
 
 @pure

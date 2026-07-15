@@ -1053,6 +1053,116 @@ def test_create_loan_works_with_lender_sc_wallet(
     assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
 
 
+# Any nonzero bytecode simulates an EIP-7702 delegation designator. It is NOT a real
+# ERC-1271 wallet, so if create_loan ever routed a 7702-delegated EOA lender down the
+# 1271 path it would call isValidSignature on this and revert. Success proves the
+# ecrecover-first branch is taken and no 1271 call is made.
+EIP7702_CODE = bytes.fromhex("ef01000000000000000000000000000000000000000000")
+
+
+def test_create_loan_works_with_7702_delegated_eoa_lender(
+    p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, weth, usdc, oracle
+):
+    principal = 1000 * int(1e9)
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender,  # plain EOA lender signing with its own ECDSA key
+    )
+    # sign with the lender's own key (plain ECDSA), NOT via a 1271 wallet
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    # simulate an EIP-7702 delegation: the EOA now has nonzero code so is_contract is True
+    boa.env.set_code(lender, EIP7702_CODE)
+    assert boa.eval(f"{lender}.is_contract")  # precondition: lender has code (7702)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.mint(lender, principal)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+    initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, weth, oracle)
+
+    loan = SecuritizeLoan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p_usdc_weth.protocol_upfront_fee(),
+        protocol_settlement_fee=p2p_usdc_weth.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p_usdc_weth.partial_liquidation_fee(),
+        full_liquidation_fee=p2p_usdc_weth.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=p2p_usdc_weth.oracle_addr(),
+        initial_ltv=initial_ltv,
+        call_time=0,
+        vault_id=0,
+        redeem_start=0,
+        redeem_residual_collateral=0,
+    )
+    # loan hash stored == the ecrecover-first branch accepted the plain ECDSA sig and
+    # created the loan. If it had fallen through to the 1271 path, the staticcall to the
+    # non-wallet 7702 code would have reverted instead of storing the loan.
+    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+
+
+def test_create_loan_reverts_if_sc_wallet_lender_wrong_signer(
+    p2p_usdc_weth,
+    borrower,
+    now,
+    lender,
+    borrower_key,
+    weth,
+    usdc,
+    kyc_borrower,
+    lender_sc_wallet,
+    kyc_lender_sc_wallet,
+):
+    principal = 1000 * int(1e9)
+    collateral_amount = int(1e18)
+    offer = Offer(
+        principal=principal,
+        payment_token=p2p_usdc_weth.payment_token(),
+        collateral_token=p2p_usdc_weth.collateral_token(),
+        duration=100,
+        min_collateral_amount=1,
+        available_liquidity=principal,
+        expiration=now + 100,
+        lender=lender_sc_wallet.address,  # 1271 wallet owned by lender_key
+    )
+    # sign with borrower_key, which is NOT the wallet owner => isValidSignature returns 0x00000000
+    signed_offer = sign_offer(offer, borrower_key, p2p_usdc_weth.address)
+
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+
+    with boa.reverts("offer not signed by lender"):
+        p2p_usdc_weth.create_loan(
+            signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender_sc_wallet, sender=borrower
+        )
+
+
 def test_create_loan_reverts_if_oracle_answer_zero(
     p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, usdc, weth, oracle, owner
 ):

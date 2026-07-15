@@ -31,7 +31,7 @@ interface KYCValidator:
     def check_validations_pair(validation1: SignedWalletValidation, validation2: SignedWalletValidation) -> bool: view
 
 interface EIP1271Signer:
-    def is_valid_signature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
+    def isValidSignature(hash: bytes32, signature: Bytes[65]) -> bytes4: view
 
 interface VaultRegistrar:
     def register_vault(vault: address, investor_wallet: address): nonpayable
@@ -282,6 +282,7 @@ def _loan_state_hash(loan: Loan) -> bytes32:
 @internal
 def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separator: bytes32) -> bool:
     assert signed_offer.signature.s <= MALLEABILITY_THRESHOLD, "invalid signature"
+    assert signed_offer.offer.lender != empty(address), "invalid signature"
 
     message_hash: bytes32 = keccak256(
             concat(
@@ -300,8 +301,12 @@ def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separ
         signed_offer.signature.s
     )
 
+    # EOAs with an EIP-7702 delegation have code, so check signature before falling back to ERC-1271
+    if signer == signed_offer.offer.lender:
+        return True
+
     if signed_offer.offer.lender.is_contract:
-        return staticcall EIP1271Signer(signed_offer.offer.lender).is_valid_signature(
+        return staticcall EIP1271Signer(signed_offer.offer.lender).isValidSignature(
             message_hash,
             concat(
                 convert(signed_offer.signature.r, bytes32),
@@ -309,12 +314,13 @@ def _is_offer_signed_by_lender(signed_offer: SignedOffer, offer_sig_domain_separ
                 convert(convert(signed_offer.signature.v, uint8), bytes1)
             )
         ) == EIP1271_MAGIC_VALUE
-    else:
-        return signer == signed_offer.offer.lender
+
+    return False
 
 @internal
 def _is_extension_offer_signed_by_lender(signed_offer: SignedLoanExtensionOffer, lender: address, offer_sig_domain_separator: bytes32) -> bool:
     assert signed_offer.signature.s <= MALLEABILITY_THRESHOLD, "invalid signature"
+    assert lender != empty(address), "invalid signature"
 
     message_hash: bytes32 = keccak256(
             concat(
@@ -333,8 +339,12 @@ def _is_extension_offer_signed_by_lender(signed_offer: SignedLoanExtensionOffer,
         signed_offer.signature.s
     )
 
+    # EOAs with an EIP-7702 delegation have code, so check signature before falling back to ERC-1271
+    if signer == lender:
+        return True
+
     if lender.is_contract:
-        return staticcall EIP1271Signer(lender).is_valid_signature(
+        return staticcall EIP1271Signer(lender).isValidSignature(
             message_hash,
             concat(
                 convert(signed_offer.signature.r, bytes32),
@@ -342,8 +352,8 @@ def _is_extension_offer_signed_by_lender(signed_offer: SignedLoanExtensionOffer,
                 convert(convert(signed_offer.signature.v, uint8), bytes1)
             )
         ) == EIP1271_MAGIC_VALUE
-    else:
-        return signer == lender
+
+    return False
 
 
 @internal
