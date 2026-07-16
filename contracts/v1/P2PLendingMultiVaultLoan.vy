@@ -368,7 +368,7 @@ def cancel_pending_loan(
     # Borrower may cancel anytime; anyone may cancel after the pending window elapses
     # zero max_pending_window means permissionless cancel is DISABLED
     assert msg.sender == loan.borrower or (loan.max_pending_window > 0 and block.timestamp >= loan.create_time + loan.max_pending_window), "not borrower"
-    assert (vault_capabilities & (base.MINT_ASYNC | base.MINT_STATUS | base.MINT_CANCEL)) == (base.MINT_ASYNC | base.MINT_STATUS | base.MINT_CANCEL), "cancel not supported"
+    assert (vault_capabilities & (base.MINT_ASYNC | base.MINT_CANCEL)) == (base.MINT_ASYNC | base.MINT_CANCEL), "cancel not supported"
 
     _vault: base.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
 
@@ -504,7 +504,7 @@ def cancel_redeem(
     @notice Cancel an ongoing collateral redemption for an active loan, reversing the in-flight
             ERC-7540 redeem request.
     @dev Borrower-only. Returns whether the cancellation completed (True) or must be retried after the request resolves (False).
-         Only applies to vaults that support both REDEEM_ASYNC and REDEEM_STATUS.
+         Only applies to vaults that support both REDEEM_ASYNC and REDEEM_CANCEL.
          Precondition: the redemption must NOT be claimable, if it is, the borrower must settle instead.
          The phases are:
            - cancel claimable: claim the reclaimed collateral back into the vault and reverse the redemption; return True.
@@ -519,7 +519,7 @@ def cancel_redeem(
     assert base._is_loan_started(loan), "loan not started"
     assert loan.redeem_start > 0, "not redeeming"
     assert msg.sender == loan.borrower, "not borrower"
-    assert (vault_capabilities & (base.REDEEM_ASYNC | base.REDEEM_STATUS | base.REDEEM_CANCEL)) == (base.REDEEM_ASYNC | base.REDEEM_STATUS | base.REDEEM_CANCEL), "redeem cancel not supported"
+    assert (vault_capabilities & (base.REDEEM_ASYNC | base.REDEEM_CANCEL)) == (base.REDEEM_ASYNC | base.REDEEM_CANCEL), "redeem cancel not supported"
 
     _vault: base.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
 

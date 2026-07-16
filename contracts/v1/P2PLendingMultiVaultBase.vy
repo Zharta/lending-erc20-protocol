@@ -75,15 +75,13 @@ YEAR_TO_SECONDS: constant(uint256) = 365 * 24 * 60 * 60
 
 # Vault capability flags (bitmask). When multiple available, preference goes in order: _SYNC > _ASYNC > _MANUAL
 REDEEM_SYNC: constant(uint256)   = 1 << 0  # instant redeem
-REDEEM_ASYNC: constant(uint256)  = 1 << 1  # async redeem (ERC-7540)
+REDEEM_ASYNC: constant(uint256)  = 1 << 1  # async redeem (ERC-7540); implies on-chain redeem_status
 REDEEM_MANUAL: constant(uint256) = 1 << 2  # settlement needs an off-chain owner-signed attestation
-REDEEM_STATUS: constant(uint256) = 1 << 3  # redemption status is queryable on-chain (ERC-7540)
+REDEEM_CANCEL: constant(uint256) = 1 << 3  # vault supports cancelling a pending redeem (ERC-7887)
 MINT_SYNC: constant(uint256)     = 1 << 4  # instant mint
-MINT_ASYNC: constant(uint256)    = 1 << 5  # async mint (ERC-7540 requestDeposit)
+MINT_ASYNC: constant(uint256)    = 1 << 5  # async mint (ERC-7540 requestDeposit); implies on-chain mint_status
 MINT_MANUAL: constant(uint256)   = 1 << 6  # async mint settled off-chain via owner-signed MintResult
-MINT_STATUS: constant(uint256)   = 1 << 7  # mint resolution is queryable on-chain (ERC-7540)
-MINT_CANCEL: constant(uint256)   = 1 << 8  # vault supports cancelling a pending mint (ERC-7887)
-REDEEM_CANCEL: constant(uint256) = 1 << 9  # vault supports cancelling a pending redeem (ERC-7887)
+MINT_CANCEL: constant(uint256)   = 1 << 7  # vault supports cancelling a pending mint (ERC-7887)
 
 MALLEABILITY_THRESHOLD: constant(uint256) = 57896044618658097711785492504343953926418782139537452191302581570759080747168
 EIP1271_MAGIC_VALUE: constant(bytes4) = 0x1626ba7e

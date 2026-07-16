@@ -50,7 +50,7 @@ VERSION: public(constant(String[31])) = "P2PLendingVaultCfAsync.20260714"
 
 REQUEST_ID: constant(uint256) = 0
 
-capabilities: public(constant(uint256)) = base.MINT_ASYNC | base.MINT_STATUS | base.MINT_CANCEL | base.REDEEM_ASYNC | base.REDEEM_STATUS | base.REDEEM_CANCEL
+capabilities: public(constant(uint256)) = base.MINT_ASYNC | base.MINT_CANCEL | base.REDEEM_ASYNC | base.REDEEM_CANCEL
 
 
 # Events
