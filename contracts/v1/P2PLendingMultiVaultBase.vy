@@ -614,9 +614,13 @@ def _is_loan_redeem_concluded(loan: Loan, _vault: Vault, redeem_result: SignedRe
 def _resolve_redeem_balances(loan: Loan, _vault: Vault, payment_token: address, redeem_result: SignedRedeemResult, vault_capabilities: uint256) -> (uint256, uint256):
     if (vault_capabilities & REDEEM_ASYNC) != 0:
         status: AsyncStatus = staticcall _vault.redeem_status(self.redemption_addr)
-        assert status.request_pending == 0 and status.request_claimable > 0 and status.cancel_pending == 0 and status.cancel_claimable == 0, "redeem not settled"
-        claimed: uint256 = extcall _vault.claim_redeem(self.redemption_addr, True, False)
-        return claimed, loan.redeem_residual_collateral
+        assert status.request_pending == 0 and status.cancel_pending == 0 and status.cancel_claimable == 0, "redeem not settled"
+        if status.request_claimable > 0:
+            claimed: uint256 = extcall _vault.claim_redeem(self.redemption_addr, True, False)
+            return claimed, loan.redeem_residual_collateral
+        else:
+            # Already-claimed case for transferred loans
+            return staticcall IERC20(payment_token).balanceOf(_vault.address), loan.redeem_residual_collateral
     elif (vault_capabilities & REDEEM_MANUAL) != 0:
         assert self._is_loan_redeem_concluded(loan, _vault, redeem_result, vault_capabilities), "redeem not concluded"
         return self._get_manual_redeem_balances(loan, _vault, payment_token, redeem_result.result)

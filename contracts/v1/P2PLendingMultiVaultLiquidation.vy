@@ -413,7 +413,12 @@ def transfer_loan(
     current_vault: base.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
 
     if is_loan_redeemed:
-        assert base._is_loan_redeem_concluded(loan, current_vault, redeem_result, vault_capabilities), "redeem not concluded"
+        if (vault_capabilities & base.REDEEM_ASYNC) != 0:
+            status: base.AsyncStatus = staticcall current_vault.redeem_status(base.redemption_addr)
+            assert status.request_pending == 0 and status.request_claimable > 0 and status.cancel_pending == 0 and status.cancel_claimable == 0, "redeem not settled"
+            extcall current_vault.claim_redeem(base.redemption_addr, True, False)
+        else:
+            assert base._is_loan_redeem_concluded(loan, current_vault, redeem_result, vault_capabilities), "redeem not concluded"
 
     assert staticcall base.KYCValidator(kyc_validator_addr).check_validation(new_borrower_kyc), "KYC validation fail"
     assert new_borrower_kyc.validation.wallet == new_borrower, "KYC validation fail"

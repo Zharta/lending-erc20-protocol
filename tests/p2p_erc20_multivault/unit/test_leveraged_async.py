@@ -20,20 +20,24 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
-    RedeemResult,
     calc_ltv,
     compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
     sign_offer,
-    sign_redeem_result,
 )
 from .conftest import expected_pending_centrifuge_loan
 
 BPS = 10000
 EMPTY_MINT_RESULT = ((ZERO_ADDRESS, 0, 0, 0), (0, 0, 0))
 EMPTY_REDEEM_RESULT = ((ZERO_ADDRESS, 0, 0, 0), (0, 0, 0))
+
+
+def _fulfil_redeem(centrifuge_async_vault_mock, usdc, vault_addr, shares, assets):
+    """Issuer settles the pending redeem of `shares` -> `assets` usdc, funding the mock to pay it out."""
+    usdc.mint(centrifuge_async_vault_mock.address, assets)
+    centrifuge_async_vault_mock.fulfill_redeem(vault_addr, shares, assets)
 
 
 # ---------------------------------------------------------------------------
@@ -705,6 +709,62 @@ def test_start_loan_with_topup_logs_collateral_added_event(
     assert event.new_collateral_amount == minted + A  # 1.3 weth after the topup
     assert event.old_ltv == expected_old_ltv
     assert event.new_ltv == expected_new_ltv
+
+
+def test_start_loan_with_zero_mint_topup_backs_loan_and_reports_zero_old_ltv(
+    p2p_usdc_weth_centrifuge, pending_loan, centrifuge_async_vault_mock, usdc, weth, oracle, owner, borrower, lender
+):
+    """DIV-BY-ZERO GUARD: a settled deposit that mints ZERO shares can still be started via a borrower topup.
+
+    The issuer fulfils the deposit (so the mint gate passes: request_claimable > 0) but at a price yielding
+    0 shares, so `claim_mint` credits nothing (minted == 0). The offer's min_collateral_amount is 0, so the
+    `minted + additional_collateral >= min` gate is satisfied by the borrower's 0.3 weth topup alone. The
+    loan starts backed by the topup only. The LoanCollateralAdded event must report old_collateral_amount==0,
+    old_ltv==0 (there is no minted collateral to price — `_compute_ltv` would divide by minted==0), and
+    new_collateral_amount == the topup. Without the `if minted > 0 else 0` guard, `_compute_ltv(0, ...)`
+    divides by zero and start_loan reverts.
+    """
+    loan, vault_addr = pending_loan
+    minted = 0  # the fulfilled deposit yields NO shares
+    A = 3 * 10**17  # 0.3 weth borrower topup -> the loan is backed by the topup alone
+
+    assert loan.min_collateral_amount == 0  # precondition: any nonneg fill clears the gate
+
+    # Fulfil the FULL mint_spend but at a share price of 0 -> deposit settles (claimable) yet mints nothing.
+    centrifuge_async_vault_mock.fulfill_deposit(vault_addr, 1500 * 10**6, minted)  # shares == 0
+    assert centrifuge_async_vault_mock.deposit_claimable(vault_addr) == 1500 * 10**6  # precondition: settled
+    assert centrifuge_async_vault_mock.deposit_shares(vault_addr) == 0  # precondition: zero shares to claim
+
+    # The borrower funds only the topup and approves the loan vault to pull it (like add_collateral).
+    weth.mint(borrower, A, sender=owner)
+    weth.approve(vault_addr, A, sender=borrower)
+    assert weth.balanceOf(borrower) == A
+    assert weth.balanceOf(vault_addr) == 0  # precondition: no collateral in the vault before start
+
+    p2p_usdc_weth_centrifuge.start_loan(loan, EMPTY_MINT_RESULT, A, sender=borrower)
+
+    # Read the event BEFORE any p2p view call (a p2p getter read resets boa's last-computation log buffer).
+    event = get_last_event(p2p_usdc_weth_centrifuge, "LoanCollateralAdded")
+
+    # Independent new_ltv: debt = amount + settlement interest to the start block (ts == create_time -> 0).
+    ts = boa.eval("block.timestamp")
+    outstanding_debt = loan.amount + loan.get_interest(ts)
+    expected_new_ltv = calc_ltv(outstanding_debt, A, usdc, weth, oracle)  # calc_ltv reads the oracle (safe)
+    assert expected_new_ltv > 0  # sanity: the topup collateral prices to a real LTV
+
+    assert event.id == loan.id
+    assert event.borrower == borrower
+    assert event.lender == lender
+    assert event.collateral_token == loan.collateral_token
+    assert event.old_collateral_amount == 0  # nothing minted
+    assert event.new_collateral_amount == A  # backed by the topup alone
+    assert event.old_ltv == 0  # GUARD: undefined old LTV reported as 0, no div-by-zero on minted == 0
+    assert event.new_ltv == expected_new_ltv
+
+    started = loan._replace(start_time=ts, initial_amount=loan.amount, collateral_amount=A)
+    assert started.collateral_amount == A
+    assert p2p_usdc_weth_centrifuge.loans(loan.id) == compute_loan_hash(started)  # live, backed by the topup
+    assert weth.balanceOf(vault_addr) == A  # only the topup landed in the vault (no minted shares)
 
 
 def test_start_loan_topup_reverts_if_not_borrower(
@@ -1691,35 +1751,84 @@ def test_cancel_redeem_reverts_if_redeem_claimable(
 # ---------------------------------------------------------------------------
 
 
-def test_transfer_loan_reverts_for_async_redeem_even_with_valid_attestation(
-    p2p_usdc_weth_centrifuge, redeeming_loan, transfer_agent, kyc_for, kyc_validator_contract, owner_key, now
+def test_transfer_loan_async_redeem_claims_and_migrates_proceeds(
+    p2p_usdc_weth_centrifuge,
+    redeeming_loan,
+    centrifuge_async_vault_mock,
+    transfer_agent,
+    kyc_for,
+    kyc_validator_contract,
+    usdc,
+    borrower,
+    lender,
+    now,
 ):
-    """D29: transfer_loan of a REDEEM_ASYNC loan in redemption reverts even WITH a valid owner attestation.
+    """Fix A: transfer_loan of a REDEEM_ASYNC loan mid-redemption CLAIMS the fulfilled proceeds into the
+    old vault, then migrates them to the new borrower's vault; the new borrower can then settle.
 
-    `_is_loan_redeem_concluded` now returns False for REDEEM_ASYNC unconditionally: the ERC-7540 claim
-    is bound to THIS vault and only executes inside settle/liquidate, so accepting an owner-signed result
-    here would move the loan to a new vault and orphan the in-flight redeem. A correctly owner-signed,
-    vault-bound, post-redeem-start RedeemResult must still be rejected.
+    The ERC-7540 redeem request is keyed to the current vault as controller. If transfer_loan migrated the
+    loan without claiming, the proceeds would be stranded in the old vault. So the fix: when the redemption
+    is fulfilled (request_claimable > 0), claim it before migrating, and settle_loan then reads the
+    already-claimed proceeds from the NEW vault's balance (the _resolve_redeem_balances fallback branch).
     """
-    _, redeeming, vault_addr = redeeming_loan
     p2p = p2p_usdc_weth_centrifuge
-
-    # A redeem result that WOULD conclude a manual redemption: owner-signed, this vault, after redeem_start.
-    redeem_result = RedeemResult(
-        vault=vault_addr,
-        collateral_redeemed=0,
-        payment_redeemed=redeeming.amount,
-        timestamp=redeeming.redeem_start + 1,
-    )
-    signed_redeem_result = sign_redeem_result(redeem_result, owner_key)
-    assert redeem_result.timestamp >= redeeming.redeem_start  # precondition: attestation is fresh
-    assert redeem_result.vault == vault_addr  # precondition: attestation is vault-bound
+    _, redeeming, old_vault_addr = redeeming_loan
+    shares, assets = 10**18, 1200 * 10**6  # proceeds > debt -> surplus for the borrower on settle
+    _fulfil_redeem(centrifuge_async_vault_mock, usdc, old_vault_addr, shares, assets)
+    assert centrifuge_async_vault_mock.redeem_claimable(old_vault_addr) == shares  # precondition: fulfilled, unclaimed
+    assert usdc.balanceOf(old_vault_addr) == 0  # precondition: proceeds still in the async vault, not the loan vault
 
     new_borrower = boa.env.generate_address("new_borrower")
     new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
+    assert new_borrower != borrower
 
-    with boa.reverts("redeem not concluded"):
-        p2p.transfer_loan(redeeming, new_borrower, new_borrower_kyc, signed_redeem_result, sender=transfer_agent)
+    p2p.transfer_loan(redeeming, new_borrower, new_borrower_kyc, EMPTY_REDEEM_RESULT, sender=transfer_agent)
+
+    # The migrated loan: same fields, new borrower, vault_id == the new borrower's next vault (0).
+    event = get_last_event(p2p, "LoanBorrowerTransferred")
+    new_vault_addr = p2p.vault_id_to_vault(new_borrower, 0)  # the migrated loan's vault (vault_id 0)
+    migrated = redeeming._replace(id=event.new_loan_id, borrower=new_borrower, vault_id=0)
+    assert p2p.loans(migrated.id) == compute_loan_hash(migrated)  # migrated loan stored
+    assert p2p.loans(redeeming.id) == ZERO_BYTES32  # old loan cleared
+
+    # Fix A: the async redemption was CLAIMED into the old vault, then the proceeds moved to the new vault.
+    assert centrifuge_async_vault_mock.redeem_claimable(old_vault_addr) == 0  # claimed (not left in-flight)
+    assert usdc.balanceOf(old_vault_addr) == 0  # old vault emptied of payment token
+    assert usdc.balanceOf(new_vault_addr) == assets  # proceeds migrated to the new borrower's vault, pre-settle
+
+    # The new borrower settles from the migrated proceeds (async path ignores the redeem_result arg).
+    interest = migrated.get_interest(boa.eval("block.timestamp"))
+    protocol_fee = interest * migrated.protocol_settlement_fee // BPS  # settlement fee is 0 in this fixture
+    assert protocol_fee == 0
+    surplus = assets - migrated.amount - interest
+    assert surplus > 0  # precondition: proceeds cover the debt with a surplus
+
+    lender_0, borrower_0 = usdc.balanceOf(lender), usdc.balanceOf(new_borrower)
+    p2p.settle_loan(migrated, EMPTY_REDEEM_RESULT, sender=new_borrower)
+
+    assert p2p.loans(migrated.id) == ZERO_BYTES32  # settled, hash cleared
+    assert usdc.balanceOf(new_vault_addr) == 0  # proceeds fully distributed out of the vault
+    assert usdc.balanceOf(lender) - lender_0 == migrated.amount + interest - protocol_fee  # lender made whole
+    assert usdc.balanceOf(new_borrower) - borrower_0 == surplus  # surplus to the NEW borrower
+
+
+def test_transfer_loan_async_redeem_reverts_if_not_settled(
+    p2p_usdc_weth_centrifuge, redeeming_loan, centrifuge_async_vault_mock, transfer_agent, kyc_for, kyc_validator_contract
+):
+    """Fix A guard: transfer_loan of an async-redeeming loan reverts until the redemption is fulfilled.
+
+    With the redeem requested but not fulfilled (request_claimable == 0, request_pending > 0), there is
+    nothing to claim, so the migrate-with-claim path refuses to run.
+    """
+    p2p = p2p_usdc_weth_centrifuge
+    _, redeeming, old_vault_addr = redeeming_loan
+    assert centrifuge_async_vault_mock.redeem_pending(old_vault_addr) > 0  # precondition: request in flight
+    assert centrifuge_async_vault_mock.redeem_claimable(old_vault_addr) == 0  # precondition: not fulfilled
+
+    new_borrower = boa.env.generate_address("new_borrower")
+    new_borrower_kyc = kyc_for(new_borrower, kyc_validator_contract.address)
+    with boa.reverts("redeem not settled"):
+        p2p.transfer_loan(redeeming, new_borrower, new_borrower_kyc, EMPTY_REDEEM_RESULT, sender=transfer_agent)
 
 
 # ---------------------------------------------------------------------------

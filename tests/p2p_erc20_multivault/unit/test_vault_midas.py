@@ -265,3 +265,12 @@ def test_mint_sync_reverts_if_not_caller(midas_vault, deposit_mock, mtoken, toke
     )
     assert minted == minted_mtoken
     assert midas_vault.pending_transfers(owner) == minted_mtoken
+
+
+def test_withdraw_funds_zero_amount_makes_no_transfer(midas_vault, zero_revert_erc20, caller_addr):
+    """withdraw_funds(token, 0) must not attempt an ERC20 transfer — the settle/liquidation paths call
+    it with 0 when the vault holds no leftover payment, and some tokens revert on a 0-value transfer.
+    `zero_revert_erc20.transfer` reverts "zero transfer" on 0 and records whether it was called."""
+    assert zero_revert_erc20.was_transfer_called() is False
+    midas_vault.withdraw_funds(zero_revert_erc20.address, 0, sender=caller_addr)  # must NOT revert
+    assert zero_revert_erc20.was_transfer_called() is False

@@ -512,6 +512,77 @@ def test_flexible_partial_mint_updates_committed_liquidity(
     assert p2p_usdc_acred.commited_liquidity(key) == principal - refund  # tracks the reduced principal
 
 
+def test_create_leveraged_flexible_caps_lender_refund_at_lender_deposit(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """The flexible refund to the lender is capped at what the lender actually deposited (lender_to_vault),
+    NOT the full principal — the origination-fee gap is borrower margin and must go back to the borrower.
+
+    This exercises the `lender_to_vault < refunded <= principal` window where the cap bites. With
+    origination_fee_bps=100 (1%) the lender only funded `lender_to_vault = principal - origination_fee`
+    (990 USDC), so a refund of 995 USDC must split: 990 back to the lender (all the lender deployed) and
+    the remaining 5 USDC back to the borrower (their margin). Pre-fix (`min(refunded, principal)`) the
+    lender would wrongly recover the whole 995 USDC and the stored principal would be 5 USDC too low.
+    """
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    origination_fee_bps = 100  # 1%
+    origination_fee = origination_fee_bps * principal // BPS  # 10 USDC
+    lender_to_vault = principal - origination_fee  # 990 USDC (what the lender actually deposited)
+    cap = 336666666666666666  # partial mint -> spent 504999999, refund 995000001 (in the capped window)
+    collateral = _minted(mint_spend, cap=cap)
+    assert collateral == cap  # the cap bites (below the full 1e18 mint)
+    refunded = mint_spend - _spent(collateral)  # 995000001
+    lender_refund = min(refunded, lender_to_vault)  # capped at 990 USDC (the FIX)
+    borrower_refund = refunded - lender_refund  # 5000001 -> back to the borrower
+    new_principal = principal - lender_refund  # 10 USDC
+    # preconditions: the cap sits strictly inside the window where the fix differs from `min(refunded, principal)`
+    assert origination_fee > 0
+    assert lender_to_vault < refunded <= principal
+    assert lender_refund == lender_to_vault < min(refunded, principal)  # fix caps below the buggy value
+    assert borrower_refund > 0
+
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        flexible=True,
+        origination_fee_bps=origination_fee_bps,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    acred_lev.set_max_mint_amount(cap)
+    lender_before, borrower_before = usdc.balanceOf(lender), usdc.balanceOf(borrower)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    # lender net flow: deployed `lender_to_vault`, got `lender_refund` back -> net (lender_to_vault - lender_refund) == 0
+    assert lender_before - usdc.balanceOf(lender) == lender_to_vault - lender_refund  # lender made whole on the refund
+    # borrower net flow: paid `borrower_margin` in, got `borrower_refund` back
+    borrower_margin = mint_spend - lender_to_vault  # 510 USDC
+    assert borrower_before - usdc.balanceOf(borrower) == borrower_margin - borrower_refund
+
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred,
+        signed_offer,
+        loan_id,
+        borrower,
+        lender,
+        now,
+        principal=new_principal,  # principal reduced by the CAPPED lender refund only
+        collateral=collateral,
+        offer_principal=principal,  # fee basis stays the original principal
+    )
+    assert loan.amount == new_principal == principal - min(refunded, lender_to_vault)
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+
+
 # --------------------------------------------------------------------------- FIXED principal, partial mint
 
 

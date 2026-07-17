@@ -312,7 +312,7 @@ def start_loan(
             collateral_token=loan.collateral_token,
             old_collateral_amount=minted,
             new_collateral_amount=total_collateral,
-            old_ltv=base._compute_ltv(minted, outstanding_debt, convertion_rate, payment_token_decimals, collateral_token_decimals),
+            old_ltv=base._compute_ltv(minted, outstanding_debt, convertion_rate, payment_token_decimals, collateral_token_decimals) if minted > 0 else 0,
             new_ltv=base._compute_ltv(total_collateral, outstanding_debt, convertion_rate, payment_token_decimals, collateral_token_decimals),
         )
 
@@ -806,8 +806,8 @@ def _create_leveraged_loan_sync(
 
     new_principal: uint256 = principal
     if offer.offer.principal == 0:
-        # FLEXIBLE principal: reduce the principal by what was refunded to the lender.
-        lender_refund: uint256 = min(refunded, principal)
+        # FLEXIBLE principal: reduce the principal by the lender's unspent capital.
+        lender_refund: uint256 = min(refunded, lender_to_vault)
         new_principal = principal - lender_refund
         borrower_refund: uint256 = refunded - lender_refund
         if lender_refund > 0:
