@@ -68,6 +68,14 @@ blacklisted: public(HashMap[address, bool])
 # (the partial-spend / refund scenario for leveraged-mint tests).
 max_mint_amount: public(uint256)
 
+# Test knob: fraction (in bps, 10000 = 100%) of the rate-implied DS that `swap` actually DELIVERS,
+# while `calculateDsTokenAmount` keeps returning the full rate-implied amount. Default 10000 keeps
+# view == delivered (byte-identical to the un-knobbed behavior). A value below 10000 makes the swap
+# UNDER-deliver relative to the view — the divergence that P2PLendingVaultSecuritizeMV.mint_sync must
+# handle by crediting the MEASURED balance delta, not the pre-swap `calculateDsTokenAmount` estimate.
+# A realistic swap still enforces the caller's min-out on the DELIVERED amount.
+swap_delivery_bps: public(uint256)
+
 @deploy
 def __init__(_name: String[64], _symbol: String[32], _decimals: uint8, _supply: uint256, oracle_addr: address, stable_coin_addr: address):
     name = _name
@@ -79,6 +87,7 @@ def __init__(_name: String[64], _symbol: String[32], _decimals: uint8, _supply: 
     self.minter = msg.sender
     self.oracle_addr = oracle_addr
     self.stable_coin_addr = stable_coin_addr
+    self.swap_delivery_bps = 10000  # full delivery by default (view == delivered)
     log Transfer(sender=empty(address), receiver=msg.sender, value=init_supply)
 
 
@@ -206,6 +215,10 @@ def set_max_mint_amount(_amount: uint256):
     self.max_mint_amount = _amount
 
 @external
+def set_swap_delivery_bps(_bps: uint256):
+    self.swap_delivery_bps = _bps
+
+@external
 @view
 def getDSService(_serviceId: uint256) -> address:
     if _serviceId == SEC_SWAP_SERVICE_ID:
@@ -238,7 +251,8 @@ def swap(liquidityAmount: uint256, minOutAmount: uint256):
     numerator: uint256 = 0
     denominator: uint256 = 0
     (numerator, denominator) = self._get_rate()
-    _dsTokenAmount: uint256 = self._ds_token_amount(liquidityAmount)
+    full: uint256 = self._ds_token_amount(liquidityAmount)
+    _dsTokenAmount: uint256 = full * self.swap_delivery_bps // 10000
     _liquidityAmount: uint256 = _dsTokenAmount * numerator // denominator
     assert _dsTokenAmount >= minOutAmount, "insufficient output amount"
 

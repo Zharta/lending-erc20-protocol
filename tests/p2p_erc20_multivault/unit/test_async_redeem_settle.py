@@ -291,6 +291,7 @@ def test_liquidate_async_claims_proceeds_and_clears_loan(
         p2p_usdc_weth_centrifuge.commited_liquidity(compute_liquidity_key(lender, ZERO_BYTES32)),
         usdc.balanceOf(lender),
     )
+    assert committed_0 == loan.amount  # precondition: single-loan offer committed exactly the principal
 
     p2p_usdc_weth_centrifuge.liquidate_loan(loan, EMPTY_REDEEM_RESULT, sender=liquidator)
 
@@ -305,8 +306,17 @@ def test_liquidate_async_claims_proceeds_and_clears_loan(
     assert centrifuge_async_vault_mock.redeem_claimable(vault_addr) == 0  # claimed
     assert usdc.balanceOf(lender) - lender_0 == assets  # lender recovers exactly the proceeds
     assert usdc.balanceOf(liquidator) == 0  # no fee, no surplus
-    # shortfall branch releases committed liquidity by remaining_collateral_value (0 here) -> untouched
-    assert p2p_usdc_weth_centrifuge.commited_liquidity(compute_liquidity_key(lender, ZERO_BYTES32)) == committed_0
+    # Audit finding #6 refinement (shortfall branch): free only the principal actually RECOVERED
+    # (min(lender_funds_delta, loan.amount)), not the full loan.amount. The unrecovered principal is a
+    # realized loss that must stay committed. Here the loan is redeemed with proceeds in the vault, so
+    # lender_funds_delta = in_vault_payment_token + remaining_collateral_value - protocol_fee
+    #                    = assets + 0 - 0 = assets, and assets < loan.amount, so the reduction is `assets`.
+    # committed drops by exactly the recovered proceeds; the loss (loan.amount - assets) stays committed.
+    recovered = assets  # remaining_collateral_value == 0 and protocol fee == 0 here
+    assert recovered < loan.amount  # genuine principal-shortfall
+    committed_after = p2p_usdc_weth_centrifuge.commited_liquidity(compute_liquidity_key(lender, ZERO_BYTES32))
+    assert committed_0 - committed_after == recovered
+    assert committed_after == loan.amount - recovered  # the realized loss stays committed
 
 
 def test_liquidate_async_reverts_if_redeem_not_settled(

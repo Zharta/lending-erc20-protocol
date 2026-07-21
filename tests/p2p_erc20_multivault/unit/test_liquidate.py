@@ -1,5 +1,6 @@
 import boa
 import pytest
+from eth_utils import keccak, to_bytes
 
 from ..conftest_base import (
     ZERO_ADDRESS,
@@ -2183,3 +2184,377 @@ def test_liquidate_loan_reverts_if_invalid_redeem_collateral_amnt(
 
     with boa.reverts("invalid redeem collateral amnt"):
         p2p_usdc_weth.liquidate_loan(redeemed_loan, signed_redeem_result, sender=loan.lender)
+
+
+# ============================================================================
+# AGGREGATED-OFFER COMMITTED-LIQUIDITY REGRESSION (audit finding #6)
+# ============================================================================
+#
+# liquidate_loan frees the lender's committed liquidity so the offer's capacity
+# (available_liquidity) can be reused. commited_liquidity is ONLY ever incremented
+# by loan.amount (the principal) at creation, so liquidate_loan must reduce it by
+# exactly loan.amount — NOT by outstanding_debt (principal + interest).
+#
+# On a single-loan offer the bug is masked: _reduce_commited_liquidity clamps at 0,
+# so over-freeing outstanding_debt still lands on 0. The over-free only manifests on
+# an AGGREGATED / reusable offer (borrower == empty, one tracing_id shared by several
+# loans) where the committed total is > loan.amount at liquidation time: over-freeing
+# by the accrued interest under-commits the offer, letting it be utilized beyond
+# available_liquidity. So the test commits TWO loans (total 2*P) before liquidating one.
+
+
+def _liquidity_key(lender: str, tracing_id: bytes) -> bytes:
+    """Mirror base._commited_liquidity_key = keccak256(concat(convert(lender, bytes32), tracing_id))."""
+    lender_bytes32 = to_bytes(hexstr=lender).rjust(32, b"\x00")
+    return keccak(lender_bytes32 + tracing_id)
+
+
+def _build_aggregated_loan(p2p, signed_offer, loan_id, *, principal, collateral_amount, borrower, vault_id, create_time):
+    """Build the Loan NamedTuple the contract stores for a loan opened from an aggregated offer."""
+    offer = signed_offer.offer
+    return Loan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=create_time + offer.duration,
+        create_time=create_time,
+        start_time=create_time,
+        accrual_start_time=create_time,
+        borrower=borrower,
+        lender=offer.lender,
+        collateral_amount=collateral_amount,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * principal // BPS,
+        protocol_upfront_fee_amount=p2p.protocol_upfront_fee() * principal // BPS,
+        protocol_settlement_fee=p2p.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p.partial_liquidation_fee(),
+        full_liquidation_fee=p2p.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+        vault_id=vault_id,
+        redeem_start=0,
+        redeem_residual_collateral=0,
+        max_pending_window=0,
+    )
+
+
+def test_liquidate_loan_frees_committed_liquidity_by_principal_not_debt_on_aggregated_offer(
+    p2p_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    borrower,
+    lender,
+    lender_key,
+    protocol_fees,
+    kyc_for,
+    kyc_validator_contract,
+):
+    """Audit finding #6: liquidate_loan must reduce commited_liquidity by loan.amount (P),
+    not outstanding_debt (P + interest). Uses an aggregated offer (available_liquidity = 2*P,
+    borrower == empty) so the committed total is 2*P when loan A is liquidated — this unmasks
+    the over-free that a single-loan offer's clamp-at-0 would hide.
+
+    Scenario branch exercised: full-payment (in_vault_payment_token >= outstanding_debt) is
+    unreachable for a non-redeemed loan (vault holds no payment token), so this exercises the
+    payment+collateral branch (in_vault_payment_token == 0, collateral value >= debt), with a
+    third-party liquidator so the reduction runs.
+    """
+    principal = 1000 * 10**6  # P
+    collateral_amount = int(1e18)  # 1 WETH, ~3877 USDC — collateral value >> debt (surplus branch)
+
+    # Aggregated / reusable offer: borrower == empty(address), available_liquidity sized for TWO
+    # loans of principal P. Non-zero interest (apr=1000) and non-zero fees (protocol_fees fixture +
+    # origination_fee_bps=100) so outstanding_debt != principal — that difference is what the bug
+    # over-freed.
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        min_collateral_amount=int(0.5e18),
+        max_iltv=5000,
+        available_liquidity=2 * principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=6000,
+        oracle_addr=oracle.address,
+        expiration=now + 10**6,
+        lender=lender,
+        borrower=ZERO_ADDRESS,  # aggregated: reusable across loans sharing this tracing_id
+        tracing_id=32 * b"\7",
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+    liquidity_key = _liquidity_key(lender, offer.tracing_id)
+
+    # This test opens several loans across multiple blocks (time_travel), so KYC must not expire.
+    far_expiration = now + 10**6
+    kyc_borrower = kyc_for(borrower, kyc_validator_contract.address, far_expiration)
+    kyc_lender = kyc_for(lender, kyc_validator_contract.address, far_expiration)
+
+    # Fund the lender for all loans it deploys across this test (A, B, and the post-liquidation
+    # reuse loan) + upfront fees. The final over-utilization attempt reverts before any transfer.
+    lender_per_loan = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    usdc.mint(lender, 3 * lender_per_loan)
+    usdc.approve(p2p_usdc_weth.address, 3 * lender_per_loan, sender=lender)
+
+    # --- Open loan A ---
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    vault_id_a = p2p_usdc_weth.vault_count(borrower)
+    create_time_a = boa.env.evm.patch.timestamp
+    loan_a_id = p2p_usdc_weth.create_loan(
+        signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
+    )
+    loan_a = _build_aggregated_loan(
+        p2p_usdc_weth,
+        signed_offer,
+        loan_a_id,
+        principal=principal,
+        collateral_amount=collateral_amount,
+        borrower=borrower,
+        vault_id=vault_id_a,
+        create_time=create_time_a,
+    )
+    assert compute_loan_hash(loan_a) == p2p_usdc_weth.loans(loan_a_id)
+
+    # --- Open loan B against the SAME aggregated offer ---
+    # loan_id = keccak(borrower, lender, create_time, offer_id); advance 1s so B's id differs from A's.
+    boa.env.time_travel(seconds=1)
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    # Precondition: both loans committed -> commited_liquidity == 2*P == available_liquidity.
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == 2 * principal
+
+    # --- Default loan A and liquidate it via a third party (liquidator != lender) ---
+    boa.env.time_travel(seconds=loan_a.maturity + 1 - boa.env.evm.patch.timestamp)
+    liquidator = boa.env.generate_address("liquidator")
+
+    current_interest = loan_a.get_interest(loan_a.maturity)
+    outstanding_debt = loan_a.amount + current_interest
+    assert current_interest > 0  # precondition: interest accrued -> outstanding_debt != principal
+
+    # Surplus (payment+collateral) branch: liquidator pays outstanding_debt, receives collateral.
+    usdc.mint(liquidator, outstanding_debt)
+    usdc.approve(p2p_usdc_weth.address, outstanding_debt, sender=liquidator)
+
+    committed_before = p2p_usdc_weth.commited_liquidity(liquidity_key)
+    p2p_usdc_weth.liquidate_loan(loan_a, EMPTY_REDEEM_RESULT, sender=liquidator)
+    committed_after = p2p_usdc_weth.commited_liquidity(liquidity_key)
+
+    # The fix: freed exactly loan.amount (P). The bug freed outstanding_debt (P + interest),
+    # which is strictly larger, so committed_after would be principal - interest, not principal.
+    assert committed_before - committed_after == principal
+    assert committed_after == principal  # exactly loan B's commitment remains
+
+    # End-to-end: exactly one more loan of principal P fits (offer utilization respected), and a
+    # further one is rejected. Under the bug, committed_after would be principal - interest, so the
+    # offer would be under-committed and this second post-liquidation loan plus a third could
+    # over-utilize available_liquidity.
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == 2 * principal
+
+    # Offer is now fully committed (2*P == available_liquidity); one more must be rejected.
+    # Advance 1s so this loan's id differs and we reach the "offer fully utilized" check (not "loan
+    # already exists", which is asserted earlier in create_loan).
+    boa.env.time_travel(seconds=1)
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    with boa.reverts("offer fully utilized"):
+        p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+
+def test_liquidate_loan_shortfall_frees_only_recovered_principal_retaining_loss_on_aggregated_offer(
+    p2p_usdc_weth,
+    usdc,
+    weth,
+    oracle,
+    now,
+    borrower,
+    lender,
+    lender_key,
+    protocol_fees,
+    kyc_for,
+    kyc_validator_contract,
+):
+    """Audit finding #6 refinement (shortfall branch): when a full liquidation recovers LESS than
+    the principal (recovery < P), liquidate_loan must free only the recovered principal
+    (min(lender_funds_delta, loan.amount)) — NOT the full loan.amount. The unrecovered part is a
+    realized loss that must stay committed permanently so it isn't re-advertised as reusable offer
+    capacity.
+
+    Uses an aggregated / reusable offer (available_liquidity = 2*P, borrower == empty) so the
+    retained loss is observable (not masked by the single-loan clamp-at-0). Two loans (total 2*P)
+    are committed, then loan A is driven into a genuine principal-shortfall (oracle cratered so the
+    collateral value falls well below P) and full-liquidated by a third party (liquidator != lender
+    so the reduction runs). Non-zero fees (protocol_fees fixture) make lender_funds_delta genuinely
+    net-of-fee: lender_funds_delta = remaining_collateral_value - protocol_settlement_fee_amount
+    (in_vault_payment_token == 0 for a non-redeemed loan).
+    """
+    principal = 1000 * 10**6  # P
+    collateral_amount = int(1e18)  # 1 WETH
+
+    offer = Offer(
+        principal=0,  # flexible per-loan principal (so the reuse loan can be sized to remaining capacity)
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=10 * DAY,
+        origination_fee_bps=100,
+        min_collateral_amount=int(0.5e18),
+        max_iltv=5000,
+        available_liquidity=2 * principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=6000,
+        oracle_addr=oracle.address,
+        expiration=now + 10**6,
+        lender=lender,
+        borrower=ZERO_ADDRESS,  # aggregated: reusable across loans sharing this tracing_id
+        tracing_id=32 * b"\x09",
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+    liquidity_key = _liquidity_key(lender, offer.tracing_id)
+
+    far_expiration = now + 10**6
+    kyc_borrower = kyc_for(borrower, kyc_validator_contract.address, far_expiration)
+    kyc_lender = kyc_for(lender, kyc_validator_contract.address, far_expiration)
+
+    # Fund the lender for loans A, B and the post-liquidation reuse loans (the final over-utilization
+    # attempt reverts before any transfer).
+    lender_per_loan = principal + (p2p_usdc_weth.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
+    usdc.mint(lender, 3 * lender_per_loan)
+    usdc.approve(p2p_usdc_weth.address, 3 * lender_per_loan, sender=lender)
+
+    # --- Open loan A ---
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    vault_id_a = p2p_usdc_weth.vault_count(borrower)
+    create_time_a = boa.env.evm.patch.timestamp
+    loan_a_id = p2p_usdc_weth.create_loan(
+        signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
+    )
+    loan_a = _build_aggregated_loan(
+        p2p_usdc_weth,
+        signed_offer,
+        loan_a_id,
+        principal=principal,
+        collateral_amount=collateral_amount,
+        borrower=borrower,
+        vault_id=vault_id_a,
+        create_time=create_time_a,
+    )
+    assert compute_loan_hash(loan_a) == p2p_usdc_weth.loans(loan_a_id)
+
+    # --- Open loan B against the SAME aggregated offer (advance 1s so B's id differs) ---
+    boa.env.time_travel(seconds=1)
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    # Precondition: both loans committed -> commited_liquidity == 2*P == available_liquidity.
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == 2 * principal
+
+    # --- Default loan A and crater the oracle so this is a genuine principal-shortfall ---
+    boa.env.time_travel(seconds=loan_a.maturity + 1 - boa.env.evm.patch.timestamp)
+    oracle.set_rate(oracle.rate() // 100, sender=oracle.owner())  # collateral value << P
+
+    # Compute the shortfall values replicating the contract's EXACT integer-division order (a
+    # non-redeemed loan takes the whole liquidation fee from collateral). Defaulted -> interest is
+    # accrued to maturity.
+    rate_num = oracle.latestRoundData().answer
+    rate_den = 10 ** oracle.decimals()
+    pay_dec = 10 ** usdc.decimals()
+    coll_dec = 10 ** weth.decimals()
+
+    current_interest = loan_a.get_interest(loan_a.maturity)
+    outstanding_debt = loan_a.amount + current_interest
+    assert current_interest > 0  # interest accrued -> outstanding_debt != principal
+
+    # Non-redeemed: in_vault_payment_token == 0, so the fee is taken entirely from collateral.
+    liquidation_fee_payment = outstanding_debt * loan_a.full_liquidation_fee // BPS
+    liquidation_fee_collateral = min(
+        loan_a.collateral_amount,
+        liquidation_fee_payment * rate_den * coll_dec // (rate_num * pay_dec),
+    )
+    remaining_collateral = loan_a.collateral_amount - liquidation_fee_collateral
+    remaining_collateral_value = remaining_collateral * rate_num * pay_dec // (rate_den * coll_dec)
+    protocol_settlement_fee_amount = min(
+        loan_a.protocol_settlement_fee * current_interest // BPS,
+        remaining_collateral_value,
+    )
+    # lender_funds_delta for the shortfall branch (in_vault_payment_token == 0).
+    recovered = remaining_collateral_value - protocol_settlement_fee_amount
+
+    # Preconditions: genuine shortfall AND genuine principal-shortfall (recovery < P) so the retained
+    # loss is observable and non-zero; non-zero protocol fee so the net-of-fee delta is distinguishable.
+    assert remaining_collateral_value < outstanding_debt  # shortfall branch
+    assert recovered < principal
+    assert protocol_settlement_fee_amount > 0
+
+    retained_loss = principal - recovered  # what MUST stay committed
+    assert retained_loss > 0
+
+    liquidator = boa.env.generate_address("liquidator")
+    # Shortfall branch: liquidator pays remaining_collateral_value, receives all collateral.
+    usdc.mint(liquidator, remaining_collateral_value)
+    usdc.approve(p2p_usdc_weth.address, remaining_collateral_value, sender=liquidator)
+
+    lender_usdc_before = usdc.balanceOf(lender)
+    liquidator_weth_before = weth.balanceOf(liquidator)
+    committed_before = p2p_usdc_weth.commited_liquidity(liquidity_key)
+    assert committed_before == 2 * principal
+
+    p2p_usdc_weth.liquidate_loan(loan_a, EMPTY_REDEEM_RESULT, sender=liquidator)
+
+    # Confirm we exercised the shortfall branch and captured the true recovered amount.
+    event = get_last_event(p2p_usdc_weth, "LoanLiquidated")
+    assert event.id == loan_a.id
+    assert event.shortfall == outstanding_debt - remaining_collateral_value
+    assert event.protocol_settlement_fee_amount == protocol_settlement_fee_amount
+    assert usdc.balanceOf(lender) - lender_usdc_before == recovered  # lender receives exactly the net recovery
+    assert weth.balanceOf(liquidator) == liquidator_weth_before + loan_a.collateral_amount  # gets all collateral
+
+    committed_after = p2p_usdc_weth.commited_liquidity(liquidity_key)
+    # The refinement: free only min(lender_funds_delta, loan.amount) == recovered (< P). The loss
+    # (P - recovered) stays committed. Under the #6 bug (freeing loan.amount) committed would drop
+    # by the full P, dropping committed_after to P instead of P + retained_loss.
+    assert committed_before - committed_after == recovered
+    assert committed_after == principal + retained_loss  # loan B's P + loan A's realized loss
+
+    # STRONGER: the retained loss permanently shrinks reusable capacity. Only
+    # available_liquidity - committed_after == 2*P - (P + retained_loss) == P - retained_loss == recovered
+    # can be freshly committed; one wei more must revert "offer fully utilized".
+    remaining_capacity = 2 * principal - committed_after
+    assert remaining_capacity == recovered
+
+    # Open a loan for exactly the remaining capacity -> committed returns to 2*P.
+    boa.env.time_travel(seconds=1)
+    reuse_collateral = int(1e18)
+    weth.deposit(value=reuse_collateral, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), reuse_collateral, sender=borrower)
+    p2p_usdc_weth.create_loan(signed_offer, remaining_capacity, reuse_collateral, kyc_borrower, kyc_lender, sender=borrower)
+    assert p2p_usdc_weth.commited_liquidity(liquidity_key) == 2 * principal
+
+    # One wei more must be rejected: the realized loss is gone, capacity is genuinely exhausted.
+    boa.env.time_travel(seconds=1)
+    weth.deposit(value=reuse_collateral, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), reuse_collateral, sender=borrower)
+    with boa.reverts("offer fully utilized"):
+        p2p_usdc_weth.create_loan(signed_offer, 1, reuse_collateral, kyc_borrower, kyc_lender, sender=borrower)

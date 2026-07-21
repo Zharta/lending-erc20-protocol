@@ -214,15 +214,17 @@ def mint_sync(payment_token: address, deposit_vault: address, min_ds_token_amoun
     ds_token_amount: DsTokenAmountResult = staticcall SecuritizeSwap(securitize_swap_contract).calculateDsTokenAmount(stable_coin_amount)
     assert ds_token_amount.ds_token_amount >= min_ds_token_amount, "ds token amount lt min"
 
+    initial_ds_balance: uint256 = staticcall IERC20(self.token).balanceOf(self)
     initial_payment_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
     extcall IERC20(payment_token).approve(securitize_swap_contract, stable_coin_amount)
     extcall SecuritizeSwap(securitize_swap_contract).swap(stable_coin_amount, min_ds_token_amount)
 
-    self.pending_transfers[self.owner] += ds_token_amount.ds_token_amount
-    self.pending_transfers_total += ds_token_amount.ds_token_amount
+    ds_received: uint256 = staticcall IERC20(self.token).balanceOf(self) - initial_ds_balance
+    self.pending_transfers[self.owner] += ds_received
+    self.pending_transfers_total += ds_received
 
     spent: uint256 = initial_payment_balance - staticcall IERC20(payment_token).balanceOf(self)
-    return ds_token_amount.ds_token_amount, stable_coin_amount - spent
+    return ds_received, stable_coin_amount - spent
 
 
 @external

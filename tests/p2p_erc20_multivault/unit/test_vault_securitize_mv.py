@@ -115,6 +115,42 @@ def test_mint_sync_succeeds_from_caller_over_vault_balance(mv_vault, ds_token, u
     assert mv_vault.pending_transfers_total() == expected_minted
 
 
+def test_mint_sync_credits_measured_delta_when_swap_under_delivers(mv_vault, ds_token, usdc, caller_addr, borrower):
+    """Audit finding #1 regression: mint_sync must credit/return the MEASURED DS delivered by swap(),
+    not the pre-swap `calculateDsTokenAmount` VIEW estimate.
+
+    We make the AcredMock under-deliver: the view still quotes `full` DS, but swap() delivers only 99% of
+    it. The fix snapshots balanceOf before swap() and credits the real delta, so `minted`, the vault's
+    actual DS balance, and pending_transfers[owner] all equal the DELIVERED amount — the invariant
+    (credited == held) that keeps every later withdraw/redeem_manual (which asserts amount <= balanceOf)
+    solvent. Pre-fix, mint_sync returned `full` (the view) and credited `full` to pending_transfers while
+    the vault only held `delivered`, over-crediting by `full - delivered` and freezing the collateral.
+    """
+    stable_coin_amount = 1500 * 10**6
+    full = stable_coin_amount * 10**12 // 1500  # what the VIEW (calculateDsTokenAmount) quotes: 1e18
+    delivered = full * 9900 // 10000  # what swap() actually mints at 99% delivery
+    assert delivered < full  # precondition: the swap under-delivers relative to the view
+    ds_token.set_swap_delivery_bps(9900)
+    usdc.mint(mv_vault.address, stable_coin_amount)
+
+    # precondition: the view really does quote `full` (the estimate the buggy code would have credited)
+    assert ds_token.calculateDsTokenAmount(stable_coin_amount)[0] == full
+
+    minted, refunded = mv_vault.mint_sync(usdc.address, ds_token.address, 0, stable_coin_amount, sender=caller_addr)
+
+    # minted is the MEASURED delivery, NOT the view estimate
+    assert minted == delivered
+    assert minted != full  # would have been `full` pre-fix
+    # the swap only pulled the stablecoin matching the DELIVERED DS, so the rest is refunded to the vault
+    spent = delivered * 1500 // 10**12  # ds * num // den
+    assert refunded == stable_coin_amount - spent
+    # credited (pending) == held (real DS balance): the solvency invariant the fix restores
+    assert mv_vault.pending_transfers(borrower) == delivered
+    assert mv_vault.pending_transfers_total() == delivered
+    assert ds_token.balanceOf(mv_vault.address) == delivered
+    assert mv_vault.pending_transfers_total() == ds_token.balanceOf(mv_vault.address)
+
+
 def test_withdraw_funds_zero_amount_makes_no_transfer(mv_vault, zero_revert_erc20, caller_addr):
     """withdraw_funds(token, 0) must not attempt an ERC20 transfer — the settle/liquidation paths call
     it with 0 when the vault holds no leftover payment, and some tokens revert on a 0-value transfer."""

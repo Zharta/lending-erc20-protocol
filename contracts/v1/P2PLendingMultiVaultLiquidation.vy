@@ -267,7 +267,7 @@ def liquidate_loan(
         # liquidator_collateral_delta = 0
         borrower_collateral_delta = in_vault_collateral
 
-        base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
+        base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)
 
     elif in_vault_payment_token + remaining_collateral_value >= outstanding_debt:
 
@@ -283,7 +283,7 @@ def liquidate_loan(
         borrower_collateral_delta = in_vault_collateral - liquidator_collateral_delta if in_vault_collateral > liquidator_collateral_delta else 0
 
         if liquidator != loan.lender:
-            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
+            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)
 
     else:
 
@@ -298,7 +298,7 @@ def liquidate_loan(
         # borrower_collateral_delta = 0
 
         if liquidator != loan.lender:
-            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, remaining_collateral_value)
+            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, min(lender_funds_delta, loan.amount))
 
 
     if liquidator != loan.lender:

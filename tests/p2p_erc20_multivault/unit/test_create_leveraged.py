@@ -32,6 +32,7 @@ from ..conftest_base import (
     ZERO_BYTES32,
     Loan,
     Offer,
+    SignedRedeemResult,
     compute_liquidity_key,
     compute_loan_hash,
     compute_signed_offer_id,
@@ -770,3 +771,56 @@ def test_reverts_if_mint_spend_lt_principal(
             0,
             sender=borrower,
         )
+
+
+# --------------------------------------------------------------------------- audit finding #1: under-delivering swap
+
+
+def test_under_delivering_swap_stores_measured_collateral_and_settles(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """Audit finding #1: when the swap under-delivers, the stored collateral must equal the DS the vault
+    actually holds — so the borrower can withdraw it at settle.
+
+    The AcredMock quotes `full` DS via calculateDsTokenAmount but swap() delivers only 99% (`delivered`).
+    The mint_sync fix credits/returns the MEASURED delta, so the loan stores `collateral_amount == delivered`
+    and the vault holds exactly `delivered` DS credited as the borrower's collateral. settle_loan then
+    withdraws `delivered` back to the borrower and succeeds.
+
+    Pre-fix, mint_sync returned the `full` VIEW estimate: the loan stored `collateral_amount == full` while
+    the vault held only `delivered`, so settle_loan's collateral withdraw (`amount <= balanceOf`) reverted
+    "insufficient balance" — freezing the collateral. This is the impactful, end-to-end manifestation.
+    """
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    full = _minted(mint_spend)  # what the VIEW quotes: 1e18
+    delivered = full * 9900 // 10000  # what swap() actually mints at 99% delivery
+    assert delivered < full  # precondition: under-delivery
+    acred_lev.set_swap_delivery_bps(9900)
+
+    signed_offer = _sign_leveraged_offer(p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal)
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+    vault_addr = p2p_usdc_acred.wallet_to_vault(borrower)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, delivered, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    # the loan hashes to `collateral_amount == delivered` (the MEASURED mint), NOT the `full` view estimate
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=delivered
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    # the vault holds exactly what was stored: solvency invariant (a `full`-stored loan would exceed this)
+    assert acred_lev.balanceOf(vault_addr) == delivered
+    assert loan.collateral_amount == delivered
+
+    # settle in the same block (interest 0): the borrower repays `principal` and reclaims the collateral.
+    borrower_ds_before = acred_lev.balanceOf(borrower)
+    usdc.mint(borrower, principal)
+    usdc.approve(p2p_usdc_acred.address, principal, sender=borrower)
+
+    p2p_usdc_acred.settle_loan(loan, SignedRedeemResult(), sender=borrower)  # pre-fix: "insufficient balance"
+
+    assert p2p_usdc_acred.loans(loan_id) == ZERO_BYTES32  # loan settled
+    assert acred_lev.balanceOf(vault_addr) == 0  # collateral fully drained from the vault
+    assert acred_lev.balanceOf(borrower) - borrower_ds_before == delivered  # borrower got the DS back
