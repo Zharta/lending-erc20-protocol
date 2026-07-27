@@ -231,6 +231,16 @@
             },
             "properties_addresses": {}
         },
+        "oracle_mfone_usd": {
+            "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
+            "address": "0x1142576A3e90535673D2651cBE771a18F908BA6b",
+            "contract": "Oracle",
+            "properties": {
+                "decimals": 8,
+                "rate": "107000000"
+            },
+            "properties_addresses": {}
+        },
         "oracle_xprism_usd": {
             "abi_key": "9e64338694a36273af5debbd946872df57d4d7e3",
             "address": "0xb187d4E1D90c871fBb042C2066CFF0554Ee8B349",
@@ -749,6 +759,33 @@
                 "payment_token": "0x74540605Dc99f9cd65A3eA89231fFA727B1049E2",
                 "refinance_impl": "0x96fa22A62dbB6db6EdFC1702d3Ab8783f48f3FE3",
                 "vault_impl": "0xa435BC9B5A5d67Bf462362CFe9A115364FC98Dc2"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
+        "usdc_mfone_vaulted": {
+            "address": "",
+            "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: mF-ONE / USD",
+            "properties": {
+                "collateral_token_key": "common.mf-one",
+                "full_liquidation_fee": 1000,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_vaulted_impl",
+                "max_protocol_settlement_fee": 1000,
+                "max_protocol_upfront_fee": 1000,
+                "oracle_key": "common.oracle_mfone_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 1000,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
+                "refinance_impl_key": "common.refinance_vaulted_impl",
+                "transfer_agent": "0x0000000000000000000000000000000000000000",
+                "vault_impl_key": "common.vault_impl"
+            },
+            "properties_addresses": {
             },
             "token_symbol": "USDC",
             "version": "1"
