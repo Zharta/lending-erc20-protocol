@@ -512,6 +512,41 @@
             "token_symbol": "USDC",
             "version": "1"
         },
+        "usdc_mfone_vaulted": {
+            "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
+            "address": "0x9F509cCCCE39cc9367Aa535375c2c7a8E73c7120",
+            "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: mF-ONE / USD",
+            "properties": {
+                "collateral_token_key": "common.mf-one",
+                "full_liquidation_fee": 500,
+                "kyc_validator_key": "common.kyc",
+                "liquidation_impl_key": "common.liquidation_vaulted_impl",
+                "max_protocol_settlement_fee": 5000,
+                "max_protocol_upfront_fee": 5000,
+                "oracle_key": "common.oracle_mfone_usd",
+                "oracle_reverse": false,
+                "partial_liquidation_fee": 400,
+                "payment_token_key": "common.usdc",
+                "protocol_settlement_fee": 0,
+                "protocol_upfront_fee": 0,
+                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
+                "refinance_impl_key": "common.refinance_vaulted_impl",
+                "transfer_agent": "0x0000000000000000000000000000000000000000",
+                "vault_impl_key": "common.vault_impl"
+            },
+            "properties_addresses": {
+                "collateral_token": "0x238a700eD6165261Cf8b2e544ba797BC11e466Ba",
+                "kyc_validator": "0x87256242c6628b3627F3d96A6C8C567Ce94eD2F1",
+                "liquidation_impl": "0x10D62EDE894F8c4ddb9fDBc462ac6FF260Cc36B3",
+                "oracle": "0x8D51DBC85cEef637c97D02bdaAbb5E274850e68C",
+                "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "refinance_impl": "0x8850dEA069963fAFDD7723e7D4A5854d639C7519",
+                "vault_impl": "0x08AE358060C6AF60710EAfDA7B9f06C375dF5D22"
+            },
+            "token_symbol": "USDC",
+            "version": "1"
+        },
         "usdc_scope_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x1A7113E4787E979169b85Bca56193FB08e5562c4",
@@ -648,33 +683,6 @@
                 "payment_token": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
                 "refinance_impl": "0x8850dEA069963fAFDD7723e7D4A5854d639C7519",
                 "vault_impl": "0x08AE358060C6AF60710EAfDA7B9f06C375dF5D22"
-            },
-            "token_symbol": "USDC",
-            "version": "1"
-        },
-        "usdc_mfone_vaulted": {
-            "address": "",
-            "contract": "P2PLendingVaultedErc20",
-            "oracle_name": "Feed: mF-ONE / USD",
-            "properties": {
-                "collateral_token_key": "common.mf-one",
-                "full_liquidation_fee": 500,
-                "kyc_validator_key": "common.kyc",
-                "liquidation_impl_key": "common.liquidation_vaulted_impl",
-                "max_protocol_settlement_fee": 5000,
-                "max_protocol_upfront_fee": 5000,
-                "oracle_key": "common.oracle_mfone_usd",
-                "oracle_reverse": false,
-                "partial_liquidation_fee": 400,
-                "payment_token_key": "common.usdc",
-                "protocol_settlement_fee": 0,
-                "protocol_upfront_fee": 0,
-                "protocol_wallet": "0x07d96cC26566BFCA358C61fBe7be3Ca771Da7EA6",
-                "refinance_impl_key": "common.refinance_vaulted_impl",
-                "transfer_agent": "0x0000000000000000000000000000000000000000",
-                "vault_impl_key": "common.vault_impl"
-            },
-            "properties_addresses": {
             },
             "token_symbol": "USDC",
             "version": "1"
