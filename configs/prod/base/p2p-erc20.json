@@ -2,7 +2,7 @@
     "common": {
         "kyc": {
             "abi_key": "c9c669b817531c2dd57ea0619817312855a9935c",
-            "address": "",
+            "address": "0x7afc13Ef780bB92C87AF100ef8ED646B5B3AF0fA",
             "contract": "KYCValidator",
             "properties": {
                 "validator": "0x5723759D679662cf931d686f129E3296D9545190"
@@ -11,7 +11,7 @@
         },
         "liquidation_vaulted_impl": {
             "abi_key": "d1c812296c304cb8b9872626d06620764fb6cd04",
-            "address": "",
+            "address": "0x9a99Ea6AC47592F00E646be131b3075ca9AAe644",
             "contract": "LiquidationVaultedImpl",
             "properties": {},
             "properties_addresses": {}
@@ -28,13 +28,14 @@
         },
         "oracle_despxa_usd": {
             "abi_key": "da97ffb35dca84eae3a6471ca238ba92c125dd96",
-            "address": "",
+            "address": "0xc6A018FD28435726e743AE446eE3a53C175c1967",
             "contract": "CentrifugeOracleAdapter",
             "properties": {
                 "asset_key": "common.despxa",
                 "spoke_key": "configs.centrifuge_spoke"
             },
             "properties_addresses": {
+                "asset": "0x9c5C365e764829876243d0b289733B9D2b729685"
             }
         },
         "oracle_eth_usd": {
@@ -49,14 +50,14 @@
         },
         "refinance_vaulted_impl": {
             "abi_key": "f56901eadd8fafc86a9c43ffb45abc9d375224a3",
-            "address": "",
+            "address": "0x323aeb15c6507f060191f6af1eCd4497506a5348",
             "contract": "RefinanceVaultedImpl",
             "properties": {},
             "properties_addresses": {}
         },
         "vault_impl": {
             "abi_key": "d1a14f70994b15f4446092f85ae8d69ae2c7db72",
-            "address": "",
+            "address": "0x12E2B70C57F966e190a7Eb661915dD4BEde536BD",
             "contract": "VaultImpl",
             "properties": {},
             "properties_addresses": {}
@@ -68,7 +69,7 @@
     "p2p": {
         "base_usdc_cbbtc_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
-            "address": "",
+            "address": "0xC4D6c481F89F1DC75c3E8e65ECa82e31C4027669",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: cbBTC / USD",
             "properties": {
@@ -90,13 +91,20 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
+                "collateral_token": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+                "kyc_validator": "0x7afc13Ef780bB92C87AF100ef8ED646B5B3AF0fA",
+                "liquidation_impl": "0x9a99Ea6AC47592F00E646be131b3075ca9AAe644",
+                "oracle": "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D",
+                "payment_token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "refinance_impl": "0x323aeb15c6507f060191f6af1eCd4497506a5348",
+                "vault_impl": "0x12E2B70C57F966e190a7Eb661915dD4BEde536BD"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "base_usdc_despxa_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
-            "address": "",
+            "address": "0x0213F941040D73c630619ee873f3d35501F1b45E",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Centrifuge Oracle: deSPXA / USD",
             "properties": {
@@ -118,13 +126,20 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
+                "collateral_token": "0x9c5C365e764829876243d0b289733B9D2b729685",
+                "kyc_validator": "0x7afc13Ef780bB92C87AF100ef8ED646B5B3AF0fA",
+                "liquidation_impl": "0x9a99Ea6AC47592F00E646be131b3075ca9AAe644",
+                "oracle": "0xc6A018FD28435726e743AE446eE3a53C175c1967",
+                "payment_token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "refinance_impl": "0x323aeb15c6507f060191f6af1eCd4497506a5348",
+                "vault_impl": "0x12E2B70C57F966e190a7Eb661915dD4BEde536BD"
             },
             "token_symbol": "USDC",
             "version": "1"
         },
         "base_usdc_weth_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
-            "address": "",
+            "address": "0x71B5EBf9c632581e9a959612fF013DBFEaf9dc0F",
             "contract": "P2PLendingVaultedErc20",
             "oracle_name": "Chainlink Feed: ETH / USD",
             "properties": {
@@ -146,6 +161,13 @@
                 "vault_impl_key": "common.vault_impl"
             },
             "properties_addresses": {
+                "collateral_token": "0x4200000000000000000000000000000000000006",
+                "kyc_validator": "0x7afc13Ef780bB92C87AF100ef8ED646B5B3AF0fA",
+                "liquidation_impl": "0x9a99Ea6AC47592F00E646be131b3075ca9AAe644",
+                "oracle": "0x5731Ae06077c79A3B292498940211E0aE7130bd3",
+                "payment_token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "refinance_impl": "0x323aeb15c6507f060191f6af1eCd4497506a5348",
+                "vault_impl": "0x12E2B70C57F966e190a7Eb661915dD4BEde536BD"
             },
             "token_symbol": "USDC",
             "version": "1"
