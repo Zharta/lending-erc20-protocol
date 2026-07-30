@@ -23,8 +23,6 @@ interface MidasRedemptionVault:
     def tokensConfig(token: address) -> MidasTokenConfig: view
     def waivedFeeRestriction(user: address) -> bool: view
 
-interface P2PLendingContract:
-    def authorized_proxies(proxy: address) -> bool: view
 
 
 BPS: constant(uint256) = 10000
@@ -33,6 +31,9 @@ implements: base.Vault
 
 
 VERSION: public(constant(String[30])) = "P2PLendingVaultMidas.20260423"
+
+# Midas supports instant mint (depositInstant) and instant redeem (redeemInstant).
+capabilities: public(constant(uint256)) = base.MINT_SYNC | base.REDEEM_SYNC
 
 # Structs
 
@@ -194,8 +195,9 @@ def withdraw_funds(payment_token: address, amount: uint256):
     @param amount The amount of tokens to withdraw.
     """
 
-    assert self._check_user(self.caller), "unauthorized"
-    assert extcall IERC20(payment_token).transfer(self.caller, amount), "transfer failed"
+    assert msg.sender == self.caller, "unauthorized"
+    if amount > 0:
+        assert extcall IERC20(payment_token).transfer(self.caller, amount), "transfer failed"
 
 
 @external
@@ -208,14 +210,14 @@ def transfer_funds(payment_token: address, amount: uint256, wallet: address):
     @param wallet The address of the wallet to which tokens will be transferred.
     """
 
-    assert self._check_user(self.caller), "unauthorized"
+    assert msg.sender == self.caller, "unauthorized"
     if amount > 0:
         assert extcall IERC20(payment_token).transfer(wallet, amount), "transfer failed"
 
 
 @external
 @nonreentrant
-def buy(payment_token: address, deposit_vault: address, min_mtoken_amount: uint256, stable_coin_amount: uint256):
+def mint_sync(payment_token: address, deposit_vault: address, min_mtoken_amount: uint256, stable_coin_amount: uint256) -> (uint256, uint256):
     """
     @notice Buy mTokens using stablecoins via a Midas DepositVault contract.
     @dev Approves the DepositVault to spend stablecoins and executes the deposit operation.
@@ -223,17 +225,19 @@ def buy(payment_token: address, deposit_vault: address, min_mtoken_amount: uint2
     @param deposit_vault The address of the Midas DepositVault contract.
     @param min_mtoken_amount The minimum amount of mTokens to receive
     @param stable_coin_amount The amount of stablecoins to spend (in native token decimals).
+    @return A tuple (minted, refunded): the amount of mTokens received and credited to the owner as
+            pending, and the payment token balance left in the vault after the mint (the unspent
+            pre-funded payment, per Decision Log D2). The lending contract handles the refund.
     """
 
-    assert self._check_user(self.owner), "unauthorized"
+    assert msg.sender == self.caller, "unauthorized"
 
     token_decimals: uint256 = convert(staticcall IERC20Detailed(payment_token).decimals(), uint256)
     mtoken_decimals: uint256 = convert(staticcall IERC20Detailed(self.token).decimals(), uint256)
 
-    initial_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
     initial_mtoken_balance: uint256 = staticcall IERC20(self.token).balanceOf(self)
+    initial_payment_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
 
-    assert extcall IERC20(payment_token).transferFrom(msg.sender, self, stable_coin_amount), "transferFrom failed"
     extcall IERC20(payment_token).approve(deposit_vault, stable_coin_amount)
     extcall MidasDepositVault(deposit_vault).depositInstant(
         payment_token,
@@ -247,16 +251,67 @@ def buy(payment_token: address, deposit_vault: address, min_mtoken_amount: uint2
     self.pending_transfers[self.owner] += mtoken_received
     self.pending_transfers_total += mtoken_received
 
-    remaining_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
-    if remaining_balance > initial_balance:
-        extcall IERC20(payment_token).transfer(msg.sender, remaining_balance - initial_balance)
-
     log Buy(owner=self.owner, deposit_vault=deposit_vault, stable_coin_amount=stable_coin_amount, mtoken_received=mtoken_received)
+
+    spent: uint256 = initial_payment_balance - staticcall IERC20(payment_token).balanceOf(self)
+    return mtoken_received, stable_coin_amount - spent
+
+
+@external
+def redeem_manual(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256):
+    raise "redeem_manual not supported"
+
+
+@external
+def mint_manual(payment_token: address, deposit_vault: address, min_collateral_out: uint256, stable_coin_amount: uint256):
+    raise "mint_manual not supported"
+
+
+@external
+def mint_async(payment_token: address, deposit_vault: address, min_collateral_out: uint256, stable_coin_amount: uint256):
+    raise "mint_async not supported"
+
+
+@external
+@view
+def mint_status(mint_vault: address) -> base.AsyncStatus:
+    raise "mint_status not supported"
+
+
+@external
+def claim_mint(mint_vault: address, claim_deposit: bool, claim_cancel: bool) -> (uint256, uint256):
+    raise "claim_mint not supported"
+
+
+@external
+def cancel_mint(mint_vault: address):
+    raise "cancel_mint not supported"
+
+
+@external
+def redeem_async(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256):
+    raise "redeem_async not supported"
+
+
+@external
+@view
+def redeem_status(redemption_vault: address) -> base.AsyncStatus:
+    raise "redeem_status not supported"
+
+
+@external
+def claim_redeem(redemption_vault: address, claim_redeem: bool, claim_cancel: bool) -> (uint256, uint256):
+    raise "claim_redeem not supported"
+
+
+@external
+def cancel_redeem(redemption_vault: address):
+    raise "cancel_redeem not supported"
 
 
 @external
 @nonreentrant
-def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> uint256:
+def redeem_sync(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> (uint256, uint256):
     """
     @notice Redeem mTokens back to stablecoins via a Midas RedemptionVault contract.
     @dev Approves the RedemptionVault to spend mTokens and executes the redemption. The minimum
@@ -269,9 +324,8 @@ def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256
     @param oracle_rate_den The denominator of the collateral->payment token oracle rate.
     """
 
-    assert self._check_user(self.caller), "unauthorized"
+    assert msg.sender == self.caller, "unauthorized"
 
-    token_decimals: uint256 = convert(staticcall IERC20Detailed(token_out).decimals(), uint256)
     mtoken_decimals: uint256 = convert(staticcall IERC20Detailed(self.token).decimals(), uint256)
     initial_balance: uint256 = staticcall IERC20(token_out).balanceOf(self)
 
@@ -279,8 +333,7 @@ def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256
 
     fee_percent: uint256 = self._midas_redeem_fee(redemption_vault, token_out)
     amount_without_fee: uint256 = amount_mtoken_base18 - amount_mtoken_base18 * fee_percent // BPS
-    scale: uint256 = 10 ** (18 - token_decimals)
-    min_receive_amount: uint256 = amount_without_fee * oracle_rate_num // (oracle_rate_den * scale * scale)
+    min_receive_amount: uint256 = amount_without_fee * oracle_rate_num // oracle_rate_den
 
     extcall IERC20(self.token).approve(redemption_vault, amount_mtoken)
     extcall MidasRedemptionVault(redemption_vault).redeemInstant(
@@ -293,7 +346,8 @@ def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256
 
     log Redeem(owner=self.owner, redemption_vault=redemption_vault, mtoken_amount=amount_mtoken, token_out_received=token_out_received)
 
-    return token_out_received
+    # Midas has no partial-redeem leftover
+    return token_out_received, 0
 
 
 @view
@@ -310,8 +364,3 @@ def _midas_redeem_fee(redemption_vault: address, token_out: address) -> uint256:
         + (staticcall MidasRedemptionVault(redemption_vault).tokensConfig(token_out)).fee
     )
     return min(fee_percent, BPS)
-
-
-@internal
-def _check_user(user: address) -> bool:
-    return msg.sender == user or (staticcall P2PLendingContract(self.caller).authorized_proxies(msg.sender) and user == tx.origin)

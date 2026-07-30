@@ -61,6 +61,21 @@ stable_coin_addr: public(address)
 
 blacklisted: public(HashMap[address, bool])
 
+# Test knob: cap on the DS tokens a single swap can mint (0 = uncapped). Applied consistently in
+# BOTH calculateDsTokenAmount and swap — P2PLendingVaultSecuritizeMV credits the pre-calculated
+# amount to pending_transfers, so the two must always agree. A cap below the rate-implied amount
+# makes the swap pull only the corresponding stablecoin, leaving the rest unspent in the vault
+# (the partial-spend / refund scenario for leveraged-mint tests).
+max_mint_amount: public(uint256)
+
+# Test knob: fraction (in bps, 10000 = 100%) of the rate-implied DS that `swap` actually DELIVERS,
+# while `calculateDsTokenAmount` keeps returning the full rate-implied amount. Default 10000 keeps
+# view == delivered (byte-identical to the un-knobbed behavior). A value below 10000 makes the swap
+# UNDER-deliver relative to the view — the divergence that P2PLendingVaultSecuritizeMV.mint_sync must
+# handle by crediting the MEASURED balance delta, not the pre-swap `calculateDsTokenAmount` estimate.
+# A realistic swap still enforces the caller's min-out on the DELIVERED amount.
+swap_delivery_bps: public(uint256)
+
 @deploy
 def __init__(_name: String[64], _symbol: String[32], _decimals: uint8, _supply: uint256, oracle_addr: address, stable_coin_addr: address):
     name = _name
@@ -72,6 +87,7 @@ def __init__(_name: String[64], _symbol: String[32], _decimals: uint8, _supply: 
     self.minter = msg.sender
     self.oracle_addr = oracle_addr
     self.stable_coin_addr = stable_coin_addr
+    self.swap_delivery_bps = 10000  # full delivery by default (view == delivered)
     log Transfer(sender=empty(address), receiver=msg.sender, value=init_supply)
 
 
@@ -195,11 +211,32 @@ def blacklist(_address: address, _value: bool):
     self.blacklisted[_address] = _value
 
 @external
+def set_max_mint_amount(_amount: uint256):
+    self.max_mint_amount = _amount
+
+@external
+def set_swap_delivery_bps(_bps: uint256):
+    self.swap_delivery_bps = _bps
+
+@external
 @view
 def getDSService(_serviceId: uint256) -> address:
     if _serviceId == SEC_SWAP_SERVICE_ID:
         return self
     return empty(address)
+
+@internal
+@view
+def _ds_token_amount(_stableCoinAmount: uint256) -> uint256:
+    # Oracle rate num/den = payment per DS token, so ds_out = stable * den // num. The
+    # max_mint_amount cap applies here so calculateDsTokenAmount and swap always agree.
+    numerator: uint256 = 0
+    denominator: uint256 = 0
+    (numerator, denominator) = self._get_rate()
+    amount: uint256 = _stableCoinAmount * denominator // numerator
+    if self.max_mint_amount > 0 and self.max_mint_amount < amount:
+        amount = self.max_mint_amount
+    return amount
 
 @external
 @view
@@ -207,16 +244,16 @@ def calculateDsTokenAmount(_stableCoinAmount: uint256) -> (uint256, uint256, uin
     numerator: uint256 = 0
     denominator: uint256 = 0
     (numerator, denominator) = self._get_rate()
-    amount: uint256 = _stableCoinAmount * denominator // numerator
-    return amount, numerator, 0
+    return self._ds_token_amount(_stableCoinAmount), numerator, 0
 
 @external
 def swap(liquidityAmount: uint256, minOutAmount: uint256):
     numerator: uint256 = 0
     denominator: uint256 = 0
     (numerator, denominator) = self._get_rate()
-    _dsTokenAmount: uint256 = liquidityAmount * numerator // denominator
-    _liquidityAmount: uint256 = _dsTokenAmount * denominator // numerator
+    full: uint256 = self._ds_token_amount(liquidityAmount)
+    _dsTokenAmount: uint256 = full * self.swap_delivery_bps // 10000
+    _liquidityAmount: uint256 = _dsTokenAmount * numerator // denominator
     assert _dsTokenAmount >= minOutAmount, "insufficient output amount"
 
     extcall IERC20(self.stable_coin_addr).transferFrom(msg.sender, self, _liquidityAmount)

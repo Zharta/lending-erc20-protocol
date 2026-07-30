@@ -60,6 +60,7 @@ def partially_liquidate_loan(
     assert base._is_loan_valid(loan), "invalid loan"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan redeemed"
+    assert base._is_loan_started(loan), "loan not started"
     liquidator: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
 
     current_interest: uint256 = base._compute_settlement_interest(loan)
@@ -93,6 +94,7 @@ def partially_liquidate_loan(
         apr=loan.apr,
         payment_token=loan.payment_token,
         maturity=loan.maturity,
+        create_time=loan.create_time,
         start_time=loan.start_time,
         accrual_start_time=block.timestamp,  # reset accrual start time
         borrower=loan.borrower,
@@ -114,6 +116,7 @@ def partially_liquidate_loan(
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=loan.max_pending_window,
     )
 
     base.loans[loan.id] = base._loan_state_hash(updated_loan)
@@ -145,6 +148,7 @@ def partially_liquidate_loan(
 def liquidate_loan(
     loan: base.Loan,
     redeem_result: base.SignedRedeemResult,
+    vault_capabilities: uint256,
 
     payment_token: address,
     collateral_token: address,
@@ -163,7 +167,8 @@ def liquidate_loan(
     """
 
     assert base._is_loan_valid(loan), "invalid loan"
-    # assert base._is_loan_defaulted(loan), "loan not defaulted"
+    assert base._is_loan_started(loan), "loan not started"
+
     liquidator: address = msg.sender if not base.authorized_proxies[msg.sender] else tx.origin
     current_interest: uint256 = 0
     in_vault_collateral: uint256 = loan.collateral_amount
@@ -172,8 +177,7 @@ def liquidate_loan(
     _vault: base.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
     is_loan_redeemed: bool = base._is_loan_redeemed(loan)
     if is_loan_redeemed:
-        assert base._is_loan_redeem_concluded(loan, _vault, redeem_result), "redeem not concluded"
-        in_vault_payment_token, in_vault_collateral = base._get_redeem_balances(loan, _vault, payment_token, redeem_result.result)
+        in_vault_payment_token, in_vault_collateral = base._resolve_redeem_balances(loan, _vault, payment_token, redeem_result, vault_capabilities)
 
     if not base._is_loan_defaulted(loan):
         assert loan.liquidation_ltv > 0, "not defaulted, partial disabled"
@@ -263,7 +267,7 @@ def liquidate_loan(
         # liquidator_collateral_delta = 0
         borrower_collateral_delta = in_vault_collateral
 
-        base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
+        base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)
 
     elif in_vault_payment_token + remaining_collateral_value >= outstanding_debt:
 
@@ -279,7 +283,7 @@ def liquidate_loan(
         borrower_collateral_delta = in_vault_collateral - liquidator_collateral_delta if in_vault_collateral > liquidator_collateral_delta else 0
 
         if liquidator != loan.lender:
-            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, outstanding_debt)
+            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, loan.amount)
 
     else:
 
@@ -294,7 +298,7 @@ def liquidate_loan(
         # borrower_collateral_delta = 0
 
         if liquidator != loan.lender:
-            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, remaining_collateral_value)
+            base._reduce_commited_liquidity(loan.lender, loan.offer_tracing_id, min(lender_funds_delta, loan.amount))
 
 
     if liquidator != loan.lender:
@@ -347,6 +351,7 @@ def simulate_partial_liquidation(
     assert base._is_loan_valid(loan), "invalid loan"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan redeemed"
+    assert base._is_loan_started(loan), "loan not started"
 
     current_interest: uint256 = base._compute_settlement_interest(loan)
     convertion_rate: base.UInt256Rational = base._get_oracle_rate(oracle_addr, oracle_reverse)
@@ -385,6 +390,7 @@ def transfer_loan(
     new_borrower: address,
     new_borrower_kyc: base.SignedWalletValidation,
     redeem_result: base.SignedRedeemResult,
+    vault_capabilities: uint256,
 
     payment_token: address,
     collateral_token: address,
@@ -399,6 +405,7 @@ def transfer_loan(
 ):
 
     assert base._is_loan_valid(loan), "invalid loan"
+    assert base._is_loan_started(loan), "loan not started"  # D9: transfer stays disallowed on pending loans
     assert base._check_user(base.transfer_agent), "not transfer agent"
     assert new_borrower != loan.borrower, "new borrower same as current"
 
@@ -406,7 +413,12 @@ def transfer_loan(
     current_vault: base.Vault = base._get_vault(loan.borrower, loan.vault_id, vault_impl_addr)
 
     if is_loan_redeemed:
-        assert base._is_loan_redeem_concluded(loan, current_vault, redeem_result), "redeem not concluded"
+        if (vault_capabilities & base.REDEEM_ASYNC) != 0:
+            status: base.AsyncStatus = staticcall current_vault.redeem_status(base.redemption_addr)
+            assert status.request_pending == 0 and status.request_claimable > 0 and status.cancel_pending == 0 and status.cancel_claimable == 0, "redeem not settled"
+            extcall current_vault.claim_redeem(base.redemption_addr, True, False)
+        else:
+            assert base._is_loan_redeem_concluded(loan, current_vault, redeem_result, vault_capabilities), "redeem not concluded"
 
     assert staticcall base.KYCValidator(kyc_validator_addr).check_validation(new_borrower_kyc), "KYC validation fail"
     assert new_borrower_kyc.validation.wallet == new_borrower, "KYC validation fail"
@@ -420,6 +432,7 @@ def transfer_loan(
         apr=loan.apr,
         payment_token=loan.payment_token,
         maturity=loan.maturity,
+        create_time=loan.create_time,
         start_time=loan.start_time,
         accrual_start_time=loan.accrual_start_time,
         borrower=new_borrower,
@@ -441,6 +454,7 @@ def transfer_loan(
         vault_id=base.vault_count[new_borrower],
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=loan.max_pending_window,
     )
     updated_loan.id = base._compute_loan_id(updated_loan)
     base.loans[updated_loan.id] = base._loan_state_hash(updated_loan)

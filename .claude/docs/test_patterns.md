@@ -26,6 +26,15 @@ test_settle_loan_reverts_if_funds_not_approved            # revert: insufficient
 
 This means a single contract function may have 10+ unit tests. That's expected — each test is small, focused, and independently verifiable.
 
+### Keep tests concrete — fixtures set the stage, tests do the acting
+
+Fixtures and helper functions are fine for repetitive stage-setting (deploying contracts, minting/approving tokens, signing offers, building expected structs). But the substance of the test must be visible in the test body itself:
+
+- **The call under test appears in the test body.** Call the contract function directly (`p2p.create_leveraged_loan(signed_offer, principal, ...)`). Never hide it behind a closure or factory wrapper (`s.create()`) — a reader must see which function is called, with which arguments, by which sender.
+- **Values the assertions depend on are concrete in the test.** Principal, fees, refunds, collateral amounts, timestamps — write them as literals (or trivially derived locals) in the test body. Defaults buried in a conftest factory make assertion math unverifiable without opening another file.
+- **No `SimpleNamespace` / dict grab-bags from fixtures.** Return real objects (a contract, a signed offer, a `Loan` NamedTuple). If a fixture would need to return 8 loosely related values plus a closure, it's doing too much — split it or inline it.
+- **One level of indirection, max.** Reading the test plus the fixture signatures should fully explain the scenario. If understanding a 3-line test requires tracing conftest helpers 3 levels deep, the test is obfuscated — inline the setup even if it costs 10 more lines per test. Some duplication across tests is fine; unreadable tests are not.
+
 ### Revert tests cover every code path
 
 For **loan validation reverts**, use `get_loan_mutations()` to test every possible single-field corruption:

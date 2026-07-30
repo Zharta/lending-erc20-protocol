@@ -35,55 +35,18 @@ def weth_vault(securitize_vault_contract_def, vault_owner, weth, min_vault_manag
     return v
 
 
-def test_buy_skips_refund_when_remaining_equals_initial(vault, vault_owner, acred, usdc):
-    """When remaining_balance == initial_balance (both zero), no stablecoin transfer back occurs.
+def test_buy_refunds_swap_leftover_from_10(vault, vault_owner, acred, usdc):
+    """AcredMock swap direction is consistent: ds = stable*den//num, liquidity pulled = ds*num//den.
 
-    With oracle rate 3/10:
-    - swap(10): _dsTokenAmount = 10*3//10 = 3, _liquidityAmount = 3*10//3 = 10
-    - All stablecoins consumed exactly, remaining_balance == initial_balance == 0
+    With oracle rate num=3, den=10:
+    - swap(10): ds = 10*10//3 = 33, liquidity pulled = 33*3//10 = 9
+    - Only 9 of 10 stablecoins consumed, 1 refunded to the caller.
     """
     stable_amount = 10
-    usdc.mint(vault_owner, stable_amount)
-    usdc.approve(vault.address, stable_amount, sender=vault_owner)
-
-    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
-
-    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
-    assert len(refund_transfers) == 0
-    assert usdc.balanceOf(vault.address) == 0
-    assert vault.pending_transfers(vault_owner) == 10 * 10 // 3  # calculateDsTokenAmount
-    assert vault.pending_transfers_total() == 10 * 10 // 3
-
-
-def test_buy_skips_refund_when_remaining_equals_initial_nonzero(vault, vault_owner, acred, usdc):
-    """When vault has pre-existing stablecoin balance and remaining == initial, no transfer occurs."""
-    preexisting = 100
-    usdc.mint(vault_owner, preexisting)
-    usdc.transfer(vault.address, preexisting, sender=vault_owner)
-    assert usdc.balanceOf(vault.address) == preexisting
-
-    stable_amount = 10
-    usdc.mint(vault_owner, stable_amount)
-    usdc.approve(vault.address, stable_amount, sender=vault_owner)
-
-    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
-
-    # only transfer to vault is the pre-seeding, no refund from vault to vault_owner
-    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
-    assert len(refund_transfers) == 0
-    assert usdc.balanceOf(vault.address) == preexisting
-    assert vault.pending_transfers(vault_owner) == 10 * 10 // 3
-    assert vault.pending_transfers_total() == 10 * 10 // 3
-
-
-def test_buy_refunds_excess_when_remaining_exceeds_initial(vault, vault_owner, acred, usdc):
-    """When remaining_balance > initial_balance, excess stablecoins are transferred back.
-
-    With oracle rate 3/10:
-    - swap(11): _dsTokenAmount = 11*3//10 = 3, _liquidityAmount = 3*10//3 = 10
-    - Only 10 of 11 stablecoins consumed, 1 returned to sender
-    """
-    stable_amount = 11
+    ds = stable_amount * 10 // 3  # 33
+    liquidity_pulled = ds * 3 // 10  # 9
+    refund = stable_amount - liquidity_pulled  # 1
+    assert refund == 1  # precondition: partial spend leaves a refund
     usdc.mint(vault_owner, stable_amount)
     usdc.approve(vault.address, stable_amount, sender=vault_owner)
 
@@ -91,18 +54,63 @@ def test_buy_refunds_excess_when_remaining_exceeds_initial(vault, vault_owner, a
 
     refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
     assert len(refund_transfers) == 1
-    assert refund_transfers[0].value == 1
+    assert refund_transfers[0].value == refund
+    assert usdc.balanceOf(vault.address) == 0  # 9 pulled into swap, 1 refunded
+    assert vault.pending_transfers(vault_owner) == ds  # calculateDsTokenAmount
+    assert vault.pending_transfers_total() == ds
+
+
+def test_buy_refund_preserves_preexisting_balance(vault, vault_owner, acred, usdc):
+    """A pre-existing vault balance is preserved; only the swap leftover is refunded."""
+    preexisting = 100
+    usdc.mint(vault_owner, preexisting)
+    usdc.transfer(vault.address, preexisting, sender=vault_owner)
+    assert usdc.balanceOf(vault.address) == preexisting
+
+    stable_amount = 10
+    ds = stable_amount * 10 // 3  # 33
+    liquidity_pulled = ds * 3 // 10  # 9
+    refund = stable_amount - liquidity_pulled  # 1
+    usdc.mint(vault_owner, stable_amount)
+    usdc.approve(vault.address, stable_amount, sender=vault_owner)
+
+    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
+
+    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
+    assert len(refund_transfers) == 1
+    assert refund_transfers[0].value == refund
+    assert usdc.balanceOf(vault.address) == preexisting  # only the swap leftover refunded, seed untouched
+    assert vault.pending_transfers(vault_owner) == ds
+    assert vault.pending_transfers_total() == ds
+
+
+def test_buy_refunds_excess_when_remaining_exceeds_initial(vault, vault_owner, acred, usdc):
+    """When remaining_balance > initial_balance, excess stablecoins are transferred back.
+
+    With oracle rate num=3, den=10:
+    - swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
+    - Only 10 of 11 stablecoins consumed, 1 returned to sender.
+    """
+    stable_amount = 11
+    ds = stable_amount * 10 // 3  # 36
+    liquidity_pulled = ds * 3 // 10  # 10
+    refund = stable_amount - liquidity_pulled  # 1
+    assert refund == 1  # precondition
+    usdc.mint(vault_owner, stable_amount)
+    usdc.approve(vault.address, stable_amount, sender=vault_owner)
+
+    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
+
+    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
+    assert len(refund_transfers) == 1
+    assert refund_transfers[0].value == refund
     assert usdc.balanceOf(vault.address) == 0
-    assert vault.pending_transfers(vault_owner) == 11 * 10 // 3
-    assert vault.pending_transfers_total() == 11 * 10 // 3
+    assert vault.pending_transfers(vault_owner) == ds
+    assert vault.pending_transfers_total() == ds
 
 
 def test_buy_updates_pending_when_called_by_owner(vault, vault_owner, min_vault_manager, acred, usdc):
-    """Kills mutation: L211 `self._check_user(self.owner)` -> `self._check_user(self.caller)`.
-
-    The buy function should authorize based on owner, not caller. When owner != caller,
-    only the owner should be able to call buy.
-    """
+    """buy() authorizes on owner, not caller: when owner != caller, only the owner can call buy."""
     assert vault_owner != min_vault_manager.address  # precondition: owner != caller
 
     stable_amount = 10
@@ -131,11 +139,9 @@ def test_buy_reverts_if_unauthorized_caller(vault, vault_owner, min_vault_manage
 def test_buy_succeeds_when_ds_token_equals_min(
     securitize_vault_contract_def, acred_contract_def, oracle_contract_def, weth9_contract_def, owner
 ):
-    """Kills mutation: L216 `>=` -> `>` in buy min_ds_token check.
+    """When min_ds_token_amount equals the calculated amount exactly (>= boundary), buy succeeds.
 
-    When min_ds_token_amount equals the calculated amount exactly, buy should
-    succeed (not revert). Uses 1:1 oracle rate so calculateDsTokenAmount and
-    swap both return the same value.
+    Uses a 1:1 oracle rate so calculateDsTokenAmount and swap return the same value.
     """
     oracle_1to1 = oracle_contract_def.deploy(1, 10)
     usdc_1to1 = weth9_contract_def.deploy("USDC", "USDC", 6, 10**20)
@@ -188,11 +194,9 @@ def test_buy_credits_pending_to_owner_not_sender(
     min_vault_manager,
     vault_proxy,
 ):
-    """Kills mutation: L223 `self.pending_transfers[self.owner]` -> `self.pending_transfers[msg.sender]`.
+    """DS tokens from buy are credited to self.owner (the borrower), not msg.sender.
 
-    DS tokens from buy should be credited to self.owner (the borrower), not msg.sender.
-    Uses a proxy contract to call buy so msg.sender != self.owner, exercising the
-    proxy path in _check_user.
+    Uses a proxy to call buy so msg.sender != self.owner, exercising the proxy path in _check_user.
     """
     # Set up fresh contracts with 1:1 oracle for simplicity
     oracle = oracle_contract_def.deploy(1, 10)
@@ -216,8 +220,6 @@ def test_buy_credits_pending_to_owner_not_sender(
 
     expected_ds_tokens = 100  # 1:1 rate
 
-    # With original code: pending credited to self.owner (== owner)
-    # With mutation: pending credited to msg.sender (== vault_proxy.address)
     assert vault.pending_transfers(owner) == expected_ds_tokens
     assert vault.pending_transfers(vault_proxy.address) == 0
     assert vault.pending_transfers_total() == expected_ds_tokens
@@ -245,12 +247,9 @@ def test_deposit_uses_pending_when_covers_full_amount(weth_vault, weth, vault_ow
 
 
 def test_deposit_uses_pending_when_equals_amount(securitize_vault_contract_def, no_zero_transfer_erc20, owner):
-    """Kills mutation: L107 `pending >= amount` -> `pending > amount`.
+    """When pending == amount exactly (>= boundary), the full-pending branch is taken (no transferFrom).
 
-    When pending == amount exactly, the full-pending branch should be taken
-    (no transferFrom). Uses a token that reverts on zero-amount transferFrom
-    to ensure the mutation (which falls through to the elif branch and calls
-    transferFrom(wallet, self, 0)) is caught.
+    Uses a token that reverts on zero-amount transferFrom to catch a fall-through to transferFrom(0).
     """
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, no_zero_transfer_erc20.address, sender=owner)
@@ -262,8 +261,7 @@ def test_deposit_uses_pending_when_equals_amount(securitize_vault_contract_def, 
     vault.eval(f"self.pending_transfers_total = {amount}")
     no_zero_transfer_erc20.eval(f"self.balances[{vault.address}] = {amount}")
 
-    # With original code: pending >= amount is True, so no transferFrom is called
-    # With mutation: pending > amount is False, falls to elif, calls transferFrom(0) -> reverts
+    # pending >= amount, so no transferFrom is called
     vault.deposit(amount, wallet, sender=owner)
 
     assert vault.pending_transfers(wallet) == 0
@@ -298,11 +296,7 @@ def test_deposit_uses_partial_pending_and_transfer(weth_vault, weth, vault_owner
 
 
 def test_withdrawable_balance_subtracts_pending(weth_vault, weth, vault_owner):
-    """Kills mutation: L157 `-` -> `+` in withdrawable_balance.
-
-    When there are pending transfers, withdrawable_balance must be
-    balanceOf - pending_transfers_total, not balanceOf + pending_transfers_total.
-    """
+    """withdrawable_balance is balanceOf - pending_transfers_total (not +)."""
     wallet = boa.env.generate_address()
     total_balance = 200
     pending_amount = 80
@@ -340,10 +334,7 @@ def test_withdraw_pending_transfers_partial_amount(weth_vault, weth, vault_owner
 
 
 def test_withdraw_pending_transfers_exact_full_amount(weth_vault, weth, vault_owner):
-    """Kills mutation: L167 `>=` -> `>` in withdraw_pending.
-
-    Withdrawing exactly the full pending amount should succeed, not revert.
-    """
+    """Withdrawing exactly the full pending amount (>= boundary) succeeds, not reverts."""
     wallet = boa.env.generate_address()
     pending_amount = 100
 
@@ -372,11 +363,7 @@ def test_withdraw_pending_reverts_if_insufficient(weth_vault):
 
 
 def test_transfer_funds_skips_transfer_when_zero_amount(securitize_vault_contract_def, zero_revert_erc20, owner):
-    """Kills mutation: L198 `amount > 0` -> `amount >= 0`.
-
-    When amount=0 and the token reverts on zero transfers, transfer_funds
-    should succeed (skipping the transfer entirely).
-    """
+    """When amount == 0 and the token reverts on zero transfers, transfer_funds skips the transfer."""
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, zero_revert_erc20.address, sender=owner)
 
@@ -387,7 +374,7 @@ def test_transfer_funds_skips_transfer_when_zero_amount(securitize_vault_contrac
 
 
 def test_withdraw_creates_pending_when_transfer_fails(securitize_vault_contract_def, failing_transfer_erc20, owner):
-    """Covers branch: withdraw with transfer failure creates pending transfer (lines 141-144)."""
+    """withdraw with a failing transfer creates a pending transfer."""
     vault = securitize_vault_contract_def.deploy()
     vault.initialise(owner, failing_transfer_erc20.address, sender=owner)
 
@@ -405,11 +392,6 @@ def test_withdraw_creates_pending_when_transfer_fails(securitize_vault_contract_
     assert vault.pending_transfers_total() == deposit_amount
 
 
-# ===========================================================================
-# Mutation-killing tests for buy()
-# ===========================================================================
-
-
 def test_buy_refund_goes_to_caller_not_owner(
     securitize_vault_contract_def,
     acred_contract_def,
@@ -419,11 +401,9 @@ def test_buy_refund_goes_to_caller_not_owner(
     min_vault_manager,
     vault_proxy,
 ):
-    """Kills mutation L228: `msg.sender` -> `self.owner` in buy refund transfer.
+    """buy() refunds excess stablecoins to msg.sender (the caller), not self.owner.
 
-    When buy() has excess stablecoins to refund, they must go to msg.sender (the
-    caller), not self.owner. We test this with owner != caller by using the proxy
-    path: an authorized proxy calls buy, and the refund must go to the proxy (msg.sender).
+    Exercised via the proxy path: an authorized proxy calls buy, refund lands on the proxy.
     """
     # Set up fresh contracts with oracle rate 3/10 so swap consumes less than input
     oracle = oracle_contract_def.deploy(1, 3)
@@ -438,8 +418,8 @@ def test_buy_refund_goes_to_caller_not_owner(
     # Authorize the proxy
     min_vault_manager.set_proxy(vault_proxy.address, True)
 
-    # Use stable_amount=11 with oracle rate 3/10:
-    # swap(11): _dsTokenAmount = 11*3//10 = 3, _liquidityAmount = 3*10//3 = 10
+    # Use stable_amount=11 with oracle rate num=3, den=10:
+    # swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
     # So 10 of 11 stablecoins consumed, 1 refunded
     stable_amount = 11
     usdc.mint(owner, stable_amount)
@@ -450,20 +430,14 @@ def test_buy_refund_goes_to_caller_not_owner(
 
     vault_proxy.proxy_buy(vault.address, usdc.address, 0, stable_amount, sender=owner)
 
-    # Original: refund goes to msg.sender (vault_proxy)
-    # Mutation: refund goes to self.owner (owner)
-    # The refund of 1 USDC must land on the proxy (msg.sender), not on owner
+    # Refund of 1 USDC lands on the proxy (msg.sender), not on owner
     assert usdc.balanceOf(vault_proxy.address) == proxy_balance_before + 1
     # Owner paid stable_amount to proxy, so owner balance decreased by stable_amount
     assert usdc.balanceOf(owner) == owner_balance_before - stable_amount
 
 
 def test_buy_reverts_when_ds_token_amount_below_min(vault, vault_owner, acred, usdc):
-    """Kills mutation L216: delete `assert ds_token_amount.ds_token_amount >= min_ds_token_amount`.
-
-    When min_ds_token_amount exceeds the calculated ds_token_amount, buy() must
-    revert with "ds token amount lt min".
-    """
+    """When min_ds_token_amount exceeds the calculated ds_token_amount, buy() reverts "ds token amount lt min"."""
     stable_amount = 10
     usdc.mint(vault_owner, stable_amount)
     usdc.approve(vault.address, stable_amount, sender=vault_owner)
@@ -478,10 +452,7 @@ def test_buy_reverts_when_ds_token_amount_below_min(vault, vault_owner, acred, u
 
 
 def test_buy_reverts_if_called_by_unauthorized(vault, vault_owner, min_vault_manager, acred, usdc):
-    """Kills mutation L211: delete `assert self._check_user(self.owner), "unauthorized"`.
-
-    buy() must reject callers that are neither the owner nor an authorized proxy.
-    """
+    """buy() rejects callers that are neither the owner nor an authorized proxy."""
     unauthorized = boa.env.generate_address("rando")
     assert unauthorized != vault_owner  # precondition: not the owner
     assert unauthorized != min_vault_manager.address  # precondition: not the caller
