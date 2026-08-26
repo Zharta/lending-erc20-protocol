@@ -78,8 +78,8 @@ lint:
 %-prod: export ENV=prod
 
 %-zethereum %-zapechain: export ENV=dev
-%-sepolia %-curtis %-base-sepolia: export ENV=int
-%-ethereum %-apechain %-base: export ENV=prod
+%-sepolia %-curtis %-base-sepolia %-robinhood-testnet: export ENV=int
+%-ethereum %-apechain %-base %-robinhood: export ENV=prod
 
 %-local: export CHAIN=foundry
 %-zethereum: export CHAIN=zethereum
@@ -90,6 +90,8 @@ lint:
 %-ethereum: export CHAIN=ethereum
 %-apechain: export CHAIN=apechain
 %-base: export CHAIN=base
+%-robinhood-testnet: export CHAIN=robinhood-testnet
+%-robinhood: export CHAIN=robinhood
 
 %-local: export NETWORK=ethereum:local:foundry
 %-zethereum: export NETWORK=ethereum:local:https://network.dev.zharta.io/dev1/
@@ -100,7 +102,9 @@ lint:
 %-base-sepolia: export NETWORK=base:sepolia:alchemy
 %-ethereum: export NETWORK=ethereum:mainnet:alchemy
 %-apechain: export NETWORK=apechain:mainnet:alchemy
-%base: export NETWORK=base:mainnet:alchemy
+%-base: export NETWORK=base:mainnet:alchemy
+%-robinhood-testnet: export NETWORK=robinhood:testnet:node
+%-robinhood: export NETWORK=robinhood:mainnet:node
 
 add-account:
 	${VENV}/bin/ape accounts import $(alias)
@@ -109,16 +113,16 @@ compile:
 	rm -rf .build/*
 	${VENV}/bin/ape compile
 
-console-local console-zethereum console-zapechain console-sepolia console-curtis console-base-sepolia console-ethereum console-apechain console-base:
+console-local console-zethereum console-zapechain console-sepolia console-curtis console-base-sepolia console-robinhood-testnet console-ethereum console-apechain console-base console-robinhood:
 	${VENV}/bin/ape console --network ${NETWORK} # --verbosity DEBUG
 
-deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-base-sepolia deploy-ethereum deploy-apechain deploy-base:
+deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-base-sepolia deploy-robinhood-testnet deploy-ethereum deploy-apechain deploy-base deploy-robinhood:
 	${VENV}/bin/ape run -I deployment --network ${NETWORK}
 
-publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-base-sepolia publish-ethereum publish-apechain publish-base:
+publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-base-sepolia publish-robinhood-testnet publish-ethereum publish-apechain publish-base publish-robinhood:
 	${VENV}/bin/ape run publish
 
-get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-base-sepolia get-metadata-ethereum get-metadata-apechain get-metadata-base:
+get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-base-sepolia get-metadata-robinhood-testnet get-metadata-ethereum get-metadata-apechain get-metadata-base get-metadata-robinhood:
 	${VENV}/bin/ape run get_tokens
 
 contract-sizes:
