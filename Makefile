@@ -129,5 +129,8 @@ publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-base-
 get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-base-sepolia get-metadata-fuji get-metadata-robinhood-testnet get-metadata-ethereum get-metadata-apechain get-metadata-base get-metadata-avalanche get-metadata-robinhood:
 	${VENV}/bin/ape run get_tokens
 
+verify-zethereum verify-zapechain verify-sepolia verify-curtis verify-base-sepolia verify-robinhood-testnet verify-ethereum verify-apechain verify-base verify-robinhood:
+	${VENV}/bin/ape run verify
+
 contract-sizes:
 	${VENV}/bin/ape run contract_sizes
