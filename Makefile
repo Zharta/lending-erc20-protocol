@@ -122,6 +122,9 @@ deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis depl
 publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-base-sepolia publish-robinhood-testnet publish-ethereum publish-apechain publish-base publish-robinhood:
 	${VENV}/bin/ape run publish
 
+verify-zethereum verify-zapechain verify-sepolia verify-curtis verify-base-sepolia verify-robinhood-testnet verify-ethereum verify-apechain verify-base verify-robinhood:
+	${VENV}/bin/ape run verify
+
 get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-base-sepolia get-metadata-robinhood-testnet get-metadata-ethereum get-metadata-apechain get-metadata-base get-metadata-robinhood:
 	${VENV}/bin/ape run get_tokens
 
