@@ -78,8 +78,8 @@ lint:
 %-prod: export ENV=prod
 
 %-zethereum %-zapechain: export ENV=dev
-%-sepolia %-curtis %-base-sepolia: export ENV=int
-%-ethereum %-apechain %-base: export ENV=prod
+%-sepolia %-curtis %-base-sepolia %-fuji: export ENV=int
+%-ethereum %-apechain %-base %-avalanche: export ENV=prod
 
 %-local: export CHAIN=foundry
 %-zethereum: export CHAIN=zethereum
@@ -87,9 +87,11 @@ lint:
 %-sepolia: export CHAIN=sepolia
 %-curtis: export CHAIN=curtis
 %-base-sepolia: export CHAIN=base-sepolia
+%-fuji: export CHAIN=fuji
 %-ethereum: export CHAIN=ethereum
 %-apechain: export CHAIN=apechain
 %-base: export CHAIN=base
+%-avalanche: export CHAIN=avalanche
 
 %-local: export NETWORK=ethereum:local:foundry
 %-zethereum: export NETWORK=ethereum:local:https://network.dev.zharta.io/dev1/
@@ -98,9 +100,11 @@ lint:
 %-sepolia: export NETWORK=ethereum:sepolia:alchemy
 %-curtis: export NETWORK=apechain:curtis:https://curtis.rpc.caldera.xyz/http
 %-base-sepolia: export NETWORK=base:sepolia:alchemy
+%-fuji: export NETWORK=avalanche:fuji:alchemy
 %-ethereum: export NETWORK=ethereum:mainnet:alchemy
 %-apechain: export NETWORK=apechain:mainnet:alchemy
-%base: export NETWORK=base:mainnet:alchemy
+%-base: export NETWORK=base:mainnet:alchemy
+%-avalanche: export NETWORK=avalanche:mainnet:alchemy
 
 add-account:
 	${VENV}/bin/ape accounts import $(alias)
@@ -109,16 +113,16 @@ compile:
 	rm -rf .build/*
 	${VENV}/bin/ape compile
 
-console-local console-zethereum console-zapechain console-sepolia console-curtis console-base-sepolia console-ethereum console-apechain console-base:
+console-local console-zethereum console-zapechain console-sepolia console-curtis console-base-sepolia console-fuji console-ethereum console-apechain console-base console-avalanche:
 	${VENV}/bin/ape console --network ${NETWORK} # --verbosity DEBUG
 
-deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-base-sepolia deploy-ethereum deploy-apechain deploy-base:
+deploy-local deploy-zethereum deploy-zapechain deploy-sepolia deploy-curtis deploy-base-sepolia deploy-fuji deploy-ethereum deploy-apechain deploy-base deploy-avalanche:
 	${VENV}/bin/ape run -I deployment --network ${NETWORK}
 
-publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-base-sepolia publish-ethereum publish-apechain publish-base:
+publish-zethereum publish-zapechain publish-sepolia publish-curtis publish-base-sepolia publish-fuji publish-ethereum publish-apechain publish-base publish-avalanche:
 	${VENV}/bin/ape run publish
 
-get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-base-sepolia get-metadata-ethereum get-metadata-apechain get-metadata-base:
+get-metadata-zethereum get-metadata-zapechain get-metadata-sepolia get-metadata-curtis get-metadata-base-sepolia get-metadata-fuji get-metadata-ethereum get-metadata-apechain get-metadata-base get-metadata-avalanche:
 	${VENV}/bin/ape run get_tokens
 
 contract-sizes:

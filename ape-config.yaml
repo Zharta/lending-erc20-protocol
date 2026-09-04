@@ -6,3 +6,4 @@ plugins:
   - name: alchemy
   - name: arbitrum
   - name: base
+  - name: avalanche

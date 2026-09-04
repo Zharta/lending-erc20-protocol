@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 
 
 def gas_cost(context):  # noqa: ARG001
-    # return {}
+    return {}
     return {"gas_price": convert("1 gwei", int)}
 
 
