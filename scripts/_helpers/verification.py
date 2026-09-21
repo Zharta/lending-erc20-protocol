@@ -439,10 +439,11 @@ EXPLORERS = {
         "verify": _blockscout_verify,
     },
     "robinhood": {
-        "url": "https://robinhoodchain.blockscout.com",
+        "url": "https://robin.etherscan.io",
         "chain_id": 4663,
-        "status": _blockscout_status,
-        "verify": _blockscout_verify,
+        "api_key": "ETHERSCAN_API_KEY",
+        "status": _etherscan_status,
+        "verify": _etherscan_verify,
     },
     "ethereum": {
         "url": "https://etherscan.io",
