@@ -177,6 +177,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0xe62F721C8607784b0e029d39f74F5E74dF42F2bb",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Robinhood AAPL / USD",
             "properties": {
                 "collateral_token_key": "common.aapl",
                 "full_liquidation_fee": 500,
@@ -210,6 +211,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x02325e1773BE685384f1ad0f619CFa6c901E419E",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: AMD / USD",
             "properties": {
                 "collateral_token_key": "common.amd",
                 "full_liquidation_fee": 500,
@@ -243,6 +245,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0xfA29A42c7F00C4921B8Bb641F518EcABe71921c4",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: AMZN / USD",
             "properties": {
                 "collateral_token_key": "common.amzn",
                 "full_liquidation_fee": 500,
@@ -276,6 +279,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0xc9eb983357B88921A89844D7047589a37B563108",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: GME / USD",
             "properties": {
                 "collateral_token_key": "common.gme",
                 "full_liquidation_fee": 500,
@@ -309,6 +313,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x69ad1aB88346b74c6CaE98E2A14aC687Aa7b9e37",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: GOOGL / USD",
             "properties": {
                 "collateral_token_key": "common.googl",
                 "full_liquidation_fee": 500,
@@ -342,6 +347,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x7767A2b2F490622c7625eb236ACa221859418B20",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: MU / USD",
             "properties": {
                 "collateral_token_key": "common.mu",
                 "full_liquidation_fee": 500,
@@ -375,6 +381,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x5732291D337d6A2476f0BFaF9fC91fd9438829cf",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: NVDA / USD",
             "properties": {
                 "collateral_token_key": "common.nvda",
                 "full_liquidation_fee": 500,
@@ -408,6 +415,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x55566A0141893e1D5e6754cF6E59DF15439009eb",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: SNDK / USD",
             "properties": {
                 "collateral_token_key": "common.sndk",
                 "full_liquidation_fee": 500,
@@ -441,6 +449,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x3E02654FbD6580f0D3F2E7999E53b0428bC88373",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: SPCX / USD",
             "properties": {
                 "collateral_token_key": "common.spcx",
                 "full_liquidation_fee": 500,
@@ -474,6 +483,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x409F6CaAa48e30041e201A2a839C01185d05D3ca",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: SPY / USD",
             "properties": {
                 "collateral_token_key": "common.spy",
                 "full_liquidation_fee": 500,
@@ -507,6 +517,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x6781884f919B3533B4de87715e0E4564E62912fE",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: TSLA / USD",
             "properties": {
                 "collateral_token_key": "common.tsla",
                 "full_liquidation_fee": 500,
@@ -540,6 +551,7 @@
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
             "address": "0x44D2f0F514BF0ea91d9B19dcC7b1D8247A349FE1",
             "contract": "P2PLendingVaultedErc20",
+            "oracle_name": "Feed: USO / USD",
             "properties": {
                 "collateral_token_key": "common.uso",
                 "full_liquidation_fee": 500,
