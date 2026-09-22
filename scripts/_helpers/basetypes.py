@@ -57,6 +57,7 @@ class ContractConfig:
     deployment_deps: set[str] = field(default_factory=set)
     config_deps: dict[str, Callable] = field(default_factory=dict)
     deployment_args: list[Any] = field(default_factory=list)
+    deployed_args_hex: str | None = None
     abi_key: str | None = None
     version: str | None = None
 
@@ -118,6 +119,7 @@ class ContractConfig:
 
             self.contract = self.container.deploy(*deploy_args_vals, **kwargs)
             self.abi_key = abi_key(self.contract.contract_type.dict()["abi"])
+            self.deployed_args_hex = deploy_args.hex()
 
 
 @dataclass

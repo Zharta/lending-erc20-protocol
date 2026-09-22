@@ -16,6 +16,7 @@ from .basetypes import (
     Environment,
 )
 from .dependency import DependencyManager
+from .verification import verify_deployed_contract
 
 ENV = Environment[os.environ.get("ENV", "local")]
 
@@ -134,7 +135,16 @@ class DeploymentManager:
     def _save_state(self):
         store_contracts(self.env, self.chain, list(self.context.contracts.values()))
 
-    def deploy(self, changes: set[str], *, dryrun=False, save_state=True):
+    def _verify_deployed_contracts(self, contracts: list[ContractConfig]):
+        if self.env not in {Environment.int, Environment.prod}:
+            return
+        for contract in contracts:
+            if contract.contract is not None:
+                verify_deployed_contract(
+                    self.chain, contract.address(), contract.container.contract_type.source_id, contract.deployed_args_hex
+                )
+
+    def deploy(self, changes: set[str], *, dryrun=False, save_state=True, verify=True):
         self.owner.set_autosign(True) if self.env != Environment.local else None
         self.context.dryrun = dryrun
         dependency_manager = DependencyManager(self.context, changes)
@@ -153,6 +163,9 @@ class DeploymentManager:
 
         if save_state and not dryrun:
             self._save_state()
+
+        if verify and not dryrun:
+            self._verify_deployed_contracts(contracts_to_deploy)
 
     def deploy_all(self, *, dryrun=False, save_state=True):
         self.deploy(self.context.contract.keys(), dryrun=dryrun, save_state=save_state)
