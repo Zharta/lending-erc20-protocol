@@ -205,7 +205,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_amd_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -239,7 +240,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_amzn_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -273,7 +275,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_gme_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -307,7 +310,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_googl_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -341,7 +345,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_mu_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -375,7 +380,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_nvda_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -409,7 +415,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_sndk_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -443,7 +450,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_spcx_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -477,7 +485,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_spy_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -511,7 +520,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_tsla_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -545,7 +555,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         },
         "usdg_uso_vaulted": {
             "abi_key": "ca4107b4b72aacc3b2a1e30fdc8067a3fc621166",
@@ -579,7 +590,8 @@
                 "refinance_impl": "0x067EF9d6F3a0392F34EA4811485e07B60362c14D",
                 "vault_impl": "0x0520DF7E7ab1c8825F3Ef97213c7280786744345"
             },
-            "token_symbol": "USDG"
+            "token_symbol": "USDG",
+            "version": "1"
         }
     },
     "proxies": {}
