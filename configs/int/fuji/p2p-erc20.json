@@ -73,6 +73,17 @@
             "properties": {},
             "properties_addresses": {}
         },
+        "securitize_registrar_connector": {
+            "abi_key": "d06a9b6529159666463ffbc588a24ed1742dcbce",
+            "address": "0x938BF2EaaA69ec9b638E22C85EF30b6a1eD793A9",
+            "contract": "SecuritizeRegistrarV2Connector",
+            "properties": {
+                "vault_registrar_key": "common.hinc_vault_registrar"
+            },
+            "properties_addresses": {
+                "vault_registrar": "0xbF2f1565C894ccE3c74F89602280F417f8970538"
+            }
+        },
         "vault_impl": {
             "abi_key": "d1a14f70994b15f4446092f85ae8d69ae2c7db72",
             "address": "0x96D1000886E9F504184068DE3cd1270f0e00b286",
@@ -139,7 +150,8 @@
                 "protocol_wallet": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
                 "refinance_impl_key": "common.refinance_vaulted_impl",
                 "transfer_agent": "0x313e7bF4D508087295f092Bb9fadcE3b7b4dc89e",
-                "vault_impl_key": "common.vault_impl"
+                "vault_impl_key": "common.vault_impl",
+                "vault_registrar_connector_key": "common.securitize_registrar_connector"
             },
             "properties_addresses": {
                 "collateral_token": "0xbe3eDea464493fC63A030ab8C471666c155E79CB",
@@ -148,7 +160,8 @@
                 "oracle": "0xB7603602860a4816154F2A3bA4d6aBDDd8937b84",
                 "payment_token": "0x5c435249e08D987a77fdA86376e796C37C552136",
                 "refinance_impl": "0xC3D3e2A4cC6DaFc0a95749F31e96732948e44428",
-                "vault_impl": "0x96D1000886E9F504184068DE3cd1270f0e00b286"
+                "vault_impl": "0x96D1000886E9F504184068DE3cd1270f0e00b286",
+                "vault_registrar_connector": "0x938BF2EaaA69ec9b638E22C85EF30b6a1eD793A9"
             },
             "token_symbol": "USDC",
             "version": "1"
