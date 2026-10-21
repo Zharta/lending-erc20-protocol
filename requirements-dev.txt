@@ -54,8 +54,10 @@ cchecksum==0.4.5
     #   eth-ape
     #   eth-pydantic-types
     #   evm-trace
-certifi==2026.7.22
-    # via requests
+certifi==2026.10.19
+    # via
+    #   lending-erc20-protocol (pyproject.toml)
+    #   requests
 cfgv==3.5.0
     # via pre-commit
 charset-normalizer==3.5.1

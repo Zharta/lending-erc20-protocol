@@ -13,6 +13,7 @@ dependencies = [
     "ape-base",
     "ape-avalanche",
     "web3",
+    "certifi>=2026.10.19",
 ]
 
 
