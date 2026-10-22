@@ -4,7 +4,14 @@ from itertools import starmap
 import boa
 import pytest
 
-from ..conftest_base import ZERO_ADDRESS, get_last_event
+from ..conftest_base import (
+    ZERO_ADDRESS,
+    ZERO_BYTES32,
+    Loan,
+    Offer,
+    get_last_event,
+    sign_offer,
+)
 
 BPS = 10000
 
@@ -433,3 +440,98 @@ def test_change_vault_registrar_logs_event(p2p_usdc_weth, owner):
 
     assert event.old_registrar == old_registrar
     assert event.new_registrar == new_registrar
+
+
+# MultiVault-specific tests for loan facet address (set_loan_addr)
+def test_set_loan_addr_reverts_if_not_owner(p2p_usdc_weth):
+    random = boa.env.generate_address("random")
+    new_addr = boa.env.generate_address("new_loan_facet")
+    with boa.reverts():
+        p2p_usdc_weth.set_loan_addr(new_addr, sender=random)
+
+
+def test_set_loan_addr_reverts_if_zero_address(p2p_usdc_weth, owner):
+    with boa.reverts():
+        p2p_usdc_weth.set_loan_addr(ZERO_ADDRESS, sender=owner)
+
+
+def test_set_loan_addr(p2p_usdc_weth, owner):
+    new_addr = boa.env.generate_address("new_loan_facet")
+    p2p_usdc_weth.set_loan_addr(new_addr, sender=owner)
+    assert p2p_usdc_weth.loan_addr() == new_addr
+
+
+def test_set_loan_addr_logs_event(p2p_usdc_weth, owner, p2p_mv_loan):
+    new_addr = boa.env.generate_address("new_loan_facet")
+    old_addr = p2p_usdc_weth.loan_addr()
+    assert old_addr == p2p_mv_loan.address  # precondition: wired to the loan facet at deploy
+
+    p2p_usdc_weth.set_loan_addr(new_addr, sender=owner)
+    event = get_last_event(p2p_usdc_weth, "LoanAddrChanged")
+
+    assert event.old_addr == old_addr
+    assert event.new_addr == new_addr
+
+
+def test_set_loan_addr_updates_facet_used_by_create_loan(
+    p2p_usdc_weth,
+    p2p_lending_multivault_loan_contract_def,
+    owner,
+    borrower,
+    now,
+    lender,
+    lender_key,
+    kyc_for,
+    kyc_validator_contract,
+    usdc,
+    weth,
+    oracle,
+):
+    # Swap the loan facet for a freshly deployed second instance.
+    new_loan_facet = p2p_lending_multivault_loan_contract_def.deploy()
+    assert new_loan_facet.address != p2p_usdc_weth.loan_addr()  # precondition: a different facet
+    p2p_usdc_weth.set_loan_addr(new_loan_facet.address, sender=owner)
+    assert p2p_usdc_weth.loan_addr() == new_loan_facet.address
+
+    # create_loan must still work, now delegating to the new facet.
+    kyc_borrower = kyc_for(borrower, kyc_validator_contract.address)
+    kyc_lender = kyc_for(lender, kyc_validator_contract.address)
+    usdc.mint(lender, 10**12)
+
+    principal = 1000 * 10**6
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=100,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 100,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    signed_offer = sign_offer(offer, lender_key, p2p_usdc_weth.address)
+
+    collateral_amount = int(1e18)
+    weth.deposit(value=collateral_amount, sender=borrower)
+    weth.approve(p2p_usdc_weth.wallet_to_vault(borrower), collateral_amount, sender=borrower)
+    usdc.approve(p2p_usdc_weth.address, principal, sender=lender)
+
+    borrower_usdc_before = usdc.balanceOf(borrower)
+    origination_fee = offer.origination_fee_bps * principal // BPS
+
+    loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
+
+    # Loan was created and its effects applied via the swapped-in facet.
+    assert loan_id != ZERO_BYTES32
+    assert p2p_usdc_weth.loans(loan_id) != ZERO_BYTES32
+    assert weth.balanceOf(p2p_usdc_weth.vault_id_to_vault(borrower, 0)) == collateral_amount
+    assert usdc.balanceOf(borrower) == borrower_usdc_before + principal - origination_fee

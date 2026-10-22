@@ -300,7 +300,7 @@ def test_loop2(
     registrar_connector,
 ):
     initial_borrower_collateral = 94000000
-    # At fork block 25300898 the real SecuritizeSwap delivers slightly fewer DS
+    # At fork block 25400000 the real SecuritizeSwap delivers slightly fewer DS
     # tokens than the oracle-implied amount (its NAV price/fee diverges from the
     # stale Chainlink feed), so the proxy's "ds token amount lt min" check rejects
     # the highest-leverage buys. 6000 bps keeps the leveraged-loop path exercised

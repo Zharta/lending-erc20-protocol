@@ -101,9 +101,9 @@ def test_oracle_data(oracle_dejtrsy_usd, p2p_usdc_dejtrsy):
     assert oracle_dejtrsy_usd.address == p2p_usdc_dejtrsy.oracle_addr()
     assert oracle_dejtrsy_usd.decimals() == 18
 
-    # deJTRSY ~$1.02761 per token at fork block 25300898. Must change if fork block changes.
-    min_price = 1027 * 10**15
-    max_price = 1028 * 10**15
+    # deJTRSY ~$1.02890 per token at fork block 25400000. Must change if fork block changes.
+    min_price = 1028 * 10**15
+    max_price = 1029 * 10**15
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

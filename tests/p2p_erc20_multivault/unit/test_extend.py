@@ -11,14 +11,14 @@ import pytest
 
 from ..conftest_base import (
     ZERO_BYTES32,
+    Loan,
     LoanExtensionOffer,
     Offer,
-    SecuritizeLoan,
     SignedLoanExtensionOffer,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_extension_offer,
     sign_offer,
@@ -109,7 +109,7 @@ def ongoing_loan_usdc_weth(
         offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -119,6 +119,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -138,8 +139,9 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
@@ -161,7 +163,7 @@ def test_extend_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_we
     )
     signed_extension = sign_extension_offer(extension_offer, lender_key, p2p_usdc_weth.address)
 
-    for corrupted_loan in get_securitize_loan_mutations(loan):
+    for corrupted_loan in get_loan_mutations(loan):
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.extend_loan(corrupted_loan, signed_extension, new_maturity, sender=loan.borrower)
 
@@ -285,7 +287,7 @@ def test_extend_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_weth, l
 
     # Verify loan state updated
     updated_loan = replace_namedtuple_field(loan, maturity=new_maturity)
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(loan.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(loan.id)
 
 
 def test_extend_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, lender_key):
@@ -316,7 +318,7 @@ def test_extend_loan_lender_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_
     loan = ongoing_loan_usdc_weth
     new_maturity = loan.maturity + 10 * DAY
 
-    for corrupted_loan in get_securitize_loan_mutations(loan):
+    for corrupted_loan in get_loan_mutations(loan):
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.extend_loan_lender(corrupted_loan, new_maturity, sender=loan.lender)
 
@@ -356,7 +358,7 @@ def test_extend_loan_lender_updates_loan_state(p2p_usdc_weth, ongoing_loan_usdc_
 
     # Verify loan state updated
     updated_loan = replace_namedtuple_field(loan, maturity=new_maturity)
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(loan.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(loan.id)
 
 
 def test_extend_loan_lender_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth):

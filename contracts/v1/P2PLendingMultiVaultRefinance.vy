@@ -71,6 +71,7 @@ def replace_loan(
     assert base._check_user(loan.borrower), "not borrower"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan redeemed"
+    assert base._is_loan_started(loan), "loan not started"
 
     assert base._is_offer_signed_by_lender(offer, offer_sig_domain_separator), "offer not signed by lender"
     base._check_offer_validity(offer, payment_token, collateral_token, oracle_addr)
@@ -110,6 +111,7 @@ def replace_loan(
         apr=offer.offer.apr,
         payment_token=offer.offer.payment_token,
         maturity=block.timestamp + offer.offer.duration,
+        create_time=block.timestamp,
         start_time=block.timestamp,
         accrual_start_time=block.timestamp,
         borrower=loan.borrower,
@@ -131,6 +133,7 @@ def replace_loan(
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=base.max_pending_window,
     )
     new_loan.id = base._compute_loan_id(new_loan)
     assert base.loans[new_loan.id] == empty(bytes32), "loan already exists"
@@ -178,6 +181,7 @@ def replace_loan(
         amount=new_loan.initial_amount,
         apr=new_loan.apr,
         maturity=new_loan.maturity,
+        create_time=new_loan.create_time,
         start_time=new_loan.start_time,
         borrower=new_loan.borrower,
         lender=new_loan.lender,
@@ -234,6 +238,7 @@ def replace_loan_lender(
     assert base._check_user(loan.lender), "not lender"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
     assert not base._is_loan_redeemed(loan), "loan redeemed"
+    assert base._is_loan_started(loan), "loan not started"
 
     assert base._is_offer_signed_by_lender(offer, offer_sig_domain_separator), "offer not signed by lender"
     base._check_offer_validity(offer, payment_token, collateral_token, oracle_addr)
@@ -274,6 +279,7 @@ def replace_loan_lender(
         apr=offer.offer.apr,
         payment_token=offer.offer.payment_token,
         maturity=block.timestamp + offer.offer.duration,
+        create_time=block.timestamp,
         start_time=block.timestamp,
         accrual_start_time=block.timestamp,
         borrower=loan.borrower,
@@ -295,6 +301,7 @@ def replace_loan_lender(
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=base.max_pending_window,
     )
     new_loan.id = base._compute_loan_id(new_loan)
     assert base.loans[new_loan.id] == empty(bytes32), "loan already exists"
@@ -350,6 +357,7 @@ def replace_loan_lender(
         amount=new_loan.initial_amount,
         apr=new_loan.apr,
         maturity=new_loan.maturity,
+        create_time=new_loan.create_time,
         start_time=new_loan.start_time,
         borrower=new_loan.borrower,
         lender=new_loan.lender,
@@ -394,6 +402,7 @@ def extend_loan(
     assert base._is_loan_valid(loan), "invalid loan"
     assert base._check_user(loan.borrower), "not borrower"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
+    assert base._is_loan_started(loan), "loan not started"
 
     assert base._is_extension_offer_signed_by_lender(offer, loan.lender, offer_sig_domain_separator), "offer not signed by lender"
     assert new_maturity > loan.maturity, "new maturity le current"
@@ -410,6 +419,7 @@ def extend_loan(
         apr=loan.apr,
         payment_token=loan.payment_token,
         maturity=new_maturity,
+        create_time=loan.create_time,
         start_time=loan.start_time,
         accrual_start_time=loan.accrual_start_time,
         borrower=loan.borrower,
@@ -431,6 +441,7 @@ def extend_loan(
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=base.max_pending_window,
     )
     base.loans[loan.id] = base._loan_state_hash(new_loan)
 
@@ -457,6 +468,7 @@ def extend_loan_lender(loan: base.Loan, new_maturity: uint256):
     assert base._is_loan_valid(loan), "invalid loan"
     assert base._check_user(loan.lender), "not lender"
     assert not base._is_loan_defaulted(loan), "loan defaulted"
+    assert base._is_loan_started(loan), "loan not started"
 
     assert new_maturity > loan.maturity, "new maturity le current"
 
@@ -469,6 +481,7 @@ def extend_loan_lender(loan: base.Loan, new_maturity: uint256):
         apr=loan.apr,
         payment_token=loan.payment_token,
         maturity=new_maturity,
+        create_time=loan.create_time,
         start_time=loan.start_time,
         accrual_start_time=loan.accrual_start_time,
         borrower=loan.borrower,
@@ -490,6 +503,7 @@ def extend_loan_lender(loan: base.Loan, new_maturity: uint256):
         vault_id=loan.vault_id,
         redeem_start=loan.redeem_start,
         redeem_residual_collateral=loan.redeem_residual_collateral,
+        max_pending_window=base.max_pending_window,
     )
     base.loans[loan.id] = base._loan_state_hash(new_loan)
 

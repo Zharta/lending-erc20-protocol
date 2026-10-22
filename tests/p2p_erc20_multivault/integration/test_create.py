@@ -3,11 +3,11 @@ import pytest
 
 from ..conftest_base import (
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
     calc_ltv,
     compute_liquidity_key,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
     sign_offer,
@@ -32,7 +32,18 @@ def kyc_borrower(borrower, kyc_for, kyc_validator_contract):
 
 
 def test_create_loan(
-    p2p_usdc_acred, borrower, now, lender, lender_key, kyc_borrower, kyc_lender, acred, usdc, oracle_acred_usd
+    p2p_usdc_acred,
+    borrower,
+    borrower_account,
+    now,
+    lender,
+    lender_key,
+    kyc_borrower,
+    kyc_lender,
+    acred,
+    usdc,
+    oracle_acred_usd,
+    set_investor_sig,
 ):
     principal = 1000 * int(1e9)
     collateral_amount = 95 * int(1e6)
@@ -48,8 +59,10 @@ def test_create_loan(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
 
-    # Get the vault_id before loan creation (this will be the vault_id used)
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register its per-loan vault.
+    set_investor_sig(borrower_account, now + 3600)
 
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
@@ -64,7 +77,7 @@ def test_create_loan(
     event = get_last_event(p2p_usdc_acred, "LoanCreated")
     initial_ltv = calc_ltv(principal, offer.min_collateral_amount, usdc, acred, oracle_acred_usd, oracle_reverse=False)
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(signed_offer),
         offer_tracing_id=offer.tracing_id,
@@ -74,6 +87,7 @@ def test_create_loan(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -94,11 +108,12 @@ def test_create_loan(
         vault_id=vault_id,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
     # 1. state: loan hash matches
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
 
-    # 2. event assertions -- MultiVault LoanCreated has extra fields: oracle_rate_num, oracle_rate_den, vault_id, vault_addr
+    # 2. event assertions (MultiVault LoanCreated adds oracle_rate_num/den, vault_id, vault_addr)
     assert event.id == loan_id
     assert event.amount == principal
     assert event.apr == offer.apr
@@ -150,6 +165,7 @@ def test_create_loan(
 def test_create_loan_registers_vault_with_registrar(
     p2p_usdc_acred,
     borrower,
+    borrower_account,
     now,
     lender,
     lender_key,
@@ -159,6 +175,7 @@ def test_create_loan_registers_vault_with_registrar(
     usdc,
     oracle_acred_usd,
     vault_registrar,
+    set_investor_sig,
 ):
     vault_id = p2p_usdc_acred.vault_count(borrower)
 
@@ -176,10 +193,15 @@ def test_create_loan_registers_vault_with_registrar(
     )
     signed_offer = sign_offer(offer, lender_key, p2p_usdc_acred.address)
 
+    # The vault isn't registered until the borrower authorizes and a loan is created.
+    vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
+    assert vault_registrar.isRegistered(vault_addr, borrower) is False
+
+    set_investor_sig(borrower_account, now + 3600)
+
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, principal, sender=lender)
 
     p2p_usdc_acred.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
-    vault_addr = p2p_usdc_acred.vault_id_to_vault(borrower, vault_id)
     assert vault_registrar.isRegistered(vault_addr, borrower) is True

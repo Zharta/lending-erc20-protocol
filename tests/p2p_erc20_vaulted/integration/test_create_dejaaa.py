@@ -101,9 +101,9 @@ def test_oracle_data(oracle_dejaaa_usd, p2p_usdc_dejaaa):
     assert oracle_dejaaa_usd.address == p2p_usdc_dejaaa.oracle_addr()
     assert oracle_dejaaa_usd.decimals() == 18
 
-    # deJAAA ~$1.03607 per token at fork block 25300898. Must change if fork block changes.
-    min_price = 1036 * 10**15
-    max_price = 1037 * 10**15
+    # deJAAA ~$1.03739 per token at fork block 25400000. Must change if fork block changes.
+    min_price = 1037 * 10**15
+    max_price = 1038 * 10**15
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

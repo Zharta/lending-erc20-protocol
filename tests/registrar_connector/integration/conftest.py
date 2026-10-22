@@ -1,12 +1,11 @@
 import os
-from pathlib import Path
-from textwrap import dedent
 
 import boa
 import pytest
 from boa.environment import Env
 from eth_account import Account
 
+from tests.conftest_base import ETH_FORK_BLOCK, build_erc20_contract_def_with_log_stuff
 from tests.p2p_erc20_securitize.conftest_base import sign_kyc, sign_register_vault  # noqa: F401
 
 # ---------------------------------------------------------------------------
@@ -29,7 +28,7 @@ def boa_env():
     new_env = Env()
     with boa.swap_env(new_env):
         fork_uri = os.environ["BOA_FORK_RPC_URL"]
-        boa.env.fork(fork_uri, block_identifier=25300898)
+        boa.env.fork(fork_uri, block_identifier=ETH_FORK_BLOCK)
         yield
 
 
@@ -212,44 +211,26 @@ def kyc_for(kyc_validator_key, now):
 # Securitize P2P lending stack
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="session")
-def p2p_lending_securitize_erc20_contract_def():
-    # workaround: boa doesn't catch 'unused' events and fails, so inject a dummy logger
-    contents = Path("contracts/v1/P2PLendingSecuritizeErc20.vy").read_text(encoding="utf-8")
-    contents += dedent("""
-        @external
-        def log_stuff():
-            log LoanLiquidated(
-                id=empty(bytes32), borrower=empty(address), lender=empty(address), liquidator=empty(address),
-                outstanding_debt=0, collateral_for_debt=0, remaining_collateral=0, remaining_collateral_value=0,
-                shortfall=0, liquidation_fee=0, protocol_settlement_fee_amount=0)
-            log LoanPartiallyLiquidated(
-                id=empty(bytes32), borrower=empty(address), lender=empty(address), written_off=0,
-                collateral_claimed=0, liquidation_fee=0, updated_amount=0, updated_collateral_amount=0,
-                updated_accrual_start_time=0, liquidator=empty(address), old_ltv=0, new_ltv=0)
-            log LoanReplaced(
-                id=empty(bytes32), amount=0, apr=0, maturity=0, start_time=0, borrower=empty(address),
-                lender=empty(address), collateral_amount=0, min_collateral_amount=0, call_eligibility=0,
-                call_window=0, liquidation_ltv=0, initial_ltv=0, origination_fee_amount=0,
-                protocol_upfront_fee_amount=0, protocol_settlement_fee=0, partial_liquidation_fee=0,
-                full_liquidation_fee=0, offer_id=empty(bytes32), offer_tracing_id=empty(bytes32),
-                original_loan_id=empty(bytes32), paid_principal=0, paid_interest=0,
-                paid_protocol_settlement_fee_amount=0)
-            log LoanReplacedByLender(
-                id=empty(bytes32), amount=0, apr=0, maturity=0, start_time=0, borrower=empty(address),
-                lender=empty(address), collateral_amount=0, min_collateral_amount=0, call_eligibility=0,
-                call_window=0, liquidation_ltv=0, initial_ltv=0, origination_fee_amount=0,
-                protocol_upfront_fee_amount=0, protocol_settlement_fee=0, partial_liquidation_fee=0,
-                full_liquidation_fee=0, offer_id=empty(bytes32), offer_tracing_id=empty(bytes32),
-                original_loan_id=empty(bytes32), paid_principal=0, paid_interest=0,
-                paid_protocol_settlement_fee_amount=0)
-            log LoanMaturityExtended(
-                loan_id=empty(bytes32), original_maturity=0, new_maturity=0, lender=empty(address),
-                borrower=empty(address), caller=empty(address))
-            log LoanBorrowerTransferred(
-                loan_id=empty(bytes32), new_loan_id=empty(bytes32), old_borrower=empty(address),
-                new_borrower=empty(address), lender=empty(address), vault_id=0)
-    """)
-    return boa.loads_partial(contents, name="P2PLendingSecuritizeErc20")
+def p2p_lending_securitize_base_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingSecuritizeBase.vy")
+
+
+@pytest.fixture(scope="session")
+def p2p_lending_securitize_erc20_contract_def(
+    p2p_lending_securitize_base_contract_def,
+    p2p_lending_securitize_refinance_contract_def,
+    p2p_lending_securitize_liquidation_contract_def,
+):
+    # workaround: boa doesn't catch 'unused' events and fails, so inject a generated dummy logger
+    return build_erc20_contract_def_with_log_stuff(
+        "contracts/v1/P2PLendingSecuritizeErc20.vy",
+        "P2PLendingSecuritizeErc20",
+        p2p_lending_securitize_base_contract_def,
+        [
+            p2p_lending_securitize_refinance_contract_def,
+            p2p_lending_securitize_liquidation_contract_def,
+        ],
+    )
 
 
 @pytest.fixture

@@ -4,13 +4,13 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
     calc_ltv,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
-    get_securitize_loan_mutations,
+    get_loan_mutations,
     replace_namedtuple_field,
     sign_offer,
 )
@@ -102,7 +102,7 @@ def ongoing_loan_usdc_weth(
     )
     get_last_event(p2p_usdc_weth, "LoanCreated")
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -112,6 +112,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -131,8 +132,9 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 
@@ -142,7 +144,7 @@ def p2p_erc20_proxy(p2p_usdc_weth, p2p_lending_erc20_proxy_contract_def):
 
 
 def test_add_collateral_to_loan_reverts_if_loan_invalid(p2p_usdc_weth, ongoing_loan_usdc_weth):
-    for loan in get_securitize_loan_mutations(ongoing_loan_usdc_weth):
+    for loan in get_loan_mutations(ongoing_loan_usdc_weth):
         print(f"{loan=}")
         with boa.reverts("invalid loan"):
             p2p_usdc_weth.add_collateral_to_loan(loan, 1000, sender=ongoing_loan_usdc_weth.borrower)
@@ -204,7 +206,7 @@ def test_add_collateral_to_loan_updates_loan_state(p2p_usdc_weth, ongoing_loan_u
     updated_loan = replace_namedtuple_field(
         ongoing_loan_usdc_weth, collateral_amount=collateral_amount + additional_collateral
     )
-    assert compute_securitize_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
+    assert compute_loan_hash(updated_loan) == p2p_usdc_weth.loans(ongoing_loan_usdc_weth.id)
 
 
 def test_add_collateral_to_loan_logs_event(p2p_usdc_weth, ongoing_loan_usdc_weth, usdc, weth, oracle):

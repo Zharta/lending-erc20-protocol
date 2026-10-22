@@ -10,9 +10,9 @@ import pytest
 
 from ..conftest_base import (
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     sign_offer,
 )
@@ -102,7 +102,7 @@ def ongoing_loan_usdc_weth(
         valid_offer_usdc_weth, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(valid_offer_usdc_weth),
         offer_tracing_id=offer.tracing_id,
@@ -112,6 +112,7 @@ def ongoing_loan_usdc_weth(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -131,8 +132,9 @@ def ongoing_loan_usdc_weth(
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
     return loan
 
 

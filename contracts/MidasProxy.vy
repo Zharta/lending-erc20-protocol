@@ -104,7 +104,7 @@ def receiveFlashLoan(
     extcall IERC20(payment_token).approve(borrower_vault, callback_data.collateral_max_spend)
     if not borrower_vault.is_contract:
         extcall P2PLendingMultiVaultErc20.__at__(p2p_lending_erc20).create_vault_if_needed(callback_data.borrower)
-    extcall vault.__at__(borrower_vault).buy(payment_token, callback_data.deposit_vault, callback_data.collateral_to_buy, callback_data.collateral_max_spend)
+    extcall vault.__at__(borrower_vault).mint_sync(payment_token, callback_data.deposit_vault, callback_data.collateral_to_buy, callback_data.collateral_max_spend)
 
     loan_id: bytes32 = self._create_loan(
         callback_data.offer,

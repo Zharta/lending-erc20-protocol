@@ -160,10 +160,10 @@ def test_oracle_data(oracle_decrdx_usd, p2p_usdc_decrdx):
     assert oracle_decrdx_usd.address == p2p_usdc_decrdx.oracle_addr()
     assert oracle_decrdx_usd.decimals() == 18
 
-    # deCRDX price from Centrifuge Spoke: ~$0.99452 per token at fork block 25300898.
+    # deCRDX price from Centrifuge Spoke: ~$0.99724 per token at fork block 25400000.
     # Must change if fork block changes.
-    min_price = 994 * 10**15
-    max_price = 995 * 10**15
+    min_price = 997 * 10**15
+    max_price = 998 * 10**15
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 

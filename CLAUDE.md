@@ -33,6 +33,15 @@ contracts/
     P2PLendingSecuritizeRefinance.vy # Refinance + maturity extension facet
     P2PLendingSecuritizeLiquidation.vy # Liquidation with redemption handling
     P2PLendingVaultSecuritize.vy    # Vault with SecuritizeSwap integration
+    # MultiVault contracts (pluggable vaults via capability flags + leveraged loans)
+    P2PLendingMultiVaultErc20.vy    # Main entry point (one vault per loan)
+    P2PLendingMultiVaultBase.vy     # Shared state, canonical Vault interface + capability flags
+    P2PLendingMultiVaultLoan.vy     # Loan facet: create_loan, create_leveraged_loan, start_loan, cancel_pending_loan, cancel_redeem, redeem_and_settle
+    P2PLendingMultiVaultRefinance.vy
+    P2PLendingMultiVaultLiquidation.vy
+    P2PLendingVaultMidas.vy         # Vault impl: MINT_SYNC | REDEEM_SYNC (Midas mTokens)
+    P2PLendingVaultSecuritizeMV.vy  # Vault impl: MINT_SYNC | REDEEM_MANUAL (Securitize DS, MultiVault funding)
+    P2PLendingVaultCentrifugeAsync.vy        # Vault impl: async ERC-7540/7887 (Centrifuge shares)
   auxiliary/            # Mock contracts for testing
   KYCValidator.vy       # KYC signature validation
 
@@ -41,6 +50,9 @@ tests/
     unit/
     integration/
     profitr/            # Securitization integration tests
+  p2p_erc20_multivault/
+    unit/
+    integration/        # Fork tests incl. leveraged loop (acred, mfone)
   conftest.py
 
 scripts/

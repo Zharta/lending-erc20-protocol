@@ -87,6 +87,9 @@ def sec_borrower(xprism, p2p_usdc_xprism, now):
     return borrower
 
 
+# The xPRISM oracle adapter derives its price from the cUSDO/USD chainlink feed 0x5b79480BbF13930B777B2Cb9Ca8d664B7AA3aa6a.
+# That proxy's underlying aggregator was unset on-chain: https://etherscan.io/tx/0x2dd19353d20ee8b4db11bbca2192b8b7a81f46d10f4a92b891cc53dd931bd589/advanced
+@pytest.mark.skip("xPRISM oracle adapter can no longer produce a price")
 def test_oracle_data(oracle_xprism_usd, p2p_usdc_xprism):
     answer = oracle_xprism_usd.latestRoundData()[1]
 
@@ -104,6 +107,9 @@ def test_oracle_data(oracle_xprism_usd, p2p_usdc_xprism):
     assert min_price <= answer <= max_price, f"oracle answer {answer} outside sane range [{min_price}, {max_price}]"
 
 
+# The xPRISM oracle adapter derives its price from the cUSDO/USD chainlink feed 0x5b79480BbF13930B777B2Cb9Ca8d664B7AA3aa6a.
+# That proxy's underlying aggregator was unset on-chain: https://etherscan.io/tx/0x2dd19353d20ee8b4db11bbca2192b8b7a81f46d10f4a92b891cc53dd931bd589/advanced
+@pytest.mark.skip("xPRISM oracle adapter can no longer produce a price")
 def test_create_loan(
     p2p_usdc_xprism,
     sec_borrower,

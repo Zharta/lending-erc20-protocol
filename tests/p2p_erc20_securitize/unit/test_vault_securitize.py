@@ -756,6 +756,9 @@ def test_buy_approves_correct_spender(securitize_vault_contract_def, acred, usdc
     swap_addr = acred.getDSService(1 << 14)
 
     stable_amount = 10
+    # oracle num=3, den=10: ds = 10*10//3 = 33, swap pulls 33*3//10 = 9, leaving 1 of the approval unused
+    liquidity_pulled = (stable_amount * 10 // 3) * 3 // 10  # 9
+    residual_allowance = stable_amount - liquidity_pulled  # 1
     usdc.mint(owner, stable_amount)
     usdc.approve(v.address, stable_amount, sender=owner)
 
@@ -764,12 +767,10 @@ def test_buy_approves_correct_spender(securitize_vault_contract_def, acred, usdc
 
     v.buy(usdc.address, 0, stable_amount, sender=owner)
 
-    # After buy, the swap contract should have been approved.
-    # The mock swap contract consumes the allowance via transferFrom,
-    # but the approve happened to the correct address (not self.token).
-    # If the mutation changed it to self.token, the approve would go to acred.address.
-    # We verify the allowance on self.token (acred) is NOT set:
-    assert usdc.allowance(v.address, acred.address) == 0
+    # buy approved the swap contract for stable_amount; the swap's transferFrom then pulled 9,
+    # leaving the residual allowance on the swap contract. A nonzero residual proves the approve
+    # (and the consuming transferFrom) targeted the swap contract, not some other address.
+    assert usdc.allowance(v.address, swap_addr) == residual_allowance
 
 
 def test_deposit_partial_pending_multi_wallet(securitize_vault_contract_def, failing_transfer_erc20, owner):
@@ -1041,8 +1042,8 @@ def test_buy_refund_goes_to_msg_sender_not_caller(
     # Authorize the vault_proxy in the vault manager mock
     min_vault_manager.set_proxy(vault_proxy.address, True)
 
-    # Use stable_amount=11 to trigger refund (with oracle rate 3/10):
-    # swap(11): dsTokenAmount = 11*3//10 = 3, liquidityAmount = 3*10//3 = 10
+    # Use stable_amount=11 to trigger refund (with oracle rate num=3, den=10):
+    # swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
     # Only 10 of 11 consumed, 1 returned
     stable_amount = 11
     usdc.mint(vault_owner, stable_amount)
@@ -1307,8 +1308,8 @@ def test_buy_refund_only_excess_not_full_balance(securitize_vault_contract_def, 
     assert usdc.balanceOf(vault.address) == pre_existing
 
     # Call buy with stable_amount=11 to trigger a 1 USDC refund
-    # With oracle rate 3/10:
-    #   swap(11): _dsTokenAmount = 11*3//10 = 3, _liquidityAmount = 3*10//3 = 10
+    # With oracle rate num=3, den=10:
+    #   swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
     #   Only 10 of 11 stablecoins consumed, 1 returned to vault
     stable_amount = 11
     usdc.mint(owner, stable_amount)

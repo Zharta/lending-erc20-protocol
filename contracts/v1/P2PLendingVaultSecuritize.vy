@@ -20,7 +20,6 @@ interface Vault:
     def withdrawable_balance() -> uint256: view
     def withdraw_funds(payment_token: address, amount: uint256): nonpayable
     def transfer_funds(payment_token: address, amount: uint256, wallet: address): nonpayable
-    def redeem(redemption_vault: address, token_out: address, amount_mtoken: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> uint256: nonpayable
 
 struct DsTokenAmountResult:
     ds_token_amount: uint256
@@ -227,31 +226,6 @@ def buy(payment_token: address, min_ds_token_amount: uint256, stable_coin_amount
     remaining_balance: uint256 = staticcall IERC20(payment_token).balanceOf(self)
     if remaining_balance > initial_balance:
         extcall IERC20(payment_token).transfer(msg.sender, remaining_balance - initial_balance)
-
-
-@external
-def redeem(redemption_vault: address, token_out: address, amount_in: uint256, oracle_rate_num: uint256, oracle_rate_den: uint256) -> uint256:
-    """
-    @notice Redeem DS tokens for a specified output token via the SecuritizeSwap contract.
-    @dev Approves the SecuritizeSwap contract to spend DS tokens and executes the redeem operation.
-    @param redemption_vault The address of the vault to which redeemed tokens will be sent.
-    @param token_out Ignored in this implementation.
-    @param amount_in The amount of DS tokens to redeem.
-    @param oracle_rate_num Ignored in this implementation (redemption is async, attested off-chain).
-    @param oracle_rate_den Ignored in this implementation (redemption is async, attested off-chain).
-    @return Returns 0 as the redeem process is async.
-    """
-
-    assert self._check_user(self.caller), "unauthorized"
-    if amount_in == 0:
-        return 0
-
-    assert amount_in + self.pending_transfers_total <= staticcall IERC20(self.token).balanceOf(self), "insufficient balance"
-    assert (extcall IERC20(self.token).transfer(redemption_vault, amount_in, default_return_value=True)), "transfer failed"
-    log Withdraw(wallet=redemption_vault, amount=amount_in)
-
-    return 0
-
 
 @internal
 def _check_user(user: address) -> bool:

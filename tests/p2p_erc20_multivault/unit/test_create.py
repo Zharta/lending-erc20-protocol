@@ -6,12 +6,12 @@ import pytest
 from ..conftest_base import (
     ZERO_ADDRESS,
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
     SignedOffer,
     calc_ltv,
     compute_liquidity_key,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_events,
     get_last_event,
@@ -495,7 +495,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
 
     loan_id = p2p_usdc_weth.create_loan(signed_offer, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower)
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(signed_offer),
         offer_tracing_id=offer.tracing_id,
@@ -505,6 +505,7 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -524,8 +525,9 @@ def test_create_loan(p2p_usdc_weth, borrower, now, lender, lender_key, kyc_borro
         vault_id=0,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_weth.loans(loan_id)
 
 
 def test_create_loan_logs_event(

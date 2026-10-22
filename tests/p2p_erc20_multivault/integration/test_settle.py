@@ -3,11 +3,11 @@ import pytest
 
 from ..conftest_base import (
     ZERO_BYTES32,
+    Loan,
     Offer,
-    SecuritizeLoan,
     SignedRedeemResult,
     compute_liquidity_key,
-    compute_securitize_loan_hash,
+    compute_loan_hash,
     compute_signed_offer_id,
     get_last_event,
     sign_offer,
@@ -77,6 +77,7 @@ def ongoing_loan_usdc_acred(
     usdc,
     acred,
     borrower,
+    borrower_account,
     lender,
     lender_key,
     now,
@@ -84,14 +85,17 @@ def ongoing_loan_usdc_acred(
     kyc_borrower,
     kyc_lender,
     oracle_acred_usd,
+    set_investor_sig,
 ):
     offer = offer_usdc_acred.offer
     principal = offer.principal
     collateral_amount = 20 * int(1e6)
     lender_approval = principal + (p2p_usdc_acred.protocol_upfront_fee() - offer.origination_fee_bps) * principal // BPS
 
-    # Get the vault_id before loan creation
     vault_id = p2p_usdc_acred.vault_count(borrower)
+
+    # The borrower authorizes the connector to register its per-loan vault.
+    set_investor_sig(borrower_account, now + 3600)
 
     acred.approve(p2p_usdc_acred.wallet_to_vault(borrower), collateral_amount, sender=borrower)
     usdc.approve(p2p_usdc_acred.address, lender_approval, sender=lender)
@@ -100,7 +104,7 @@ def ongoing_loan_usdc_acred(
         offer_usdc_acred, principal, collateral_amount, kyc_borrower, kyc_lender, sender=borrower
     )
 
-    loan = SecuritizeLoan(
+    loan = Loan(
         id=loan_id,
         offer_id=compute_signed_offer_id(offer_usdc_acred),
         offer_tracing_id=offer.tracing_id,
@@ -110,6 +114,7 @@ def ongoing_loan_usdc_acred(
         payment_token=offer.payment_token,
         collateral_token=offer.collateral_token,
         maturity=now + offer.duration,
+        create_time=now,
         start_time=now,
         accrual_start_time=now,
         borrower=borrower,
@@ -130,8 +135,9 @@ def ongoing_loan_usdc_acred(
         vault_id=vault_id,
         redeem_start=0,
         redeem_residual_collateral=0,
+        max_pending_window=0,
     )
-    assert compute_securitize_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
     return loan
 
 

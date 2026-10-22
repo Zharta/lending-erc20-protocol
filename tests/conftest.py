@@ -70,6 +70,11 @@ def securitize_vault_contract_def():
 
 
 @pytest.fixture(scope="session")
+def securitize_mv_vault_contract_def():
+    return boa.load_partial("contracts/v1/P2PLendingVaultSecuritizeMV.vy")
+
+
+@pytest.fixture(scope="session")
 def vault_registrar_mock_contract_def():
     return boa.load_partial("contracts/auxiliary/VaultRegistrarV2Mock.vy")
 

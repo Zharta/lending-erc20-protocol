@@ -35,55 +35,18 @@ def weth_vault(securitize_vault_contract_def, vault_owner, weth, min_vault_manag
     return v
 
 
-def test_buy_skips_refund_when_remaining_equals_initial(vault, vault_owner, acred, usdc):
-    """When remaining_balance == initial_balance (both zero), no stablecoin transfer back occurs.
+def test_buy_refunds_swap_leftover_from_10(vault, vault_owner, acred, usdc):
+    """AcredMock swap direction is consistent: ds = stable*den//num, liquidity pulled = ds*num//den.
 
-    With oracle rate 3/10:
-    - swap(10): _dsTokenAmount = 10*3//10 = 3, _liquidityAmount = 3*10//3 = 10
-    - All stablecoins consumed exactly, remaining_balance == initial_balance == 0
+    With oracle rate num=3, den=10:
+    - swap(10): ds = 10*10//3 = 33, liquidity pulled = 33*3//10 = 9
+    - Only 9 of 10 stablecoins consumed, 1 refunded to the caller.
     """
     stable_amount = 10
-    usdc.mint(vault_owner, stable_amount)
-    usdc.approve(vault.address, stable_amount, sender=vault_owner)
-
-    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
-
-    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
-    assert len(refund_transfers) == 0
-    assert usdc.balanceOf(vault.address) == 0
-    assert vault.pending_transfers(vault_owner) == 10 * 10 // 3  # calculateDsTokenAmount
-    assert vault.pending_transfers_total() == 10 * 10 // 3
-
-
-def test_buy_skips_refund_when_remaining_equals_initial_nonzero(vault, vault_owner, acred, usdc):
-    """When vault has pre-existing stablecoin balance and remaining == initial, no transfer occurs."""
-    preexisting = 100
-    usdc.mint(vault_owner, preexisting)
-    usdc.transfer(vault.address, preexisting, sender=vault_owner)
-    assert usdc.balanceOf(vault.address) == preexisting
-
-    stable_amount = 10
-    usdc.mint(vault_owner, stable_amount)
-    usdc.approve(vault.address, stable_amount, sender=vault_owner)
-
-    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
-
-    # only transfer to vault is the pre-seeding, no refund from vault to vault_owner
-    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
-    assert len(refund_transfers) == 0
-    assert usdc.balanceOf(vault.address) == preexisting
-    assert vault.pending_transfers(vault_owner) == 10 * 10 // 3
-    assert vault.pending_transfers_total() == 10 * 10 // 3
-
-
-def test_buy_refunds_excess_when_remaining_exceeds_initial(vault, vault_owner, acred, usdc):
-    """When remaining_balance > initial_balance, excess stablecoins are transferred back.
-
-    With oracle rate 3/10:
-    - swap(11): _dsTokenAmount = 11*3//10 = 3, _liquidityAmount = 3*10//3 = 10
-    - Only 10 of 11 stablecoins consumed, 1 returned to sender
-    """
-    stable_amount = 11
+    ds = stable_amount * 10 // 3  # 33
+    liquidity_pulled = ds * 3 // 10  # 9
+    refund = stable_amount - liquidity_pulled  # 1
+    assert refund == 1  # precondition: partial spend leaves a refund
     usdc.mint(vault_owner, stable_amount)
     usdc.approve(vault.address, stable_amount, sender=vault_owner)
 
@@ -91,10 +54,59 @@ def test_buy_refunds_excess_when_remaining_exceeds_initial(vault, vault_owner, a
 
     refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
     assert len(refund_transfers) == 1
-    assert refund_transfers[0].value == 1
+    assert refund_transfers[0].value == refund
+    assert usdc.balanceOf(vault.address) == 0  # 9 pulled into swap, 1 refunded
+    assert vault.pending_transfers(vault_owner) == ds  # calculateDsTokenAmount
+    assert vault.pending_transfers_total() == ds
+
+
+def test_buy_refund_preserves_preexisting_balance(vault, vault_owner, acred, usdc):
+    """A pre-existing vault balance is preserved; only the swap leftover is refunded."""
+    preexisting = 100
+    usdc.mint(vault_owner, preexisting)
+    usdc.transfer(vault.address, preexisting, sender=vault_owner)
+    assert usdc.balanceOf(vault.address) == preexisting
+
+    stable_amount = 10
+    ds = stable_amount * 10 // 3  # 33
+    liquidity_pulled = ds * 3 // 10  # 9
+    refund = stable_amount - liquidity_pulled  # 1
+    usdc.mint(vault_owner, stable_amount)
+    usdc.approve(vault.address, stable_amount, sender=vault_owner)
+
+    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
+
+    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
+    assert len(refund_transfers) == 1
+    assert refund_transfers[0].value == refund
+    assert usdc.balanceOf(vault.address) == preexisting  # only the swap leftover refunded, seed untouched
+    assert vault.pending_transfers(vault_owner) == ds
+    assert vault.pending_transfers_total() == ds
+
+
+def test_buy_refunds_excess_when_remaining_exceeds_initial(vault, vault_owner, acred, usdc):
+    """When remaining_balance > initial_balance, excess stablecoins are transferred back.
+
+    With oracle rate num=3, den=10:
+    - swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
+    - Only 10 of 11 stablecoins consumed, 1 returned to sender.
+    """
+    stable_amount = 11
+    ds = stable_amount * 10 // 3  # 36
+    liquidity_pulled = ds * 3 // 10  # 10
+    refund = stable_amount - liquidity_pulled  # 1
+    assert refund == 1  # precondition
+    usdc.mint(vault_owner, stable_amount)
+    usdc.approve(vault.address, stable_amount, sender=vault_owner)
+
+    vault.buy(usdc.address, 0, stable_amount, sender=vault_owner)
+
+    refund_transfers = get_transfer_events(vault, usdc.address, vault.address, vault_owner)
+    assert len(refund_transfers) == 1
+    assert refund_transfers[0].value == refund
     assert usdc.balanceOf(vault.address) == 0
-    assert vault.pending_transfers(vault_owner) == 11 * 10 // 3
-    assert vault.pending_transfers_total() == 11 * 10 // 3
+    assert vault.pending_transfers(vault_owner) == ds
+    assert vault.pending_transfers_total() == ds
 
 
 def test_buy_updates_pending_when_called_by_owner(vault, vault_owner, min_vault_manager, acred, usdc):
@@ -438,8 +450,8 @@ def test_buy_refund_goes_to_caller_not_owner(
     # Authorize the proxy
     min_vault_manager.set_proxy(vault_proxy.address, True)
 
-    # Use stable_amount=11 with oracle rate 3/10:
-    # swap(11): _dsTokenAmount = 11*3//10 = 3, _liquidityAmount = 3*10//3 = 10
+    # Use stable_amount=11 with oracle rate num=3, den=10:
+    # swap(11): ds = 11*10//3 = 36, liquidity pulled = 36*3//10 = 10
     # So 10 of 11 stablecoins consumed, 1 refunded
     stable_amount = 11
     usdc.mint(owner, stable_amount)

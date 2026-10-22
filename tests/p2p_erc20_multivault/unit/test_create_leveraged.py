@@ -1,0 +1,1072 @@
+"""Unit tests for `create_leveraged_loan` (sync MINT_SYNC branch) against the real vault.
+
+The collateral is minted through the real `P2PLendingVaultSecuritizeMV` vault (the `p2p_usdc_acred`
+market) + an `AcredMock` DS token. The lending contract pre-funds the loan vault with
+(lender principal - origination_fee) + borrower_margin (= mint_spend), calls `vault.mint_sync`, which
+resolves the swap connector FROM the collateral token (getDSService(1<<14) -> the AcredMock itself),
+calls the AcredMock `swap` (which pulls the stablecoin from the vault via transferFrom and mints DS to
+it), then reconciles the principal (flexible `offer.principal == 0` -> reduce principal + refund the
+lender; fixed -> refund leftover to the borrower) and stores the loan against the actual minted
+collateral.
+
+Collateral math: `minted = mint_spend * RATE_DEN // RATE_NUM` (the AcredMock rate). With the market's
+rate (num=1500, den=10**12) a full mint of 1500e6 USDC yields exactly 1e18 DS and consumes all 1500e6
+(refund 0). Refunds are driven by `acred_lev.set_max_mint_amount(cap)`: with a cap the swap mints only
+`cap` DS and pulls `cap * RATE_NUM // RATE_DEN` stablecoin, leaving the rest as a refund in the vault.
+
+Two distinct minimum checks exist:
+- `min_collateral_out` (7th arg) -> the vault's `min_ds_token_amount`; the AcredMock reverts
+  "ds token amount lt min" when the swap-calculated DS falls below it.
+- `offer.min_collateral_amount` -> re-validated in `_validate_and_build_loan`; reverts
+  "low collateral amount" when the actually-minted collateral is below the offer floor.
+
+Fees (origination + protocol upfront) are snapshotted on the ORIGINAL offer principal (`fee_principal`),
+NOT the reconciled principal. `expected_leveraged_loan` therefore takes an explicit `offer_principal`
+for the fee basis; tests exercising money math run with a nonzero fee so that basis is actually verified.
+The sync mint target is sourced from the market's `mint_addr` (set at deployment), not passed per-call.
+"""
+
+import boa
+import pytest
+
+from ..conftest_base import (
+    ZERO_BYTES32,
+    Loan,
+    Offer,
+    SignedRedeemResult,
+    calc_ltv,
+    compute_liquidity_key,
+    compute_loan_hash,
+    compute_signed_offer_id,
+    get_last_event,
+    sign_offer,
+)
+from .conftest import ACRED_LEV_ORACLE_DECIMALS, ACRED_LEV_ORACLE_RATE
+
+BPS = 10000
+
+# AcredMock rate for the leveraged market: ds = stable * RATE_DEN // RATE_NUM (see conftest).
+RATE_NUM = ACRED_LEV_ORACLE_RATE  # 1500
+RATE_DEN = 10**ACRED_LEV_ORACLE_DECIMALS  # 10**12
+
+
+def _minted(mint_spend, *, cap=0):
+    """The DS collateral the AcredMock swap mints for `mint_spend` stablecoin, capped by `cap` (0=none)."""
+    ds = mint_spend * RATE_DEN // RATE_NUM
+    return min(ds, cap) if 0 < cap < ds else ds
+
+
+def _spent(minted):
+    """The stablecoin the AcredMock swap actually pulls for `minted` DS (== mint_spend on a full mint)."""
+    return minted * RATE_NUM // RATE_DEN
+
+
+def _sign_leveraged_offer(
+    p2p,
+    usdc,
+    acred_lev,
+    oracle,
+    lender,
+    borrower,
+    lender_key,
+    now,
+    principal,
+    *,
+    flexible=False,
+    origination_fee_bps=0,
+    min_collateral_amount=0,
+):
+    """Build + sign a sync-market leveraged offer (collateral token = the AcredMock `acred_lev`).
+
+    `flexible=True` sets `offer.principal` to 0 (flexible branch, where a partial mint reduces the stored
+    principal) while keeping `available_liquidity` at the requested principal.
+    """
+    offer = Offer(
+        principal=0 if flexible else principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=acred_lev.address,
+        duration=100,
+        origination_fee_bps=origination_fee_bps,
+        min_collateral_amount=min_collateral_amount,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 10**6,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    return sign_offer(offer, lender_key, p2p.address)
+
+
+def _fund_leveraged(p2p, usdc, borrower, lender, principal, mint_spend, *, origination_fee_bps=0):
+    """Pre-fund a sync create_leveraged_loan: mint+approve the lender's principal (net origination fee)
+    and the borrower's margin (= mint_spend - lender's contribution).
+
+    No collateral seeding: the AcredMock swap mints the DS collateral to the vault against the `mint_spend`
+    stablecoin the contract routes into the vault (the vault approves the swap and it pulls via transferFrom).
+    """
+    lender_to_vault = principal - origination_fee_bps * principal // BPS
+    borrower_margin = mint_spend - lender_to_vault
+    usdc.mint(lender, mint_spend)
+    usdc.approve(p2p.address, mint_spend, sender=lender)
+    if borrower_margin > 0:
+        usdc.mint(borrower, borrower_margin)
+        usdc.approve(p2p.address, borrower_margin, sender=borrower)
+
+
+def expected_leveraged_loan(p2p, signed_offer, loan_id, borrower, lender, now, *, principal, collateral, offer_principal=None):
+    """The Loan a sync create_leveraged_loan stores: principal reconciled, collateral == minted.
+
+    `principal` is the reconciled amount stored on the loan (flexible partial mint reduces it; fixed
+    keeps it at the requested value); `collateral` is the actually-minted collateral held by the vault.
+    Fees are snapshotted on the ORIGINAL offer principal (`offer_principal`), which differs from the
+    stored `principal` on a flexible partial mint — pass `offer_principal` in that case (defaults to
+    `principal` when they coincide).
+    """
+    fee_principal = principal if offer_principal is None else offer_principal
+    offer = signed_offer.offer
+    return Loan(
+        id=loan_id,
+        offer_id=compute_signed_offer_id(signed_offer),
+        offer_tracing_id=offer.tracing_id,
+        initial_amount=principal,
+        amount=principal,
+        apr=offer.apr,
+        payment_token=offer.payment_token,
+        collateral_token=offer.collateral_token,
+        maturity=now + offer.duration,
+        create_time=now,
+        start_time=now,
+        accrual_start_time=now,
+        borrower=borrower,
+        lender=lender,
+        collateral_amount=collateral,
+        min_collateral_amount=offer.min_collateral_amount,
+        origination_fee_amount=offer.origination_fee_bps * fee_principal // BPS,
+        protocol_upfront_fee_amount=p2p.protocol_upfront_fee() * fee_principal // BPS,
+        protocol_settlement_fee=p2p.protocol_settlement_fee(),
+        partial_liquidation_fee=p2p.partial_liquidation_fee(),
+        full_liquidation_fee=p2p.full_liquidation_fee(),
+        call_eligibility=offer.call_eligibility,
+        call_window=offer.call_window,
+        liquidation_ltv=offer.liquidation_ltv,
+        oracle_addr=offer.oracle_addr,
+        initial_ltv=offer.max_iltv,
+        call_time=0,
+        vault_id=0,
+        redeem_start=0,
+        redeem_residual_collateral=0,
+        max_pending_window=0,
+    )
+
+
+# --------------------------------------------------------------------------- FIXED principal
+
+
+def test_fixed_creates_loan(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, owner, now
+):
+    """Both fee fields nonzero so the stored fee snapshot (part of the loan hash) is actually verified."""
+    p2p_usdc_acred.set_protocol_fee(200, 0, sender=owner)  # 2% upfront fee snapshotted onto the loan
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)  # 1e18
+    origination_fee_bps = 100  # 1%
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        origination_fee_bps=origination_fee_bps,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=collateral
+    )
+    assert loan.origination_fee_amount == origination_fee_bps * principal // BPS  # nonzero, on original principal
+    assert loan.protocol_upfront_fee_amount == 200 * principal // BPS
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+
+
+def test_fixed_with_origination_fee(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """Origination fee reduces the lender funds routed to the vault but not the principal."""
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    origination_fee_bps = 100  # 1%
+    lender_to_vault = principal - origination_fee_bps * principal // BPS
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        origination_fee_bps=origination_fee_bps,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    lender_before = usdc.balanceOf(lender)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=collateral
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    assert lender_before - usdc.balanceOf(lender) == lender_to_vault  # lender deploys principal net of fee
+
+
+def test_fixed_transfers_protocol_upfront_fee_to_wallet(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, owner, now
+):
+    """The protocol upfront fee is pulled from the lender to the protocol wallet at create."""
+    p2p_usdc_acred.set_protocol_fee(200, 0, sender=owner)  # 2% upfront fee, lender-funded
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    protocol_upfront = 200 * principal // BPS  # 20 USDC
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal
+    )  # origination fee 0
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+    protocol_wallet = p2p_usdc_acred.protocol_wallet()
+    lender_before, protocol_before = usdc.balanceOf(lender), usdc.balanceOf(protocol_wallet)
+
+    p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    assert usdc.balanceOf(protocol_wallet) - protocol_before == protocol_upfront  # lender -> protocol wallet
+    assert lender_before - usdc.balanceOf(lender) == principal + protocol_upfront  # principal (net orig 0) + upfront
+
+
+def test_fixed_transfers_collateral_to_vault(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    signed_offer = _sign_leveraged_offer(p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal)
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+    vault_addr = p2p_usdc_acred.wallet_to_vault(borrower)
+
+    p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    assert acred_lev.balanceOf(vault_addr) == collateral  # minted DS collateral held by the loan vault
+
+
+def test_fixed_deploys_lender_and_borrower_funds(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, owner, now
+):
+    """With both fees live: lender deploys (principal - origination) to the vault + the upfront fee to
+    the protocol wallet; the borrower covers the remaining margin."""
+    p2p_usdc_acred.set_protocol_fee(200, 0, sender=owner)  # 2% upfront (lender-funded)
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    origination_fee_bps = 100  # 1%
+    protocol_upfront = 200 * principal // BPS
+    lender_to_vault = principal - origination_fee_bps * principal // BPS
+    borrower_margin = mint_spend - lender_to_vault
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        origination_fee_bps=origination_fee_bps,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    lender_before, borrower_before = usdc.balanceOf(lender), usdc.balanceOf(borrower)
+
+    p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    assert lender_before - usdc.balanceOf(lender) == lender_to_vault + protocol_upfront
+    assert borrower_before - usdc.balanceOf(borrower) == borrower_margin
+
+
+def test_fixed_logs_loan_created_event(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    signed_offer = _sign_leveraged_offer(p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal)
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    event = get_last_event(p2p_usdc_acred, "LoanCreated")
+    assert event.id == loan_id
+    assert event.amount == principal
+    assert event.collateral_amount == collateral
+
+
+def test_logs_leveraged_event(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    borrower_margin = mint_spend - principal  # 500 USDC; origination fee 0
+    signed_offer = _sign_leveraged_offer(p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal)
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    event = get_last_event(p2p_usdc_acred, "LeveragedLoanCreated")
+    assert event.id == loan_id
+    assert event.principal == principal
+    assert event.collateral_amount == collateral
+    assert event.acquired_collateral == collateral
+    assert event.payment_spent == mint_spend
+    assert event.borrower_margin == borrower_margin
+    assert event.pending is False
+    assert event.mint_deadline == 0  # sync branch always logs mint_deadline 0
+
+
+# --------------------------------------------------------------------------- FLEXIBLE principal
+
+
+def test_flexible_full_mint_keeps_principal(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, owner, now
+):
+    """Flexible offer, full mint (refund 0): principal stays at the requested amount; fees nonzero."""
+    p2p_usdc_acred.set_protocol_fee(200, 0, sender=owner)  # 2% upfront fee
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)  # full mint -> refund 0
+    origination_fee_bps = 100  # 1%
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        flexible=True,
+        origination_fee_bps=origination_fee_bps,
+    )
+    assert signed_offer.offer.principal == 0  # flexible
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    # full mint: reconciled principal == original -> offer_principal == principal
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=collateral
+    )
+    assert loan.origination_fee_amount == origination_fee_bps * principal // BPS
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+
+
+def test_flexible_partial_mint_reduces_principal_and_refunds_lender(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """Flexible branch: the refund reduces the principal and is returned to the lender.
+
+    The origination fee stays snapshotted on the ORIGINAL principal even though the stored principal is
+    reduced (`offer_principal=principal`).
+    """
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    origination_fee_bps = 100  # 1%
+    origination_fee = origination_fee_bps * principal // BPS
+    cap = 8 * 10**17  # cap the mint below the full 1e18 -> partial spend
+    collateral = _minted(mint_spend, cap=cap)  # == cap
+    refund = mint_spend - _spent(collateral)  # 1500e6 - 1200e6 = 300e6
+    assert refund > 0  # precondition: partial mint leaves a refund
+    new_principal = principal - refund  # lender_refund = min(refund, principal) = refund
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        flexible=True,
+        origination_fee_bps=origination_fee_bps,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    acred_lev.set_max_mint_amount(cap)  # force the partial mint
+    lender_before = usdc.balanceOf(lender)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred,
+        signed_offer,
+        loan_id,
+        borrower,
+        lender,
+        now,
+        principal=new_principal,
+        collateral=collateral,
+        offer_principal=principal,  # fee basis is the ORIGINAL principal, not the reduced one
+    )
+    assert loan.origination_fee_amount == origination_fee  # on the original principal, > fee on new_principal
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    # lender deployed (principal - origination) to the vault, then got `refund` back -> net new_principal - fee
+    assert lender_before - usdc.balanceOf(lender) == new_principal - origination_fee
+
+
+def test_flexible_partial_mint_preserves_borrower_margin(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """Flexible branch: the whole refund goes to the lender; the borrower margin stays as equity."""
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    origination_fee_bps = 100  # 1%
+    lender_to_vault = principal - origination_fee_bps * principal // BPS
+    borrower_margin = mint_spend - lender_to_vault
+    cap = 8 * 10**17
+    refund = mint_spend - _spent(_minted(mint_spend, cap=cap))  # 300e6, refund <= principal -> borrower_refund 0
+    assert refund <= principal
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        flexible=True,
+        origination_fee_bps=origination_fee_bps,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    acred_lev.set_max_mint_amount(cap)
+    borrower_before = usdc.balanceOf(borrower)
+
+    p2p_usdc_acred.create_leveraged_loan(
+        signed_offer,
+        principal,
+        _minted(mint_spend, cap=cap),
+        kyc_borrower,
+        kyc_lender,
+        mint_spend,
+        0,
+        sender=borrower,
+    )
+
+    assert borrower_before - usdc.balanceOf(borrower) == borrower_margin  # full margin paid, nothing back
+
+
+def test_flexible_partial_mint_updates_committed_liquidity(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    cap = 8 * 10**17
+    refund = mint_spend - _spent(_minted(mint_spend, cap=cap))  # 300e6
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal, flexible=True
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+    acred_lev.set_max_mint_amount(cap)
+    key = compute_liquidity_key(lender, signed_offer.offer.tracing_id)
+    assert p2p_usdc_acred.commited_liquidity(key) == 0
+
+    p2p_usdc_acred.create_leveraged_loan(
+        signed_offer,
+        principal,
+        _minted(mint_spend, cap=cap),
+        kyc_borrower,
+        kyc_lender,
+        mint_spend,
+        0,
+        sender=borrower,
+    )
+
+    assert p2p_usdc_acred.commited_liquidity(key) == principal - refund  # tracks the reduced principal
+
+
+def test_create_leveraged_flexible_caps_lender_refund_at_lender_deposit(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """The flexible refund to the lender is capped at what the lender actually deposited (lender_to_vault),
+    NOT the full principal — the origination-fee gap is borrower margin and must go back to the borrower.
+
+    This exercises the `lender_to_vault < refunded <= principal` window where the cap bites. With
+    origination_fee_bps=100 (1%) the lender only funded `lender_to_vault = principal - origination_fee`
+    (990 USDC), so a refund of 995 USDC must split: 990 back to the lender (all the lender deployed) and
+    the remaining 5 USDC back to the borrower (their margin).
+    """
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    origination_fee_bps = 100  # 1%
+    origination_fee = origination_fee_bps * principal // BPS  # 10 USDC
+    lender_to_vault = principal - origination_fee  # 990 USDC (what the lender actually deposited)
+    cap = 336666666666666666  # partial mint -> spent 504999999, refund 995000001 (in the capped window)
+    collateral = _minted(mint_spend, cap=cap)
+    assert collateral == cap  # the cap bites (below the full 1e18 mint)
+    refunded = mint_spend - _spent(collateral)  # 995000001
+    lender_refund = min(refunded, lender_to_vault)  # capped at 990 USDC
+    borrower_refund = refunded - lender_refund  # 5000001 -> back to the borrower
+    new_principal = principal - lender_refund  # 10 USDC
+    # preconditions: the cap sits strictly inside the window where the refund exceeds what the lender funded
+    assert origination_fee > 0
+    assert lender_to_vault < refunded <= principal
+    assert lender_refund == lender_to_vault < min(refunded, principal)  # capped below the full refund
+    assert borrower_refund > 0
+
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        flexible=True,
+        origination_fee_bps=origination_fee_bps,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    acred_lev.set_max_mint_amount(cap)
+    lender_before, borrower_before = usdc.balanceOf(lender), usdc.balanceOf(borrower)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    # lender net flow: deployed `lender_to_vault`, got `lender_refund` back -> net (lender_to_vault - lender_refund) == 0
+    assert lender_before - usdc.balanceOf(lender) == lender_to_vault - lender_refund  # lender made whole on the refund
+    # borrower net flow: paid `borrower_margin` in, got `borrower_refund` back
+    borrower_margin = mint_spend - lender_to_vault  # 510 USDC
+    assert borrower_before - usdc.balanceOf(borrower) == borrower_margin - borrower_refund
+
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred,
+        signed_offer,
+        loan_id,
+        borrower,
+        lender,
+        now,
+        principal=new_principal,  # principal reduced by the CAPPED lender refund only
+        collateral=collateral,
+        offer_principal=principal,  # fee basis stays the original principal
+    )
+    assert loan.amount == new_principal == principal - min(refunded, lender_to_vault)
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+
+
+# --------------------------------------------------------------------------- FIXED principal, partial mint
+
+
+def test_fixed_partial_mint_keeps_principal(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, owner, now
+):
+    """Fixed branch: the principal is binding, so the leftover does NOT reduce it; fees nonzero."""
+    p2p_usdc_acred.set_protocol_fee(200, 0, sender=owner)  # 2% upfront fee
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    cap = 8 * 10**17
+    collateral = _minted(mint_spend, cap=cap)
+    origination_fee_bps = 100  # 1%
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        origination_fee_bps=origination_fee_bps,
+    )  # fixed offer
+    assert signed_offer.offer.principal != 0
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    acred_lev.set_max_mint_amount(cap)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    # fixed: reconciled principal == original -> offer_principal == principal
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=collateral
+    )
+    assert loan.origination_fee_amount == origination_fee_bps * principal // BPS
+    assert loan.protocol_upfront_fee_amount == 200 * principal // BPS
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+
+
+def test_fixed_partial_mint_refunds_borrower(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """Fixed branch: leftover payment goes to the borrower; the lender deploys principal net of fee."""
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    origination_fee_bps = 100  # 1%
+    lender_to_vault = principal - origination_fee_bps * principal // BPS
+    borrower_margin = mint_spend - lender_to_vault
+    cap = 8 * 10**17
+    collateral = _minted(mint_spend, cap=cap)
+    refund = mint_spend - _spent(collateral)  # 300e6
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        origination_fee_bps=origination_fee_bps,
+    )  # fixed offer
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend, origination_fee_bps=origination_fee_bps)
+    acred_lev.set_max_mint_amount(cap)
+    vault_addr = p2p_usdc_acred.wallet_to_vault(borrower)
+    lender_before, borrower_before = usdc.balanceOf(lender), usdc.balanceOf(borrower)
+
+    p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    assert lender_before - usdc.balanceOf(lender) == lender_to_vault  # lender deploys principal net of fee
+    assert borrower_before - usdc.balanceOf(borrower) == borrower_margin - refund  # got the leftover back
+    assert usdc.balanceOf(vault_addr) == 0  # nothing stuck in the vault
+
+
+# --------------------------------------------------------------------------- reverts
+
+
+def test_reverts_if_collateral_lt_offer_min(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """`offer.min_collateral_amount` above the actually-minted collateral reverts in _validate_and_build_loan."""
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)  # 1e18
+    min_collateral_amount = 2 * 10**18  # minted collateral falls below the offer floor
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        min_collateral_amount=min_collateral_amount,
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+
+    with boa.reverts("low collateral amount"):
+        p2p_usdc_acred.create_leveraged_loan(
+            signed_offer,
+            principal,
+            collateral,
+            kyc_borrower,
+            kyc_lender,
+            mint_spend,
+            0,
+            sender=borrower,
+        )
+
+
+def test_reverts_if_minted_lt_min_collateral_out(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """`min_collateral_out` above the swap-calculated DS reverts INSIDE the vault (AcredMock guard)."""
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)  # 1e18
+    min_collateral_out = collateral + 1  # one unit above what the swap can mint
+    signed_offer = _sign_leveraged_offer(p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal)
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+
+    with boa.reverts("ds token amount lt min"):
+        p2p_usdc_acred.create_leveraged_loan(
+            signed_offer,
+            principal,
+            collateral,
+            kyc_borrower,
+            kyc_lender,
+            mint_spend,
+            min_collateral_out,
+            sender=borrower,
+        )
+
+
+def test_reverts_if_zero_principal(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """Flexible offer whose mint is fully refunded leaves no position -> 'zero principal'."""
+    principal, mint_spend = 1000 * 10**6, 1000 * 10**6  # mint_spend == principal (origination 0)
+    # Cap the mint to ~0 DS so almost the whole mint_spend is refunded (refund >= principal).
+    cap = 1  # 1 DS -> spent = 1*num//den = 0, refund = mint_spend
+    collateral = _minted(mint_spend, cap=cap)
+    refund = mint_spend - _spent(collateral)
+    assert refund >= principal  # precondition: lender_refund == principal -> new principal 0
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal, flexible=True
+    )
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+    acred_lev.set_max_mint_amount(cap)
+
+    with boa.reverts("zero principal"):
+        p2p_usdc_acred.create_leveraged_loan(
+            signed_offer,
+            principal,
+            collateral,
+            kyc_borrower,
+            kyc_lender,
+            mint_spend,
+            0,
+            sender=borrower,
+        )
+
+
+def test_reverts_if_mint_spend_lt_principal(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """mint_spend below (principal - origination_fee) reverts before any vault interaction."""
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    signed_offer = _sign_leveraged_offer(p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal)
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+
+    with boa.reverts("mint_spend lt principal"):
+        p2p_usdc_acred.create_leveraged_loan(
+            signed_offer,
+            principal,
+            collateral,
+            kyc_borrower,
+            kyc_lender,
+            principal - 1,
+            0,
+            sender=borrower,
+        )
+
+
+# --------------------------------------------------------------------------- under-delivering swap
+
+
+def test_under_delivering_swap_stores_measured_collateral_and_settles(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """When the swap under-delivers, the stored collateral must equal the DS the vault actually holds —
+    so the borrower can withdraw it at settle.
+
+    The AcredMock quotes `full` DS via calculateDsTokenAmount but swap() delivers only 99% (`delivered`).
+    mint_sync credits/returns the MEASURED delta, so the loan stores `collateral_amount == delivered` and
+    the vault holds exactly `delivered` DS. settle_loan then withdraws `delivered` back to the borrower
+    and succeeds (a `full`-stored loan would revert "insufficient balance" on the withdraw).
+    """
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    full = _minted(mint_spend)  # what the VIEW quotes: 1e18
+    delivered = full * 9900 // 10000  # what swap() actually mints at 99% delivery
+    assert delivered < full  # precondition: under-delivery
+    acred_lev.set_swap_delivery_bps(9900)
+
+    signed_offer = _sign_leveraged_offer(p2p_usdc_acred, usdc, acred_lev, oracle, lender, borrower, lender_key, now, principal)
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+    vault_addr = p2p_usdc_acred.wallet_to_vault(borrower)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, delivered, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    # the loan hashes to `collateral_amount == delivered` (the MEASURED mint), NOT the `full` view estimate
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=delivered
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)
+    # the vault holds exactly what was stored: solvency invariant (a `full`-stored loan would exceed this)
+    assert acred_lev.balanceOf(vault_addr) == delivered
+    assert loan.collateral_amount == delivered
+
+    # settle in the same block (interest 0): the borrower repays `principal` and reclaims the collateral.
+    borrower_ds_before = acred_lev.balanceOf(borrower)
+    usdc.mint(borrower, principal)
+    usdc.approve(p2p_usdc_acred.address, principal, sender=borrower)
+
+    p2p_usdc_acred.settle_loan(loan, SignedRedeemResult(), sender=borrower)
+
+    assert p2p_usdc_acred.loans(loan_id) == ZERO_BYTES32  # loan settled
+    assert acred_lev.balanceOf(vault_addr) == 0  # collateral fully drained from the vault
+    assert acred_lev.balanceOf(borrower) - borrower_ds_before == delivered  # borrower got the DS back
+
+
+# --------------------------------------------------------------------------- Midas sync market
+#
+# The Midas market (real P2PLendingVaultMidas, MINT_SYNC | REDEEM_SYNC) mints an 18-dec weth
+# "mToken" via a MidasVaultMock DepositVault. mint_sync -> depositInstant(payment_token,
+# mint_spend*1e18//1e6, min_collateral_out*1e18//1e18, ..., vault):
+#   - the mock pulls `min(mint_spend, max_deposit_spend or mint_spend)` usdc (native decimals) from
+#     the vault and pays out `deposit_deliver_amount` weth to the vault from its own balance;
+#   - the P2P vault MEASURES the mint via balance delta, so `minted == deposit_deliver_amount` and
+#     `refunded == mint_spend - spent`. Both the minted amount and the spend are pure test knobs
+#     (no rate math), so the expected values below are computed independently of the contract.
+
+
+def _sign_midas_offer(p2p, usdc, weth, oracle, lender, borrower, lender_key, now, principal, *, origination_fee_bps=0):
+    """Build + sign a fixed-principal offer for the Midas (weth mToken) leveraged market."""
+    offer = Offer(
+        principal=principal,
+        apr=1000,
+        payment_token=usdc.address,
+        collateral_token=weth.address,
+        duration=100,
+        origination_fee_bps=origination_fee_bps,
+        min_collateral_amount=0,
+        max_iltv=8000,
+        available_liquidity=principal,
+        call_eligibility=0,
+        call_window=0,
+        liquidation_ltv=0,
+        oracle_addr=oracle.address,
+        expiration=now + 10**6,
+        lender=lender,
+        borrower=borrower,
+        tracing_id=ZERO_BYTES32,
+    )
+    return sign_offer(offer, lender_key, p2p.address)
+
+
+@pytest.fixture
+def midas_deposit_vault(midas_vault_mock_contract_def, weth):
+    """The Midas DepositVault mock wired as the leveraged market's `mint_addr`.
+
+    Deployed `(mtoken=weth, instant_fee=0)`. On `depositInstant` it pulls usdc from the loan vault and
+    pays out `deposit_deliver_amount` weth from its own balance, so tests pre-fund it with weth.
+    """
+    return midas_vault_mock_contract_def.deploy(weth.address, 0)
+
+
+@pytest.fixture
+def p2p_usdc_weth_midas_lev(
+    p2p_lending_multivault_erc20_contract_def,
+    p2p_mv_refinance,
+    p2p_mv_liquidation,
+    p2p_mv_loan,
+    usdc,
+    weth,
+    oracle,
+    kyc_validator_contract,
+    securitize_vault_impl_sync,
+    owner,
+    transfer_agent,
+    redemption_wallet,
+    midas_deposit_vault,
+):
+    """Leveraged-mint market on the REAL Midas vault impl (MINT_SYNC | REDEEM_SYNC), weth collateral.
+
+    `mint_addr` is the MidasVaultMock DepositVault (Midas `mint_sync` uses `base.mint_addr` as the
+    deposit vault). Mirrors `p2p_usdc_weth` otherwise.
+    """
+    return p2p_lending_multivault_erc20_contract_def.deploy(
+        usdc,  # payment_token
+        weth,  # collateral_token
+        oracle,  # oracle_addr
+        False,  # oracle_reverse
+        kyc_validator_contract,  # kyc_validator_addr
+        0,  # protocol_upfront_fee
+        0,  # protocol_settlement_fee
+        owner,  # protocol_wallet
+        10000,  # max_protocol_upfront_fee
+        10000,  # max_protocol_settlement_fee
+        0,  # partial_liquidation_fee
+        0,  # full_liquidation_fee
+        p2p_mv_refinance.address,  # refinance_addr
+        p2p_mv_liquidation.address,  # liquidation_addr
+        p2p_mv_loan.address,  # loan_addr
+        securitize_vault_impl_sync.address,  # vault_impl_addr (real Midas vault)
+        transfer_agent,  # transfer_agent
+        midas_deposit_vault.address,  # mint_addr (MidasVaultMock DepositVault)
+        redemption_wallet,  # redemption_addr
+        boa.eval("empty(address)"),  # vault_registrar_addr
+        0,  # max_pending_window
+    )
+
+
+def test_create_leveraged_creates_loan_on_midas_market(
+    p2p_usdc_weth_midas_lev,
+    midas_deposit_vault,
+    usdc,
+    weth,
+    oracle,
+    kyc_borrower,
+    kyc_lender,
+    borrower,
+    lender,
+    lender_key,
+    owner,
+    now,
+):
+    """End-to-end sync leveraged create through the Midas vault + DepositVault mock (weth mToken).
+
+    Full mint (mock pulls the whole mint_spend, refund 0). Both fees nonzero so the fee snapshot in the
+    loan hash is verified. Minted weth and refund are derived from the mock's knobs, not the contract.
+    """
+    p2p = p2p_usdc_weth_midas_lev
+    p2p.set_protocol_fee(200, 0, sender=owner)  # 2% upfront fee snapshotted onto the loan
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    origination_fee_bps = 100  # 1%
+    origination_fee = origination_fee_bps * principal // BPS  # 10 USDC
+    protocol_upfront = 200 * principal // BPS  # 20 USDC
+    lender_to_vault = principal - origination_fee  # 990 USDC
+    borrower_margin = mint_spend - lender_to_vault  # 510 USDC
+
+    minted = 10**18  # 1 WETH the mock delivers (LTV 2578 < max_iltv 8000, asserted below)
+    refunded = 0  # mock pulls the full mint_spend (no max_deposit_spend cap) -> nothing refunded
+    midas_deposit_vault.set_deposit_deliver_amount(minted)
+    weth.mint(midas_deposit_vault.address, minted, sender=owner)  # mock pays the mtoken from its balance
+
+    # precondition: the minted collateral keeps the loan under the offer's max LTV
+    assert calc_ltv(principal, minted, usdc, weth, oracle) <= 8000
+
+    signed_offer = _sign_midas_offer(
+        p2p, usdc, weth, oracle, lender, borrower, lender_key, now, principal, origination_fee_bps=origination_fee_bps
+    )
+    usdc.mint(lender, mint_spend)
+    usdc.approve(p2p.address, mint_spend, sender=lender)
+    usdc.mint(borrower, borrower_margin)
+    usdc.approve(p2p.address, borrower_margin, sender=borrower)
+    vault_addr = p2p.wallet_to_vault(borrower)
+    protocol_wallet = p2p.protocol_wallet()
+    lender_before, borrower_before = usdc.balanceOf(lender), usdc.balanceOf(borrower)
+    protocol_before = usdc.balanceOf(protocol_wallet)
+
+    loan_id = p2p.create_leveraged_loan(
+        signed_offer, principal, minted, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    # 1. events FIRST — a same-contract view read (getters below) resets boa's last-computation get_logs
+    created = get_last_event(p2p, "LoanCreated")
+    assert created.id == loan_id
+    assert created.amount == principal
+    assert created.collateral_amount == minted
+    lev = get_last_event(p2p, "LeveragedLoanCreated")
+    assert lev.id == loan_id
+    assert lev.principal == principal
+    assert lev.collateral_amount == minted
+    assert lev.acquired_collateral == minted
+    assert lev.payment_spent == mint_spend
+    assert lev.borrower_margin == borrower_margin
+    assert lev.pending is False
+    assert lev.mint_deadline == 0  # sync branch always logs 0
+    # 2. state: the stored loan hashes with the MEASURED minted collateral and fees on the ORIGINAL principal
+    loan = expected_leveraged_loan(p2p, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=minted)
+    assert loan.origination_fee_amount == origination_fee
+    assert loan.protocol_upfront_fee_amount == protocol_upfront
+    assert compute_loan_hash(loan) == p2p.loans(loan_id)
+    # 3. principal reconciliation: full mint (refund 0) keeps the principal at the requested amount
+    assert refunded == 0
+    assert loan.amount == principal
+    # 4. collateral minted into the loan vault
+    assert weth.balanceOf(vault_addr) == minted
+    # 5. balances: lender deploys principal net of fee + the upfront fee; borrower covers the margin; no refund
+    assert lender_before - usdc.balanceOf(lender) == lender_to_vault + protocol_upfront
+    assert borrower_before - usdc.balanceOf(borrower) == borrower_margin
+    assert usdc.balanceOf(protocol_wallet) - protocol_before == protocol_upfront
+    assert usdc.balanceOf(vault_addr) == 0  # nothing stuck in the vault (full spend)
+    # 6. committed liquidity tracks the (unreduced) principal
+    key = compute_liquidity_key(lender, signed_offer.offer.tracing_id)
+    assert p2p.commited_liquidity(key) == principal
+
+
+def test_create_leveraged_sync_zero_borrower_margin(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """`mint_spend == principal - origination_fee`: the lender fully funds the mint, borrower_margin == 0.
+
+    The `if borrower_margin > 0` transfer is skipped -> the borrower's payment balance is NOT debited,
+    and LeveragedLoanCreated.borrower_margin == 0.
+    """
+    principal = 1000 * 10**6
+    origination_fee_bps = 100  # 1%
+    lender_to_vault = principal - origination_fee_bps * principal // BPS  # 990 USDC
+    mint_spend = lender_to_vault  # lender fully funds the mint -> zero borrower margin
+    collateral = _minted(mint_spend)
+    assert mint_spend - lender_to_vault == 0  # precondition: no borrower equity
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        origination_fee_bps=origination_fee_bps,
+    )
+    usdc.mint(lender, mint_spend)
+    usdc.approve(p2p_usdc_acred.address, mint_spend, sender=lender)
+    borrower_before = usdc.balanceOf(borrower)
+
+    loan_id = p2p_usdc_acred.create_leveraged_loan(
+        signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+    )
+
+    assert usdc.balanceOf(borrower) == borrower_before  # borrower margin transfer skipped -> not debited
+    # event BEFORE the getter reads (get_logs last-computation quirk)
+    assert get_last_event(p2p_usdc_acred, "LeveragedLoanCreated").borrower_margin == 0
+    loan = expected_leveraged_loan(
+        p2p_usdc_acred, signed_offer, loan_id, borrower, lender, now, principal=principal, collateral=collateral
+    )
+    assert compute_loan_hash(loan) == p2p_usdc_acred.loans(loan_id)  # loan created
+
+
+def test_create_leveraged_sync_reverts_if_origination_fee_gt_bps(
+    p2p_usdc_acred, usdc, acred_lev, oracle, kyc_borrower, kyc_lender, borrower, lender, lender_key, now
+):
+    """origination_fee_bps > BPS hits the builder's early guard (Loan.vy:793) before any funding math,
+    protecting `lender_to_vault = principal - origination_fee` from underflow."""
+    principal, mint_spend = 1000 * 10**6, 1500 * 10**6
+    collateral = _minted(mint_spend)
+    signed_offer = _sign_leveraged_offer(
+        p2p_usdc_acred,
+        usdc,
+        acred_lev,
+        oracle,
+        lender,
+        borrower,
+        lender_key,
+        now,
+        principal,
+        origination_fee_bps=BPS + 1,  # 10001 > 10000
+    )
+    assert signed_offer.offer.origination_fee_bps == 10001  # precondition: fee bps above BPS
+    _fund_leveraged(p2p_usdc_acred, usdc, borrower, lender, principal, mint_spend)
+
+    with boa.reverts("origination fee gt principal"):
+        p2p_usdc_acred.create_leveraged_loan(
+            signed_offer, principal, collateral, kyc_borrower, kyc_lender, mint_spend, 0, sender=borrower
+        )
