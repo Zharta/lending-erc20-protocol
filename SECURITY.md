@@ -85,7 +85,7 @@ Only **Critical** and **High** reports are eligible for a reward. Zharta sets
 each amount case by case, based on severity and the funds at risk on the
 deployed contracts at the time of the report. Medium, Low and informational
 reports are acknowledged but not rewarded. Payment details are agreed with the
-reporter when a reward is offered.
+reporter when a reward is offered and **will be executed in 90 days from that date**.
 
 A report is eligible only if:
 
